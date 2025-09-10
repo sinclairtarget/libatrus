@@ -58,7 +58,7 @@ pub fn main() !void {
                 switch (err) {
                     error.FileNotFound => {
                         const p = options.filepath.?;
-                        die("File did not exist: \"{s}\"", .{p});
+                        die("File did not exist: \"{s}\"\n", .{p});
                     },
                     else => return err,
                 }
@@ -96,13 +96,20 @@ fn printVersion(out: *Io.Writer) !void {
 }
 
 fn slurp(alloc: Allocator, filepath: ?[]u8) ![]u8 {
+    var buffer: [128]u8 = undefined;
+
     if (filepath) |fp| {
         var file = try std.fs.cwd().openFile(fp, .{});
         defer file.close();
 
-        const bytes = try file.readToEndAlloc(alloc, 1_000_000);
+        var reader_impl = file.reader(&buffer);
+        const reader = &reader_impl.interface;
+        const bytes = try reader.allocRemaining(alloc, .unlimited);
         return bytes;
     } else {
-        return error.NotImplemented;
+        var reader_impl = std.fs.File.stdin().reader(&buffer);
+        const reader = &reader_impl.interface;
+        const bytes = try reader.allocRemaining(alloc, .unlimited);
+        return bytes;
     }
 }
