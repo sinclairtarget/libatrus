@@ -1,15 +1,13 @@
 const std = @import("std");
 const atrus = @import("atrus");
 
+const cli = @import("cli.zig");
+
 const Allocator = std.mem.Allocator;
 const Io = std.Io;
+const ArgsError = cli.ArgsError;
  
 const logger = std.log.scoped(.main);
-
-const InvocationOptions = struct {
-    verbose: bool = false,
-    filepath: ?[]u8 = null,
-};
 
 pub fn main() !void {
     var buffer: [8192]u8 = undefined;
@@ -21,17 +19,17 @@ pub fn main() !void {
     var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
     const stdout = &stdout_writer.interface;
 
-    var options = InvocationOptions{};
-    var diagnostic = Diagnostic{};
-    const action = parseArgs(alloc, &options, &diagnostic) catch |err| {
+    var options = cli.InvocationOptions{};
+    var diagnostic = cli.Diagnostic{};
+    const action = cli.parseArgs(alloc, &options, &diagnostic) catch |err| {
         switch (err) {
             ArgsError.NotEnoughArgs => {
-                try printUsage(stdout);
+                try cli.printUsage(stdout);
                 try stdout.flush();
                 die("Not enough args provided.\n", .{});
             },
             ArgsError.UnrecognizedArg => {
-                try printUsage(stdout);
+                try cli.printUsage(stdout);
                 try stdout.flush();
                 const unrecognized = diagnostic.unrecognized.?;
                 die("Unrecognized argument \"{s}\".\n", .{unrecognized});
@@ -49,8 +47,7 @@ pub fn main() !void {
             const s = slurp(alloc, options.filepath) catch |err| {
                 switch (err) {
                     error.FileNotFound => {
-                        const filepath = options.filepath.?;
-                        die("File does not exist: \"{s}\"\n", .{filepath});
+                        die("File did not exist: \"{s}\"", .{options.filepath.?});
                     },
                     else => return err,
                 }
@@ -63,30 +60,11 @@ pub fn main() !void {
             try printVersion(stdout);
         },
         .help => {
-            try printUsage(stdout);
+            try cli.printUsage(stdout);
         },
     }
 
     try stdout.flush();
-}
-
-fn printUsage(out: *Io.Writer) !void {
-    const usage =
-        \\Usage: atrus [OPTIONS...] <filepath>
-        \\       atrus --version
-        \\       atrus -h|--help
-        \\
-        \\Options:
-        \\  -v  Enable verbose logging.
-        \\
-        \\If "-" is given as the filepath, input will be read from STDIN.
-        \\
-    ;
-    try out.print(usage, .{});
-}
-
-fn printVersion(out: *Io.Writer) !void {
-    try out.print("{s}\n", .{atrus.version});
 }
 
 pub fn die(comptime fmt: []const u8, args: anytype) noreturn {
@@ -94,53 +72,8 @@ pub fn die(comptime fmt: []const u8, args: anytype) noreturn {
     std.process.exit(1);
 }
 
-const Action = enum {
-    parse,
-    print_version,
-    help,
-};
-
-const ArgsError = error {
-    NotEnoughArgs,
-    UnrecognizedArg,
-};
-
-const Diagnostic = struct {
-    unrecognized: ?[]u8 = null,
-};
-
-fn parseArgs(
-    alloc: Allocator, 
-    options: *InvocationOptions, 
-    diagnostic: *Diagnostic,
-) !Action {
-    const args = try std.process.argsAlloc(alloc);
-
-    if (args.len <= 1) {
-        return ArgsError.NotEnoughArgs;
-    }
-
-    for (1..args.len - 1) |i| {
-        if (std.mem.eql(u8, args[i], "-v")) {
-            options.verbose = true;
-        } else {
-            diagnostic.unrecognized = args[i];
-            return ArgsError.UnrecognizedArg;
-        }
-    }
-
-    const final = args[args.len - 1];
-    if (std.mem.eql(u8, final, "--version")) {
-        return .print_version;
-    } if (std.mem.eql(u8, final, "-h") or std.mem.eql(u8, final, "--help")) {
-        return .help;
-    } else if (std.mem.eql(u8, final, "-")) {
-        // Should read from stdin
-        return .parse;
-    }
-
-    options.filepath = final;
-    return .parse;
+fn printVersion(out: *Io.Writer) !void {
+    try out.print("{s}\n", .{atrus.version});
 }
 
 fn slurp(alloc: Allocator, filepath: ?[]u8) ![]u8 {
