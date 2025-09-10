@@ -19,6 +19,7 @@ pub fn main() !void {
     var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
     const stdout = &stdout_writer.interface;
 
+    // Parse CLI args
     var options = cli.InvocationOptions{};
     var diagnostic = cli.Diagnostic{};
     const action = cli.parseArgs(alloc, &options, &diagnostic) catch |err| {
@@ -41,26 +42,44 @@ pub fn main() !void {
         }
     };
 
+    // Dispatch
     switch (action) {
-        .parse => {
-            logger.debug("Starting with options: {any}", .{options});
-            const s = slurp(alloc, options.filepath) catch |err| {
-                switch (err) {
-                    error.FileNotFound => {
-                        die("File did not exist: \"{s}\"", .{options.filepath.?});
-                    },
-                    else => return err,
-                }
-            };
-
-            const result = atrus.parse(s);
-            try stdout.print("{s}\n", .{result});
-        },
         .print_version => {
             try printVersion(stdout);
         },
         .help => {
             try cli.printUsage(stdout);
+        },
+        .parse => {
+            const description = try options.format(alloc);
+            logger.debug("Parsing with options: {s}", .{description});
+
+            const s = slurp(alloc, options.filepath) catch |err| {
+                switch (err) {
+                    error.FileNotFound => {
+                        const p = options.filepath.?;
+                        die("File did not exist: \"{s}\"", .{p});
+                    },
+                    else => return err,
+                }
+            };
+
+            const ast = atrus.parse(s);
+
+            logger.debug("Rendering...", .{});
+            switch (options.output_choice) {
+                .json => {
+                    try stdout.print("{s}", .{ast});
+                },
+                .yaml => {
+                    const result = atrus.renderYAML(ast);
+                    try stdout.print("{s}", .{result});
+                },
+                .html => {
+                    const result = atrus.renderHTML(ast);
+                    try stdout.print("{s}", .{result});
+                },
+            }
         },
     }
 

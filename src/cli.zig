@@ -3,9 +3,23 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Io = std.Io;
 
+pub const OutputChoice = enum {
+    json,
+    yaml,
+    html,
+};
+
 pub const InvocationOptions = struct {
-    verbose: bool = false,
     filepath: ?[]u8 = null,
+    output_choice: OutputChoice = .json,
+
+    pub fn format(self: @This(), alloc: Allocator) ![]u8 {
+        return std.fmt.allocPrint(
+            alloc,
+            ".{{ .filepath = '{?s}', .output_choice = {any} }}",
+            .{ self.filepath, self.output_choice },
+        );
+    }
 };
 
 pub fn printUsage(out: *Io.Writer) !void {
@@ -15,7 +29,8 @@ pub fn printUsage(out: *Io.Writer) !void {
         \\       atrus -h|--help
         \\
         \\Options:
-        \\  -v  Enable verbose logging.
+        \\  --html  Output HTML.
+        \\  --yaml  Output AST as YAML.
         \\
         \\If "-" is given as the filepath, input will be read from STDIN.
         \\
@@ -50,8 +65,10 @@ pub fn parseArgs(
     }
 
     for (1..args.len - 1) |i| {
-        if (std.mem.eql(u8, args[i], "-v")) {
-            options.verbose = true;
+        if (std.mem.eql(u8, args[i], "--yaml")) {
+            options.output_choice = .yaml;
+        } else if (std.mem.eql(u8, args[i], "--html")) {
+            options.output_choice = .html;
         } else {
             diagnostic.unrecognized = args[i];
             return ArgsError.UnrecognizedArg;
