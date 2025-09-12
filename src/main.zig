@@ -1,6 +1,7 @@
 const std = @import("std");
-const atrus = @import("atrus");
+const builtin = @import("builtin");
 
+const atrus = @import("atrus");
 const cli = @import("cli.zig");
 
 const Allocator = std.mem.Allocator;
@@ -82,6 +83,27 @@ pub fn main() !void {
                     const result = atrus.renderHTML(ast);
                     try stdout.print("{s}", .{result});
                 },
+            }
+        },
+        .tokenize => {
+            std.debug.assert(builtin.mode == .Debug);
+
+            const description = try options.format(arena);
+            logger.debug("Tokenizing with options: {s}", .{description});
+
+            const s = slurp(arena, options.filepath) catch |err| {
+                switch (err) {
+                    error.FileNotFound => {
+                        const p = options.filepath.?;
+                        die("File did not exist: \"{s}\"\n", .{p});
+                    },
+                    else => return err,
+                }
+            };
+
+            const tokens = atrus.tokenize(arena, s);
+            for (tokens) |token| {
+                try stdout.print("{s}\n", .{token});
             }
         },
     }

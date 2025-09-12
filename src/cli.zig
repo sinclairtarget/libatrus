@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 const Allocator = std.mem.Allocator;
 const Io = std.Io;
@@ -25,7 +26,21 @@ pub const Options = struct {
 };
 
 pub fn printUsage(out: *Io.Writer) !void {
-    const usage =
+    const usage = if (builtin.mode == .Debug)
+        \\Usage: atrus [OPTIONS...] <filepath>
+        \\       atrus --version
+        \\       atrus -h|--help
+        \\
+        \\Options:
+        \\  --html    Output HTML.
+        \\  --yaml    Output AST as YAML.
+        \\
+        \\Debug Options:
+        \\  --tokens  Output the token stream prior to parsing.
+        \\
+        \\If "-" is given as the filepath, input will be read from STDIN.
+        \\
+    else
         \\Usage: atrus [OPTIONS...] <filepath>
         \\       atrus --version
         \\       atrus -h|--help
@@ -36,11 +51,13 @@ pub fn printUsage(out: *Io.Writer) !void {
         \\
         \\If "-" is given as the filepath, input will be read from STDIN.
         \\
-    ;
+        ;
+
     try out.print(usage, .{});
 }
 
 pub const Action = enum {
+    tokenize,
     parse,
     print_version,
     help,
@@ -67,12 +84,18 @@ pub fn parseArgs(
         return ArgsError.NotEnoughArgs;
     }
 
+    var action: Action = .parse;
     var options = Options{};
     for (1..args.len - 1) |i| {
         if (std.mem.eql(u8, args[i], "--yaml")) {
             options.output_choice = .yaml;
         } else if (std.mem.eql(u8, args[i], "--html")) {
             options.output_choice = .html;
+        } else if (
+            builtin.mode == .Debug 
+            and std.mem.eql(u8, args[i], "--tokens")
+        ) {
+            action = .tokenize;
         } else {
             diagnostic.unrecognized = args[i];
             return ArgsError.UnrecognizedArg;
@@ -86,9 +109,9 @@ pub fn parseArgs(
         return .{ .help, options };
     } else if (std.mem.eql(u8, final, "-")) {
         // Should read from stdin
-        return .{ .parse, options };
+        return .{ action, options };
     }
 
     options.filepath = try arena.dupe(u8, final);
-    return .{ .parse, options };
+    return .{ action, options };
 }
