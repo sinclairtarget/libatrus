@@ -9,11 +9,13 @@ pub const OutputChoice = enum {
     html,
 };
 
-pub const InvocationOptions = struct {
+pub const Options = struct {
     filepath: ?[]u8 = null,
     output_choice: OutputChoice = .json,
 
-    pub fn format(self: @This(), alloc: Allocator) ![]u8 {
+    const Self = @This();
+
+    pub fn format(self: Self, alloc: Allocator) ![]u8 {
         return std.fmt.allocPrint(
             alloc,
             ".{{ .filepath = '{?s}', .output_choice = {any} }}",
@@ -54,16 +56,18 @@ pub const Diagnostic = struct {
 };
 
 pub fn parseArgs(
-    alloc: Allocator, 
-    options: *InvocationOptions, 
+    arena: Allocator,
     diagnostic: *Diagnostic,
-) !Action {
-    const args = try std.process.argsAlloc(alloc);
+) !struct { Action, Options } {
+    var args_arena_impl = std.heap.ArenaAllocator.init(arena);
+    defer args_arena_impl.deinit();
+    const args = try std.process.argsAlloc(args_arena_impl.allocator());
 
     if (args.len <= 1) {
         return ArgsError.NotEnoughArgs;
     }
 
+    var options = Options{};
     for (1..args.len - 1) |i| {
         if (std.mem.eql(u8, args[i], "--yaml")) {
             options.output_choice = .yaml;
@@ -77,14 +81,14 @@ pub fn parseArgs(
 
     const final = args[args.len - 1];
     if (std.mem.eql(u8, final, "--version")) {
-        return .print_version;
+        return .{ .print_version, options };
     } if (std.mem.eql(u8, final, "-h") or std.mem.eql(u8, final, "--help")) {
-        return .help;
+        return .{ .help, options };
     } else if (std.mem.eql(u8, final, "-")) {
         // Should read from stdin
-        return .parse;
+        return .{ .parse, options };
     }
 
-    options.filepath = final;
-    return .parse;
+    options.filepath = try arena.dupe(u8, final);
+    return .{ .parse, options };
 }

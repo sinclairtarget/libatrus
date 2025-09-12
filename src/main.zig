@@ -10,36 +10,39 @@ const ArgsError = cli.ArgsError;
 const logger = std.log.scoped(.main);
 
 pub fn main() !void {
-    var buffer: [8192]u8 = undefined;
-    var fixed_alloc_impl = std.heap.FixedBufferAllocator.init(&buffer);
-    const alloc = fixed_alloc_impl.allocator();
-    defer fixed_alloc_impl.reset();
-
     var stdout_buffer: [64]u8 = undefined;
     var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
     const stdout = &stdout_writer.interface;
 
+    var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
+    defer {
+        _ = debug_allocator.deinit();
+    }
+    const gpa = debug_allocator.allocator();
+
+    var arena_impl = std.heap.ArenaAllocator.init(gpa);
+    defer arena_impl.deinit();
+    const arena = arena_impl.allocator();
+
     // Parse CLI args
-    var options = cli.InvocationOptions{};
-    var diagnostic = cli.Diagnostic{};
-    const action = cli.parseArgs(alloc, &options, &diagnostic) catch |err| {
-        switch (err) {
-            ArgsError.NotEnoughArgs => {
-                try cli.printUsage(stdout);
-                try stdout.flush();
-                die("Not enough args provided.\n", .{});
-            },
-            ArgsError.UnrecognizedArg => {
-                try cli.printUsage(stdout);
-                try stdout.flush();
-                const unrecognized = diagnostic.unrecognized.?;
-                die("Unrecognized argument \"{s}\".\n", .{unrecognized});
-            },
-            Allocator.Error.OutOfMemory => {
-                die("Hit memory limit trying to process CLI args.\n", .{});
-            },
-            else => return err,
-        }
+    const action, const options = blk: {
+        var diagnostic = cli.Diagnostic{};
+        break :blk cli.parseArgs(arena, &diagnostic) catch |err| {
+            switch (err) {
+                ArgsError.NotEnoughArgs => {
+                    try cli.printUsage(stdout);
+                    try stdout.flush();
+                    die("Not enough args provided.\n", .{});
+                },
+                ArgsError.UnrecognizedArg => {
+                    try cli.printUsage(stdout);
+                    try stdout.flush();
+                    const unrecognized = diagnostic.unrecognized.?;
+                    die("Unrecognized argument \"{s}\".\n", .{unrecognized});
+                },
+                else => return err,
+            }
+        };
     };
 
     // Dispatch
@@ -51,10 +54,10 @@ pub fn main() !void {
             try cli.printUsage(stdout);
         },
         .parse => {
-            const description = try options.format(alloc);
+            const description = try options.format(arena);
             logger.debug("Parsing with options: {s}", .{description});
 
-            const s = slurp(alloc, options.filepath) catch |err| {
+            const s = slurp(arena, options.filepath) catch |err| {
                 switch (err) {
                     error.FileNotFound => {
                         const p = options.filepath.?;
