@@ -32,14 +32,23 @@ pub fn main() !void {
             switch (err) {
                 ArgsError.NotEnoughArgs => {
                     try cli.printUsage(stdout);
+                    try stdout.print("\n", .{});
                     try stdout.flush();
-                    die("Not enough args provided.\n", .{});
+                    die("not enough args provided\n", .{});
                 },
                 ArgsError.UnrecognizedArg => {
                     try cli.printUsage(stdout);
+                    try stdout.print("\n", .{});
                     try stdout.flush();
-                    const unrecognized = diagnostic.unrecognized.?;
-                    die("Unrecognized argument \"{s}\".\n", .{unrecognized});
+                    const unrecognized = diagnostic.argname.?;
+                    die("unrecognized argument \"{s}\"\n", .{unrecognized});
+                },
+                ArgsError.MissingRequiredArg => {
+                    try cli.printUsage(stdout);
+                    try stdout.print("\n", .{});
+                    try stdout.flush();
+                    const required = diagnostic.argname.?;
+                    die("missing required argument: <{s}>\n", .{required});
                 },
                 else => return err,
             }
@@ -62,7 +71,7 @@ pub fn main() !void {
                 switch (err) {
                     error.FileNotFound => {
                         const p = options.filepath.?;
-                        die("File did not exist: \"{s}\"\n", .{p});
+                        die("file did not exist: \"{s}\"\n", .{p});
                     },
                     else => return err,
                 }
@@ -112,7 +121,7 @@ pub fn main() !void {
 }
 
 pub fn die(comptime fmt: []const u8, args: anytype) noreturn {
-    std.debug.print(fmt, args);
+    std.debug.print("Error: " ++ fmt, args);
     std.process.exit(1);
 }
 
@@ -120,7 +129,7 @@ fn printVersion(out: *Io.Writer) !void {
     try out.print("{s}\n", .{atrus.version});
 }
 
-fn slurp(alloc: Allocator, filepath: ?[]u8) ![]u8 {
+fn slurp(alloc: Allocator, filepath: ?[]const u8) ![]const u8 {
     var buffer: [128]u8 = undefined;
 
     if (filepath) |fp| {

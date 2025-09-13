@@ -11,7 +11,7 @@ pub const OutputChoice = enum {
 };
 
 pub const Options = struct {
-    filepath: ?[]u8 = null,
+    filepath: ?[]const u8 = null,
     output_choice: OutputChoice = .json,
 
     const Self = @This();
@@ -53,7 +53,7 @@ pub fn printUsage(out: *Io.Writer) !void {
         }
     };
 
-    try out.print(full_usage, .{});
+    try out.print("{s}", .{full_usage});
 }
 
 pub const Action = enum {
@@ -66,10 +66,11 @@ pub const Action = enum {
 pub const ArgsError = error {
     NotEnoughArgs,
     UnrecognizedArg,
+    MissingRequiredArg,
 };
 
 pub const Diagnostic = struct {
-    unrecognized: ?[]u8 = null,
+    argname: ?[]const u8 = null,
 };
 
 pub fn parseArgs(
@@ -80,38 +81,41 @@ pub fn parseArgs(
     defer args_arena_impl.deinit();
     const args = try std.process.argsAlloc(args_arena_impl.allocator());
 
-    if (args.len <= 1) {
+    if (args.len < 2) {
         return ArgsError.NotEnoughArgs;
     }
 
     var action: Action = .parse;
     var options = Options{};
-    for (1..args.len - 1) |i| {
-        if (std.mem.eql(u8, args[i], "--yaml")) {
+    if (std.mem.eql(u8, args[1], "--version")) {
+        return .{ .print_version, options };
+    } else if (std.mem.eql(u8, args[1], "-h") or std.mem.eql(u8, args[1], "--help")) {
+        return .{ .help, options };
+    }
+
+    for (args[1..args.len - 1]) |arg| {
+        if (std.mem.eql(u8, arg, "--yaml")) {
             options.output_choice = .yaml;
-        } else if (std.mem.eql(u8, args[i], "--html")) {
+        } else if (std.mem.eql(u8, arg, "--html")) {
             options.output_choice = .html;
         } else if (
             builtin.mode == .Debug 
-            and std.mem.eql(u8, args[i], "--tokens")
+            and std.mem.eql(u8, arg, "--tokens")
         ) {
             action = .tokenize;
         } else {
-            diagnostic.unrecognized = args[i];
+            diagnostic.argname = arg;
             return ArgsError.UnrecognizedArg;
         }
     }
 
     const final = args[args.len - 1];
-    if (std.mem.eql(u8, final, "--version")) {
-        return .{ .print_version, options };
-    } if (std.mem.eql(u8, final, "-h") or std.mem.eql(u8, final, "--help")) {
-        return .{ .help, options };
-    } else if (std.mem.eql(u8, final, "-")) {
-        // Should read from stdin
-        return .{ action, options };
+    if (std.mem.startsWith(u8, final, "-") and !std.mem.eql(u8, final, "-")) {
+        diagnostic.argname = "filepath";
+        return ArgsError.MissingRequiredArg;
+    } else {
+        options.filepath = try arena.dupe(u8, final);
     }
 
-    options.filepath = try arena.dupe(u8, final);
     return .{ action, options };
 }
