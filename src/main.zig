@@ -10,6 +10,8 @@ const ArgsError = cli.ArgsError;
  
 const logger = std.log.scoped(.main);
 
+const max_line_len = 1024; // bytes
+
 pub fn main() !void {
     var stdout_buffer: [64]u8 = undefined;
     var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
@@ -95,24 +97,27 @@ pub fn main() !void {
             }
         },
         .tokenize => {
-            std.debug.assert(builtin.mode == .Debug);
+            if (builtin.mode == .Debug) {
+                const description = try options.format(arena);
+                logger.debug("Tokenizing with options: {s}", .{description});
 
-            const description = try options.format(arena);
-            logger.debug("Tokenizing with options: {s}", .{description});
+                var file = if (options.filepath) |filepath|
+                    try std.fs.cwd().openFile(filepath, .{})
+                else
+                    std.fs.File.stdin();
+                defer file.close();
 
-            const s = slurp(arena, options.filepath) catch |err| {
-                switch (err) {
-                    error.FileNotFound => {
-                        const p = options.filepath.?;
-                        die("File did not exist: \"{s}\"\n", .{p});
-                    },
-                    else => return err,
+                var buffer: [max_line_len]u8 = undefined;
+                var reader_impl = file.reader(&buffer);
+                const reader = &reader_impl.interface;
+
+                const tokens = try atrus.tokenize(arena, reader);
+                for (tokens) |token| {
+                    const t = try token.format(arena);
+                    try stdout.print("{s}\n", .{t});
                 }
-            };
-
-            const tokens = atrus.tokenize(arena, s);
-            for (tokens) |token| {
-                try stdout.print("{s}\n", .{token});
+            } else {
+                std.debug.assert(builtin.mode == .Debug);
             }
         },
     }
