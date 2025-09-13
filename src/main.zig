@@ -69,30 +69,18 @@ pub fn main() !void {
             const description = try options.format(arena);
             logger.debug("Parsing with options: {s}", .{description});
 
-            const s = slurp(arena, options.filepath) catch |err| {
-                switch (err) {
-                    error.FileNotFound => {
-                        const p = options.filepath.?;
-                        die("file did not exist: \"{s}\"\n", .{p});
-                    },
-                    else => return err,
-                }
-            };
-
-            const ast = atrus.parse(s);
+            const ast = atrus.parse();
 
             logger.debug("Rendering...", .{});
             switch (options.output_choice) {
                 .json => {
-                    try stdout.print("{s}", .{ast});
+                    try atrus.renderJSON(arena, ast, stdout);
                 },
                 .yaml => {
-                    const result = atrus.renderYAML(ast);
-                    try stdout.print("{s}", .{result});
+                    return error.NotImplemented;
                 },
                 .html => {
-                    const result = atrus.renderHTML(ast);
-                    try stdout.print("{s}", .{result});
+                    return error.NotImplemented;
                 },
             }
         },
