@@ -26,34 +26,34 @@ pub const Options = struct {
 };
 
 pub fn printUsage(out: *Io.Writer) !void {
-    const usage = if (builtin.mode == .Debug)
+    const usage = 
         \\Usage: atrus [OPTIONS...] <filepath>
         \\       atrus --version
         \\       atrus -h|--help
+        \\
+        \\If "-" is given as the filepath, input is read from STDIN.
         \\
         \\Options:
         \\  --html    Output HTML.
         \\  --yaml    Output AST as YAML.
         \\
-        \\Debug Options:
-        \\  --tokens  Output the token stream prior to parsing.
-        \\
-        \\If "-" is given as the filepath, input will be read from STDIN.
-        \\
-    else
-        \\Usage: atrus [OPTIONS...] <filepath>
-        \\       atrus --version
-        \\       atrus -h|--help
-        \\
-        \\Options:
-        \\  --html  Output HTML.
-        \\  --yaml  Output AST as YAML.
-        \\
-        \\If "-" is given as the filepath, input will be read from STDIN.
-        \\
         ;
 
-    try out.print(usage, .{});
+    const full_usage = blk: {
+        if (builtin.mode == .Debug) {
+            const debug_usage = 
+                \\
+                \\Debug Options:
+                \\  --tokens  Output the token stream prior to parsing.
+                \\
+                ;
+            break :blk usage ++ debug_usage;
+        } else {
+            break :blk usage;
+        }
+    };
+
+    try out.print(full_usage, .{});
 }
 
 pub const Action = enum {
