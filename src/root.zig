@@ -6,7 +6,7 @@ const ArrayList = std.ArrayList;
 
 const Tokenizer = @import("lex/Tokenizer.zig");
 const Token = @import("lex/tokens.zig").Token;
-const MystAst = @import("parse/ast.zig").MystAst;
+const AstNode = @import("parse/ast.zig").AstNode;
 const json = @import("render/json.zig");
 
 pub const version = "0.0.1";
@@ -32,16 +32,40 @@ pub fn tokenize(alloc: Allocator, in: *Io.Reader) ![]const Token {
     return try tokens.toOwnedSlice(alloc);
 }
 
-pub fn parse() MystAst {
+pub fn parse() AstNode {
     return .{
         .root = .{
-            .node_type = .root,
+            .children = &.{
+                .{
+                    .heading = .{
+                        .depth = 1,
+                        .children = &.{
+                            .{
+                                .text = .{
+                                    .value  = "Heading",
+                                },
+                            },
+                        },
+                    },
+                },
+                .{
+                    .paragraph = .{
+                        .children = &.{
+                            .{
+                                .text = .{
+                                    .value = "This is a paragraph.",
+                                },
+                            },
+                        },
+                    },
+                },
+            },
         },
     };
 }
 
-pub fn renderJSON(alloc: Allocator, ast: MystAst, out: *Io.Writer) !void {
-    try json.render(alloc, ast, out);
+pub fn renderJSON(ast: AstNode, out: *Io.Writer) !void {
+    try json.render(ast, out);
 }
 
 pub fn renderYAML(ast: []const u8) []const u8 {
