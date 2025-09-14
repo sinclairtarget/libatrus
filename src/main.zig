@@ -121,22 +121,3 @@ pub fn die(comptime fmt: []const u8, args: anytype) noreturn {
 fn printVersion(out: *Io.Writer) !void {
     try out.print("{s}\n", .{atrus.version});
 }
-
-fn slurp(alloc: Allocator, filepath: ?[]const u8) ![]const u8 {
-    var buffer: [128]u8 = undefined;
-
-    if (filepath) |fp| {
-        var file = try std.fs.cwd().openFile(fp, .{});
-        defer file.close();
-
-        var reader_impl = file.reader(&buffer);
-        const reader = &reader_impl.interface;
-        const bytes = try reader.allocRemaining(alloc, .unlimited);
-        return bytes;
-    } else {
-        var reader_impl = std.fs.File.stdin().reader(&buffer);
-        const reader = &reader_impl.interface;
-        const bytes = try reader.allocRemaining(alloc, .unlimited);
-        return bytes;
-    }
-}
