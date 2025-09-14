@@ -20,15 +20,10 @@ pub fn tokenize(alloc: Allocator, in: *Io.Reader) ![]const Token {
     errdefer tokens.deinit(alloc);
 
     var tokenizer = Tokenizer.init(in);
-    while (tokenizer.next(alloc)) |token| { // TODO: use `try` ?
+    var token = try tokenizer.next(alloc);
+    while (token.token_type != .eof) : (token = try tokenizer.next(alloc)) {
         try tokens.append(alloc, token);
-        if (token.token_type == .eof) {
-            break;
-        }
-    } else |err| {
-        return err;
     }
-
     return try tokens.toOwnedSlice(alloc);
 }
 
