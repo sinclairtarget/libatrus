@@ -26,7 +26,7 @@ pub const Options = struct {
 };
 
 pub fn printUsage(out: *Io.Writer) !void {
-    const usage = 
+    const usage =
         \\Usage: atrus [OPTIONS...] <filepath>
         \\       atrus --version
         \\       atrus -h|--help
@@ -37,16 +37,16 @@ pub fn printUsage(out: *Io.Writer) !void {
         \\  --html    Output HTML.
         \\  --yaml    Output AST as YAML.
         \\
-        ;
+    ;
 
     const full_usage = blk: {
         if (builtin.mode == .Debug) {
-            const debug_usage = 
+            const debug_usage =
                 \\
                 \\Debug Options:
                 \\  --tokens  Output the token stream prior to parsing.
                 \\
-                ;
+            ;
             break :blk usage ++ debug_usage;
         } else {
             break :blk usage;
@@ -63,7 +63,7 @@ pub const Action = enum {
     help,
 };
 
-pub const ArgsError = error {
+pub const ArgsError = error{
     NotEnoughArgs,
     UnrecognizedArg,
     MissingRequiredArg,
@@ -89,18 +89,19 @@ pub fn parseArgs(
     var options = Options{};
     if (std.mem.eql(u8, args[1], "--version")) {
         return .{ .print_version, options };
-    } else if (std.mem.eql(u8, args[1], "-h") or std.mem.eql(u8, args[1], "--help")) {
+    } else if (
+        std.mem.eql(u8, args[1], "-h") or std.mem.eql(u8, args[1], "--help")
+    ) {
         return .{ .help, options };
     }
 
-    for (args[1..args.len - 1]) |arg| {
+    for (args[1 .. args.len - 1]) |arg| {
         if (std.mem.eql(u8, arg, "--yaml")) {
             options.output_choice = .yaml;
         } else if (std.mem.eql(u8, arg, "--html")) {
             options.output_choice = .html;
         } else if (
-            builtin.mode == .Debug 
-            and std.mem.eql(u8, arg, "--tokens")
+            builtin.mode == .Debug and std.mem.eql(u8, arg, "--tokens")
         ) {
             action = .tokenize;
         } else {

@@ -7,7 +7,7 @@ const cli = @import("cli.zig");
 const Allocator = std.mem.Allocator;
 const Io = std.Io;
 const ArgsError = cli.ArgsError;
- 
+
 const logger = std.log.scoped(.main);
 
 const max_line_len = 1024; // bytes

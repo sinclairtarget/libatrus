@@ -8,7 +8,7 @@ const ArrayList = std.ArrayList;
 const Token = @import("tokens.zig").Token;
 const TokenType = @import("tokens.zig").TokenType;
 
-pub const Error = error {
+pub const Error = error{
     LineTooLong,
 };
 
@@ -33,9 +33,9 @@ pub fn init(in: *Io.Reader) Self {
     };
 }
 
-// Get next token from the stream. 
+// Get next token from the stream.
 //
-// Caller responsible for freeing memory associated with tokens. 
+// Caller responsible for freeing memory associated with tokens.
 pub fn next(self: *Self, alloc: Allocator) !Token {
     if (self.i >= self.line.len) {
         const should_emit_newline = self.state != .not_started;
@@ -74,7 +74,7 @@ pub fn next(self: *Self, alloc: Allocator) !Token {
 // Produces the value for the given token type by advancing through the current
 // line.
 fn evaluate(
-    self: Self, 
+    self: Self,
     alloc: Allocator,
     token_type: TokenType,
 ) !struct { ?[]const u8, usize } {
@@ -102,7 +102,7 @@ const md =
     \\
     \\This is a new paragraph.
     \\
-    ;
+;
 
 test "can tokenize example" {
     var arena_impl = std.heap.ArenaAllocator.init(std.testing.allocator);

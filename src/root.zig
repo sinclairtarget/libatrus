@@ -42,7 +42,7 @@ pub fn parse() AstNode {
                         .children = &.{
                             .{
                                 .text = .{
-                                    .value  = "Heading",
+                                    .value = "Heading",
                                 },
                             },
                         },

@@ -16,14 +16,14 @@ pub const Token = struct {
 
     pub fn format(self: Self, alloc: Allocator) ![]const u8 {
         const name = try std.ascii.allocUpperString(
-            alloc, 
+            alloc,
             @tagName(self.token_type),
         );
 
         if (self.value) |value| {
             return std.fmt.allocPrint(
                 alloc,
-                "{s} {s}", 
+                "{s} {s}",
                 .{
                     name,
                     value,
@@ -33,5 +33,4 @@ pub const Token = struct {
 
         return name;
     }
-
 };
