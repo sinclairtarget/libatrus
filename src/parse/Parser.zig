@@ -32,13 +32,25 @@ pub fn init(tokenizer: *Tokenizer) Self {
 pub fn parse(self: *Self, alloc: Allocator) !ast.Node {
     _ = try self.advance(alloc); // Load first token
 
-    const paragraph = try self.parseParagraph(alloc);
-    if (paragraph == null) {
-        return Error.SyntaxError;
-    }
-
     var children: ArrayList(ast.Node) = .empty;
-    try children.append(alloc, paragraph.?);
+
+    while (self.current.?.token_type != .eof) {
+        const len_start = children.items.len;
+
+        var heading = try self.parseHeading(alloc);
+        while (heading) |h| : (heading = try self.parseHeading(alloc)) {
+            try children.append(alloc, h);
+        }
+
+        var paragraph = try self.parseParagraph(alloc);
+        while (paragraph) |p| : (paragraph = try self.parseParagraph(alloc)) {
+            try children.append(alloc, p);
+        }
+
+        if (children.items.len <= len_start) { // Nothing was parsed this loop
+            break;
+        }
+    }
 
     const root = ast.Node{
         .root = .{
@@ -49,20 +61,50 @@ pub fn parse(self: *Self, alloc: Allocator) !ast.Node {
     return root;
 }
 
+fn parseHeading(self: *Self, alloc: Allocator) !?ast.Node {
+    var depth: u8 = 0;
+    var token = try self.consume(alloc, .pound);
+    if (token == null) {
+        return null;
+    }
+
+    while (token) |_| : (token = try self.consume(alloc, .pound)) {
+        depth += 1;
+    }
+
+    var children: ArrayList(ast.Node) = .empty;
+    while (true) {
+        const text = try self.parseText(alloc);
+        if (text) |t| {
+            try children.append(alloc, t);
+        } else {
+            break;
+        }
+    }
+
+    _ = try self.consume(alloc, .newline);
+
+    return .{
+        .heading = .{
+            .depth = depth,
+            .children = try children.toOwnedSlice(alloc),
+        },
+    };
+}
+
 fn parseParagraph(self: *Self, alloc: Allocator) !?ast.Node {
     var children: ArrayList(ast.Node) = .empty;
 
-    while (true) {
-        const text = try self.parseText(alloc);
-        if (text == null) {
-            break;
-        }
-
-        try children.append(alloc, text.?);
-        _ = try self.match(alloc, .newline);
+    while (try self.parseText(alloc)) |t| {
+        try children.append(alloc, t);
+        _ = try self.consume(alloc, .newline);
     }
 
-    _ = try self.match(alloc, .newline);
+    if (children.items.len == 0) {
+        return null;
+    }
+
+    _ = try self.consume(alloc, .newline);
 
     return .{
         .paragraph = .{
@@ -72,7 +114,7 @@ fn parseParagraph(self: *Self, alloc: Allocator) !?ast.Node {
 }
 
 fn parseText(self: *Self, alloc: Allocator) !?ast.Node {
-    const token = try self.match(alloc, .text);
+    const token = try self.consume(alloc, .text);
     if (token == null) {
         return null;
     }
@@ -84,7 +126,7 @@ fn parseText(self: *Self, alloc: Allocator) !?ast.Node {
     };
 }
 
-fn match(self: *Self, alloc: Allocator, token_type: TokenType) !?Token {
+fn consume(self: *Self, alloc: Allocator, token_type: TokenType) !?Token {
     if (self.current == null) {
         return null;
     }
@@ -99,5 +141,9 @@ fn match(self: *Self, alloc: Allocator, token_type: TokenType) !?Token {
 fn advance(self: *Self, alloc: Allocator) !?Token {
     const prev = self.current;
     self.current = try self.tokenizer.next(alloc);
+
+    const description = try self.current.?.format(alloc);
+    std.debug.print("{s}\n", .{description});
+
     return prev;
 }
