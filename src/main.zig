@@ -69,7 +69,18 @@ pub fn main() !void {
             const description = try options.format(arena);
             logger.debug("Parsing with options: {s}", .{description});
 
-            const ast = atrus.parse();
+            // TODO: Encapsulate opening the input stream?
+            var file = if (options.filepath) |filepath|
+                try std.fs.cwd().openFile(filepath, .{})
+            else
+                std.fs.File.stdin();
+            defer file.close();
+
+            var buffer: [max_line_len]u8 = undefined;
+            var reader_impl = file.reader(&buffer);
+            const reader = &reader_impl.interface;
+
+            const ast = try atrus.parse(arena, reader);
 
             logger.debug("Rendering...", .{});
             switch (options.output_choice) {

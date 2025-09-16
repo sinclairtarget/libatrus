@@ -4,14 +4,14 @@ const std = @import("std");
 const Io = std.Io;
 const Stringify = std.json.Stringify;
 
-const AstNode = @import("../parse/ast.zig").AstNode;
+const ast = @import("../parse/ast.zig");
 
-pub fn render(ast: AstNode, out: *Io.Writer) Io.Writer.Error!void {
+pub fn render(root: ast.Node, out: *Io.Writer) Io.Writer.Error!void {
     var stringify = Stringify{ .writer = out };
-    try render_node(&stringify, ast);
+    try render_node(&stringify, root);
 }
 
-fn render_node(stringify: *Stringify, node: AstNode) Io.Writer.Error!void {
+fn render_node(stringify: *Stringify, node: ast.Node) Io.Writer.Error!void {
     try stringify.beginObject();
     try stringify.objectField("type");
     try stringify.write(@tagName(node));

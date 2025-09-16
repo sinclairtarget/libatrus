@@ -89,9 +89,7 @@ pub fn parseArgs(
     var options = Options{};
     if (std.mem.eql(u8, args[1], "--version")) {
         return .{ .print_version, options };
-    } else if (
-        std.mem.eql(u8, args[1], "-h") or std.mem.eql(u8, args[1], "--help")
-    ) {
+    } else if (std.mem.eql(u8, args[1], "-h") or std.mem.eql(u8, args[1], "--help")) {
         return .{ .help, options };
     }
 
@@ -100,9 +98,7 @@ pub fn parseArgs(
             options.output_choice = .yaml;
         } else if (std.mem.eql(u8, arg, "--html")) {
             options.output_choice = .html;
-        } else if (
-            builtin.mode == .Debug and std.mem.eql(u8, arg, "--tokens")
-        ) {
+        } else if (builtin.mode == .Debug and std.mem.eql(u8, arg, "--tokens")) {
             action = .tokenize;
         } else {
             diagnostic.argname = arg;

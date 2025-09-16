@@ -11,7 +11,7 @@ pub const NodeType = enum {
     text,
 };
 
-pub const AstNode = union(NodeType) {
+pub const Node = union(NodeType) {
     root: Container,
     heading: Heading,
     paragraph: Container,
@@ -19,12 +19,12 @@ pub const AstNode = union(NodeType) {
 };
 
 pub const Container = struct {
-    children: []const AstNode,
+    children: []const Node,
 };
 
 pub const Heading = struct {
     depth: u8,
-    children: []const AstNode,
+    children: []const Node,
 };
 
 pub const Text = struct {

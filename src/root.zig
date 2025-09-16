@@ -6,7 +6,8 @@ const ArrayList = std.ArrayList;
 
 const Tokenizer = @import("lex/Tokenizer.zig");
 const Token = @import("lex/tokens.zig").Token;
-const AstNode = @import("parse/ast.zig").AstNode;
+const ast = @import("parse/ast.zig");
+const Parser = @import("parse/Parser.zig");
 const json = @import("render/json.zig");
 
 pub const version = "0.0.1";
@@ -27,46 +28,20 @@ pub fn tokenize(alloc: Allocator, in: *Io.Reader) ![]const Token {
     return try tokens.toOwnedSlice(alloc);
 }
 
-pub fn parse() AstNode {
-    return .{
-        .root = .{
-            .children = &.{
-                .{
-                    .heading = .{
-                        .depth = 1,
-                        .children = &.{
-                            .{
-                                .text = .{
-                                    .value = "Heading",
-                                },
-                            },
-                        },
-                    },
-                },
-                .{
-                    .paragraph = .{
-                        .children = &.{
-                            .{
-                                .text = .{
-                                    .value = "This is a paragraph.",
-                                },
-                            },
-                        },
-                    },
-                },
-            },
-        },
-    };
+pub fn parse(alloc: Allocator, in: *Io.Reader) !ast.Node {
+    var tokenizer = Tokenizer.init(in);
+    var parser = Parser.init(&tokenizer);
+    return try parser.parse(alloc);
 }
 
-pub fn renderJSON(ast: AstNode, out: *Io.Writer) !void {
-    try json.render(ast, out);
+pub fn renderJSON(root: ast.Node, out: *Io.Writer) !void {
+    try json.render(root, out);
 }
 
-pub fn renderYAML(ast: []const u8) []const u8 {
-    return ast;
+pub fn renderYAML(root: []const u8) []const u8 {
+    return root;
 }
 
-pub fn renderHTML(ast: []const u8) []const u8 {
-    return ast;
+pub fn renderHTML(root: []const u8) []const u8 {
+    return root;
 }
