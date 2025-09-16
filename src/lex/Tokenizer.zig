@@ -84,7 +84,8 @@ fn evaluate(
     switch (token_type) {
         .text => {
             const value = try alloc.dupe(u8, self.line[self.i..]);
-            return .{ value, self.line.len };
+            const trimmed_value = std.mem.trim(u8, value, " ");
+            return .{ trimmed_value, self.line.len };
         },
         else => {
             return .{ null, self.i + 1 };
