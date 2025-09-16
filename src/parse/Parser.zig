@@ -141,9 +141,5 @@ fn consume(self: *Self, alloc: Allocator, token_type: TokenType) !?Token {
 fn advance(self: *Self, alloc: Allocator) !?Token {
     const prev = self.current;
     self.current = try self.tokenizer.next(alloc);
-
-    const description = try self.current.?.format(alloc);
-    std.debug.print("{s}\n", .{description});
-
     return prev;
 }
