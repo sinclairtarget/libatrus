@@ -25,6 +25,7 @@ pub fn tokenize(alloc: Allocator, in: *Io.Reader) ![]const Token {
     while (token.token_type != .eof) : (token = try tokenizer.next(alloc)) {
         try tokens.append(alloc, token);
     }
+    try tokens.append(alloc, token); // append eof
     return try tokens.toOwnedSlice(alloc);
 }
 

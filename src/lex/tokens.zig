@@ -23,7 +23,7 @@ pub const Token = struct {
         if (self.value) |value| {
             return std.fmt.allocPrint(
                 alloc,
-                "{s} {s}",
+                "{s} \"{s}\"",
                 .{
                     name,
                     value,

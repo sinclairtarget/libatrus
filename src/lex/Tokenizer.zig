@@ -73,6 +73,9 @@ pub fn next(self: *Self, alloc: Allocator) !Token {
 
 // Produces the value for the given token type by advancing through the current
 // line.
+//
+// Returns the value for the token (if there is one) and the index to which we
+// should advance.
 fn evaluate(
     self: Self,
     alloc: Allocator,
