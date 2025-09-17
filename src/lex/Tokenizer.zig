@@ -98,17 +98,17 @@ fn read_line(in: *Io.Reader) DelimiterError![]const u8 {
     return try in.takeDelimiterExclusive('\n');
 }
 
-const md =
-    \\# Header
-    \\## Subheader
-    \\This is a paragraph.
-    \\It has multiple lines.
-    \\
-    \\This is a new paragraph.
-    \\
-;
+test "can tokenize" {
+    const md =
+        \\# Header
+        \\## Subheader
+        \\This is a paragraph.
+        \\It has multiple lines.
+        \\
+        \\This is a new paragraph.
+        \\
+    ;
 
-test "can tokenize example" {
     var arena_impl = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_impl.deinit();
     const arena = arena_impl.allocator();

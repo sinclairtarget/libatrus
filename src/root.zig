@@ -6,6 +6,7 @@ const ArrayList = std.ArrayList;
 
 const Tokenizer = @import("lex/Tokenizer.zig");
 const Token = @import("lex/tokens.zig").Token;
+const TokenType = @import("lex/tokens.zig").TokenType;
 const ast = @import("parse/ast.zig");
 const Parser = @import("parse/Parser.zig");
 const json = @import("render/json.zig");
@@ -47,6 +48,30 @@ pub fn renderHTML(root: []const u8) []const u8 {
     return root;
 }
 
-test {
-    _ = Tokenizer;
+test tokenize {
+    const md =
+        \\# I am a heading
+        \\I am a paragraph.
+    ;
+    var reader: Io.Reader = .fixed(md);
+
+    var arena_impl = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_impl.deinit();
+    const arena = arena_impl.allocator();
+
+    const expected = [_]TokenType{
+        .pound,
+        .text,
+        .newline,
+        .text,
+        .eof,
+    };
+
+    const tokens = try tokenize(arena, &reader);
+    var results = try ArrayList(TokenType).initCapacity(arena, tokens.len);
+    for (tokens) |t| {
+        try results.append(arena, t.token_type);
+    }
+
+    try std.testing.expectEqualSlices(TokenType, &expected, results.items);
 }
