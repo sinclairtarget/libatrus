@@ -46,3 +46,7 @@ pub fn renderYAML(root: []const u8) []const u8 {
 pub fn renderHTML(root: []const u8) []const u8 {
     return root;
 }
+
+test {
+    _ = Tokenizer;
+}
