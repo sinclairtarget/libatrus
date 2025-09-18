@@ -35,7 +35,7 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    addTests(b, atrus);
+    addTests(b, atrus, exe);
     addBenchmarks(b, optimize);
 }
 
@@ -43,13 +43,19 @@ pub fn build(b: *std.Build) void {
 // * Unit tests (defined along side the source code for the library)
 // * Spec tests (test conformance with the MyST spec)
 // * CLI tests (runs atrus as a subprocess, functional tests)
-fn addTests(b: *std.Build, atrus: *std.Build.Module) void {
+fn addTests(
+    b: *std.Build, 
+    atrus: *std.Build.Module,
+    exe: *std.Build.Step.Compile,
+) void {
+    // Unit tests
     const unit_tests = b.addTest(.{
         .name = "unit",
         .root_module = atrus,
     });
     const run_unit_tests = b.addRunArtifact(unit_tests);
 
+    // MyST Spec tests
     const spec_tests = b.addTest(.{
         .name = "spec",
         .root_module = b.createModule(.{
@@ -59,6 +65,9 @@ fn addTests(b: *std.Build, atrus: *std.Build.Module) void {
     });
     const run_spec_tests = b.addRunArtifact(spec_tests);
 
+    // Functional CLI tests.
+    // We pass the path to the atrus executable into the tests as a config
+    // option.
     const cli_tests = b.addTest(.{
         .name = "cli",
         .root_module = b.createModule(.{
@@ -66,6 +75,9 @@ fn addTests(b: *std.Build, atrus: *std.Build.Module) void {
             .target = b.graph.host, 
         }),
     });
+    const options = b.addOptions();
+    options.addOptionPath("exec_path", exe.getEmittedBin()); // Adds dependency
+    cli_tests.root_module.addOptions("config", options);
     const run_cli_tests = b.addRunArtifact(cli_tests);
 
     const test_step = b.step("test", "Run tests");
