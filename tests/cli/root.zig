@@ -25,7 +25,7 @@ fn run_atrus(alloc: Allocator, comptime args: []const []const u8) ![]const u8 {
                 return result.stdout;
             } else {
                 std.debug.print(
-                    "Subprocess exited with code: {d}\n", 
+                    "Subprocess exited with code: {d}\n",
                     .{exit_code},
                 );
                 std.debug.print("Output from stderr:\n{s}\n", .{result.stderr});
@@ -38,10 +38,30 @@ fn run_atrus(alloc: Allocator, comptime args: []const []const u8) ![]const u8 {
     }
 }
 
-test "-h flag" {
+test "-h" {
     var arena_impl = ArenaAllocator.init(std.testing.allocator);
     defer arena_impl.deinit();
 
     const out = try run_atrus(arena_impl.allocator(), &.{ "-h" });
     try std.testing.expect(std.mem.indexOf(u8, out, "Usage") != null);
+}
+
+test "--version" {
+    var arena_impl = ArenaAllocator.init(std.testing.allocator);
+    defer arena_impl.deinit();
+
+    const out = try run_atrus(arena_impl.allocator(), &.{ "--version" });
+    const version = std.mem.trim(u8, out, " \n");
+    _ = std.SemanticVersion.parse(version) catch |err| {
+        switch (err) {
+            error.InvalidVersion => {
+                std.debug.print(
+                    "Version string \"{s}\" not valid\n",
+                    .{version},
+                );
+                return err;
+            },
+            else => return err,
+        }
+    };
 }

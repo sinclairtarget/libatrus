@@ -1,5 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const config = @import("config");
 const Allocator = std.mem.Allocator;
 const Io = std.Io;
 const ArrayList = std.ArrayList;
@@ -11,7 +12,7 @@ const ast = @import("parse/ast.zig");
 const Parser = @import("parse/Parser.zig");
 const json = @import("render/json.zig");
 
-pub const version = "0.0.1";
+pub const version = config.version;
 
 pub fn tokenize(alloc: Allocator, in: *Io.Reader) ![]const Token {
     comptime if (builtin.mode != .Debug) {

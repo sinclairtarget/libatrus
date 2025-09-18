@@ -3,12 +3,20 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const version = b.option(
+        []const u8,
+        "version",
+        "application version string",
+    ) orelse "0.1.0";
 
     // atrus lib
     const atrus = b.addModule("atrus", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
     });
+    const options = b.addOptions();
+    options.addOption([]const u8, "version", version);
+    atrus.addOptions("config", options);
 
     // atrus cli
     const exe = b.addExecutable(.{
