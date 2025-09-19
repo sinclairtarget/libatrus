@@ -69,6 +69,9 @@ fn addTests(
         .root_module = b.createModule(.{
             .root_source_file = b.path("tests/myst-spec/root.zig"),
             .target = b.graph.host, 
+            .imports = &.{
+                .{ .name = "atrus", .module = atrus },
+            },
         }),
     });
     const run_spec_tests = b.addRunArtifact(spec_tests);

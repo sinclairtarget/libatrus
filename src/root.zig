@@ -6,11 +6,11 @@ const Io = std.Io;
 const ArrayList = std.ArrayList;
 
 const Tokenizer = @import("lex/Tokenizer.zig");
-const Token = @import("lex/tokens.zig").Token;
-const TokenType = @import("lex/tokens.zig").TokenType;
-const ast = @import("parse/ast.zig");
 const Parser = @import("parse/Parser.zig");
 const json = @import("render/json.zig");
+pub const Token = @import("lex/tokens.zig").Token;
+pub const TokenType = @import("lex/tokens.zig").TokenType;
+pub const ast = @import("parse/ast.zig");
 
 pub const version = config.version;
 
