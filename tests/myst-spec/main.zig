@@ -1,5 +1,5 @@
 //! Runs all the test cases provided with the MyST spec.
-//! 
+//!
 //! Since we load the test cases from a JSON file rather than defining them in
 //! our Zig source, this is just a regular Zig CLI program and not a module
 //! containing Zig test declarations. We consider a non-zero exit code a failure
@@ -26,8 +26,8 @@ const Test = struct {
     // that AST as a dynamic JSON value and compare it to the dynamic JSON value
     // for the AST we loaded from the spec test cases.
     pub fn func(
-        self: Self, 
-        alloc: Allocator, 
+        self: Self,
+        alloc: Allocator,
         options: struct { verbose: bool = false },
     ) !void {
         var myst_reader: Io.Reader = .fixed(self.case.myst);
@@ -35,15 +35,17 @@ const Test = struct {
 
         var actual = Io.Writer.Allocating.init(alloc);
         try atrus.renderJSON(
-            ast, 
-            &actual.writer, 
+            ast,
+            &actual.writer,
             .{
-                .json_options = .{ .whitespace = .indent_2, },
+                .json_options = .{
+                    .whitespace = .indent_2,
+                },
             },
         );
 
         var expected = Io.Writer.Allocating.init(alloc);
-        var stringify = json.Stringify{ 
+        var stringify = json.Stringify{
             .writer = &expected.writer,
             .options = .{
                 .whitespace = .indent_2,
@@ -62,8 +64,8 @@ const Test = struct {
 };
 
 fn gatherTests(
-    alloc: Allocator, 
-    path: []const u8, 
+    alloc: Allocator,
+    path: []const u8,
     filter: ?[]const u8,
 ) ![]Test {
     const cases = try spec.readTestCases(alloc, path);
@@ -74,7 +76,7 @@ fn gatherTests(
             if (std.mem.indexOf(u8, case.title, f) == null) {
                 continue;
             }
-        } 
+        }
 
         try tests.append(alloc, .{ .case = case });
     }

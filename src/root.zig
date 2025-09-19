@@ -38,7 +38,7 @@ pub fn parse(alloc: Allocator, in: *Io.Reader) !ast.Node {
 }
 
 pub fn renderJSON(
-    root: ast.Node, 
+    root: ast.Node,
     out: *Io.Writer,
     options: struct { json_options: std.json.Stringify.Options = .{} },
 ) !void {

@@ -3,7 +3,7 @@ const config = @import("config");
 const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
 
-const Error = error {
+const Error = error{
     RunFailed,
     Terminated,
     BadExitCode,
@@ -42,7 +42,7 @@ test "-h" {
     var arena_impl = ArenaAllocator.init(std.testing.allocator);
     defer arena_impl.deinit();
 
-    const out = try run_atrus(arena_impl.allocator(), &.{ "-h" });
+    const out = try run_atrus(arena_impl.allocator(), &.{"-h"});
     try std.testing.expect(std.mem.indexOf(u8, out, "Usage") != null);
 }
 
@@ -50,7 +50,7 @@ test "--version" {
     var arena_impl = ArenaAllocator.init(std.testing.allocator);
     defer arena_impl.deinit();
 
-    const out = try run_atrus(arena_impl.allocator(), &.{ "--version" });
+    const out = try run_atrus(arena_impl.allocator(), &.{"--version"});
     const version = std.mem.trim(u8, out, " \n");
     _ = std.SemanticVersion.parse(version) catch |err| {
         switch (err) {

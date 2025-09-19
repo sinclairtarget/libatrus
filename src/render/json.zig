@@ -7,11 +7,11 @@ const Stringify = std.json.Stringify;
 const ast = @import("../parse/ast.zig");
 
 pub fn render(
-    root: ast.Node, 
+    root: ast.Node,
     out: *Io.Writer,
     options: struct { json_options: Stringify.Options = .{} },
 ) Io.Writer.Error!void {
-    var stringify = Stringify{ 
+    var stringify = Stringify{
         .writer = out,
         .options = options.json_options,
     };
