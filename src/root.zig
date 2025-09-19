@@ -37,8 +37,12 @@ pub fn parse(alloc: Allocator, in: *Io.Reader) !ast.Node {
     return try parser.parse(alloc);
 }
 
-pub fn renderJSON(root: ast.Node, out: *Io.Writer) !void {
-    try json.render(root, out);
+pub fn renderJSON(
+    root: ast.Node, 
+    out: *Io.Writer,
+    options: struct { json_options: std.json.Stringify.Options = .{} },
+) !void {
+    try json.render(root, out, .{ .json_options = options.json_options });
 }
 
 pub fn renderYAML(root: []const u8) []const u8 {

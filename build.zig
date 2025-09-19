@@ -6,8 +6,13 @@ pub fn build(b: *std.Build) void {
     const version = b.option(
         []const u8,
         "version",
-        "application version string",
+        "Application version string",
     ) orelse "0.1.0";
+    const spec_test_case_filter = b.option(
+        []const u8,
+        "case-filter",
+        "Filter for MyST spec test cases",
+    );
 
     // atrus lib
     const atrus = b.addModule("atrus", .{
@@ -43,7 +48,7 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    addTests(b, atrus, exe);
+    addTests(b, atrus, exe, spec_test_case_filter);
     addBenchmarks(b, optimize);
 }
 
@@ -55,6 +60,7 @@ fn addTests(
     b: *std.Build, 
     atrus: *std.Build.Module,
     exe: *std.Build.Step.Compile,
+    filter: ?[]const u8,
 ) void {
     // Unit tests
     const unit_tests = b.addTest(.{
@@ -64,17 +70,23 @@ fn addTests(
     const run_unit_tests = b.addRunArtifact(unit_tests);
 
     // MyST Spec tests
-    const spec_tests = b.addTest(.{
-        .name = "spec",
+    const spec_exe = b.addExecutable(.{
+        .name = "spec-tests",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("tests/myst-spec/root.zig"),
+            .root_source_file = b.path("tests/myst-spec/main.zig"),
             .target = b.graph.host, 
             .imports = &.{
                 .{ .name = "atrus", .module = atrus },
             },
         }),
     });
-    const run_spec_tests = b.addRunArtifact(spec_tests);
+    const run_spec_exe = b.addRunArtifact(spec_exe);
+    const spec_cases_path = b.path("tests/myst-spec/myst.tests.json");
+    run_spec_exe.addFileArg(spec_cases_path);
+
+    if (filter) |f| {
+        run_spec_exe.addArg(f);
+    }
 
     // Functional CLI tests.
     // We pass the path to the atrus executable into the tests as a config
@@ -93,7 +105,7 @@ fn addTests(
 
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_unit_tests.step);
-    test_step.dependOn(&run_spec_tests.step);
+    test_step.dependOn(&run_spec_exe.step);
     test_step.dependOn(&run_cli_tests.step);
 }
 

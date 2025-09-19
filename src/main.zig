@@ -85,7 +85,7 @@ pub fn main() !void {
             logger.debug("Rendering...", .{});
             switch (options.output_choice) {
                 .json => {
-                    try atrus.renderJSON(ast, stdout);
+                    try atrus.renderJSON(ast, stdout, .{});
                 },
                 .yaml => {
                     return error.NotImplemented;
