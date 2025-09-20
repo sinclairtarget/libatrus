@@ -8,28 +8,11 @@ const ArrayList = std.ArrayList;
 const Tokenizer = @import("lex/Tokenizer.zig");
 const Parser = @import("parse/Parser.zig");
 const json = @import("render/json.zig");
-pub const Token = @import("lex/tokens.zig").Token;
-pub const TokenType = @import("lex/tokens.zig").TokenType;
+
+// The below `pub` variable and function declarations define the public
+// interface of libatrus.
 pub const ast = @import("parse/ast.zig");
-
 pub const version = config.version;
-
-pub fn tokenize(alloc: Allocator, in: *Io.Reader) ![]const Token {
-    comptime if (builtin.mode != .Debug) {
-        @compileError("tokenize() is only supported in the debug release mode");
-    };
-
-    var tokens: ArrayList(Token) = .empty;
-    errdefer tokens.deinit(alloc);
-
-    var tokenizer = Tokenizer.init(in);
-    var token = try tokenizer.next(alloc);
-    while (token.token_type != .eof) : (token = try tokenizer.next(alloc)) {
-        try tokens.append(alloc, token);
-    }
-    try tokens.append(alloc, token); // append eof
-    return try tokens.toOwnedSlice(alloc);
-}
 
 pub fn parse(alloc: Allocator, in: *Io.Reader) !ast.Node {
     var tokenizer = Tokenizer.init(in);
@@ -53,6 +36,42 @@ pub fn renderHTML(root: []const u8) []const u8 {
     return root;
 }
 
+// Tokenization is not part of the public interface of the library except in
+// debug mode.
+pub const Token = blk: {
+    if (builtin.mode != .Debug) {
+        @compileError("tokens are only supported in the debug release mode");
+    }
+
+    break :blk @import("lex/tokens.zig").Token;
+};
+
+pub const TokenType = blk: {
+    if (builtin.mode != .Debug) {
+        @compileError("tokens are only supported in the debug release mode");
+    }
+
+    break :blk @import("lex/tokens.zig").TokenType;
+};
+
+pub fn tokenize(alloc: Allocator, in: *Io.Reader) ![]const Token {
+    comptime if (builtin.mode != .Debug) {
+        @compileError("tokenize() is only supported in the debug release mode");
+    };
+
+    var tokens: ArrayList(Token) = .empty;
+    errdefer tokens.deinit(alloc);
+
+    var tokenizer = Tokenizer.init(in);
+    var token = try tokenizer.next(alloc);
+    while (token.token_type != .eof) : (token = try tokenizer.next(alloc)) {
+        try tokens.append(alloc, token);
+    }
+    try tokens.append(alloc, token); // append eof
+    return try tokens.toOwnedSlice(alloc);
+}
+
+// ----------------------------------------------------------------------------
 test tokenize {
     const md =
         \\# I am a heading
