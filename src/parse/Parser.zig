@@ -1,5 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const ArenaAllocator = std.heap.ArenaAllocator;
 const Io = std.Io;
 const ArrayList = std.ArrayList;
 
@@ -29,22 +30,29 @@ pub fn init(tokenizer: *Tokenizer) Self {
     };
 }
 
-pub fn parse(self: *Self, alloc: Allocator) !*ast.Node {
-    _ = try self.advance(alloc); // Load first token
+pub fn parse(self: *Self, gpa: Allocator) !*ast.Node {
+    // Arena used for tokenization
+    var arena_impl = std.heap.ArenaAllocator.init(gpa);
+    defer arena_impl.deinit();
+    const arena = arena_impl.allocator();
+
+    _ = try self.advance(arena); // Load first token
 
     var children: ArrayList(*ast.Node) = .empty;
 
     while (self.current.?.token_type != .eof) {
         const len_start = children.items.len;
 
-        var heading = try self.parseHeading(alloc);
-        while (heading) |h| : (heading = try self.parseHeading(alloc)) {
-            try children.append(alloc, h);
+        var heading = try self.parseHeading(gpa, arena);
+        while (heading) |h| : (heading = try self.parseHeading(gpa, arena)) {
+            try children.append(gpa, h);
         }
 
-        var paragraph = try self.parseParagraph(alloc);
-        while (paragraph) |p| : (paragraph = try self.parseParagraph(alloc)) {
-            try children.append(alloc, p);
+        var paragraph = try self.parseParagraph(gpa, arena);
+        while (paragraph) |p| : (
+            paragraph = try self.parseParagraph(gpa, arena)
+        ) {
+            try children.append(gpa, p);
         }
 
         if (children.items.len <= len_start) { // Nothing was parsed this loop
@@ -52,87 +60,92 @@ pub fn parse(self: *Self, alloc: Allocator) !*ast.Node {
         }
     }
 
-    const node = try alloc.create(ast.Node);
+    const node = try gpa.create(ast.Node);
     node.* = .{
         .root = .{
-            .children = try children.toOwnedSlice(alloc),
+            .children = try children.toOwnedSlice(gpa),
         },
     };
     return node;
 }
 
-fn parseHeading(self: *Self, alloc: Allocator) !?*ast.Node {
+fn parseHeading(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
     var depth: u8 = 0;
-    var token = try self.consume(alloc, .pound);
+    var token = try self.consume(arena, .pound);
     if (token == null) {
         return null;
     }
 
-    while (token) |_| : (token = try self.consume(alloc, .pound)) {
+    while (token) |_| : (token = try self.consume(arena, .pound)) {
         depth += 1;
     }
 
     var children: ArrayList(*ast.Node) = .empty;
     while (true) {
-        const text = try self.parseText(alloc);
+        const text = try self.parseText(gpa, arena);
         if (text) |t| {
-            try children.append(alloc, t);
+            try children.append(gpa, t);
         } else {
             break;
         }
     }
 
-    _ = try self.consume(alloc, .newline);
+    _ = try self.consume(arena, .newline);
 
-    const node = try alloc.create(ast.Node);
+    const node = try gpa.create(ast.Node);
     node.* = .{
         .heading = .{
             .depth = depth,
-            .children = try children.toOwnedSlice(alloc),
+            .children = try children.toOwnedSlice(gpa),
         },
     };
     return node;
 }
 
-fn parseParagraph(self: *Self, alloc: Allocator) !?*ast.Node {
+fn parseParagraph(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
     var children: ArrayList(*ast.Node) = .empty;
 
-    while (try self.parseText(alloc)) |t| {
-        try children.append(alloc, t);
-        _ = try self.consume(alloc, .newline);
+    while (try self.parseText(gpa, arena)) |t| {
+        try children.append(gpa, t);
+        _ = try self.consume(arena, .newline);
     }
 
     if (children.items.len == 0) {
         return null;
     }
 
-    _ = try self.consume(alloc, .newline);
+    _ = try self.consume(arena, .newline);
 
-    const node = try alloc.create(ast.Node);
+    const node = try gpa.create(ast.Node);
     node.* = .{
         .paragraph = .{
-            .children = try children.toOwnedSlice(alloc),
+            .children = try children.toOwnedSlice(gpa),
         },
     };
     return node;
 }
 
-fn parseText(self: *Self, alloc: Allocator) !?*ast.Node {
-    const token = try self.consume(alloc, .text);
+fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
+    const token = try self.consume(arena, .text);
     if (token == null) {
         return null;
     }
 
-    const node = try alloc.create(ast.Node);
+    const node = try gpa.create(ast.Node);
     node.* = .{
         .text = .{
-            .value = token.?.value orelse "",
+            .value = 
+                if (token.?.value) |v| 
+                    try gpa.dupe(u8, v)
+                else
+                    ""
+            ,
         },
     };
     return node;
 }
 
-fn consume(self: *Self, alloc: Allocator, token_type: TokenType) !?Token {
+fn consume(self: *Self, arena: Allocator, token_type: TokenType) !?Token {
     if (self.current == null) {
         return null;
     }
@@ -141,11 +154,11 @@ fn consume(self: *Self, alloc: Allocator, token_type: TokenType) !?Token {
         return null;
     }
 
-    return try self.advance(alloc);
+    return try self.advance(arena);
 }
 
-fn advance(self: *Self, alloc: Allocator) !?Token {
+fn advance(self: *Self, arena: Allocator) !?Token {
     const prev = self.current;
-    self.current = try self.tokenizer.next(alloc);
+    self.current = try self.tokenizer.next(arena);
     return prev;
 }

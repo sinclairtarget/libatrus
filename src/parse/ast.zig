@@ -4,6 +4,7 @@
 
 const std = @import("std");
 const ArrayList = std.ArrayList;
+const Allocator = std.mem.Allocator;
 
 pub const NodeType = enum {
     root,
@@ -17,6 +18,28 @@ pub const Node = union(NodeType) {
     heading: Heading,
     paragraph: Container,
     text: Text,
+
+    const Self = @This();
+
+    pub fn deinit(self: *Self, alloc: Allocator) void {
+        switch (self.*) {
+            .root, .paragraph => |n| {
+                for (n.children) |child| {
+                    child.deinit(alloc);
+                }
+                alloc.free(n.children);
+            },
+            .heading => |n| {
+                for (n.children) |child| {
+                    child.deinit(alloc);
+                }
+                alloc.free(n.children);
+            },
+            .text => |n| alloc.free(n.value),
+        }
+
+        alloc.destroy(self);
+    }
 };
 
 pub const Container = struct {

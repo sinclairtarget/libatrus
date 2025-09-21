@@ -73,31 +73,36 @@ pub const Diagnostic = struct {
     argname: ?[]const u8 = null,
 };
 
+/// Parse CLI args.
+///
+/// Caller responsible for freeing memory held by returned Options.
 pub fn parseArgs(
+    gpa: Allocator,  
     arena: Allocator,
     diagnostic: *Diagnostic,
 ) !struct { Action, Options } {
-    var args_arena_impl = std.heap.ArenaAllocator.init(arena);
+    var args_arena_impl = std.heap.ArenaAllocator.init(gpa);
     defer args_arena_impl.deinit();
-    const args = try std.process.argsAlloc(args_arena_impl.allocator());
 
+    const args = try std.process.argsAlloc(args_arena_impl.allocator());
     if (args.len < 2) {
         return ArgsError.NotEnoughArgs;
     }
 
-    var action: Action = .parse;
-    var options = Options{};
     if (std.mem.eql(u8, args[1], "--version")) {
-        return .{ .print_version, options };
+        return .{ .print_version, Options{} };
     } else if (std.mem.eql(u8, args[1], "-h") or std.mem.eql(u8, args[1], "--help")) {
-        return .{ .help, options };
+        return .{ .help, Options{} };
     }
 
+    var action = Action.parse;
+    var output_choice = OutputChoice.json;
+    var filepath: ?[]const u8 = null;
     for (args[1 .. args.len - 1]) |arg| {
         if (std.mem.eql(u8, arg, "--yaml")) {
-            options.output_choice = .yaml;
+            output_choice = .yaml;
         } else if (std.mem.eql(u8, arg, "--html")) {
-            options.output_choice = .html;
+            output_choice = .html;
         } else if (builtin.mode == .Debug and std.mem.eql(u8, arg, "--tokens")) {
             action = .tokenize;
         } else {
@@ -111,8 +116,14 @@ pub fn parseArgs(
         diagnostic.argname = "filepath";
         return ArgsError.MissingRequiredArg;
     } else {
-        options.filepath = try arena.dupe(u8, final);
+        filepath = try arena.dupe(u8, final);
     }
 
-    return .{ action, options };
+    return .{ 
+        action, 
+        Options { 
+            .filepath = filepath, 
+            .output_choice = output_choice,
+        },
+    };
 }

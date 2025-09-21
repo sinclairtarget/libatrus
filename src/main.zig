@@ -17,8 +17,13 @@ pub fn main() !void {
     var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
     const stdout = &stdout_writer.interface;
 
-    var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
+    var debug_allocator: std.heap.DebugAllocator(.{
+        .verbose_log = false,
+    }) = .init;
     defer {
+        if (builtin.mode == .Debug) {
+            _ = debug_allocator.detectLeaks();
+        }
         _ = debug_allocator.deinit();
     }
     const gpa = debug_allocator.allocator();
@@ -30,7 +35,7 @@ pub fn main() !void {
     // Parse CLI args
     const action, const options = blk: {
         var diagnostic = cli.Diagnostic{};
-        break :blk cli.parseArgs(arena, &diagnostic) catch |err| {
+        break :blk cli.parseArgs(gpa, arena, &diagnostic) catch |err| {
             switch (err) {
                 ArgsError.NotEnoughArgs => {
                     try cli.printUsage(stdout);
@@ -78,7 +83,8 @@ pub fn main() !void {
                     else => return err,
                 }
             };
-            const ast = try atrus.parse(arena, myst);
+            const ast = try atrus.parse(gpa, myst);
+            defer ast.deinit(gpa);
 
             logger.debug("Rendering...", .{});
             switch (options.output_choice) {

@@ -80,7 +80,14 @@ fn gatherTests(
 }
 
 pub fn main() !void {
-    var arena_impl = ArenaAllocator.init(std.heap.page_allocator);
+    var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
+    defer {
+        _ = debug_allocator.detectLeaks();
+        _ = debug_allocator.deinit();
+    }
+    const gpa = debug_allocator.allocator();
+
+    var arena_impl = ArenaAllocator.init(gpa);
     defer arena_impl.deinit();
     const arena = arena_impl.allocator();
 
@@ -109,7 +116,7 @@ pub fn main() !void {
     var map = AutoHashMap(anyerror, u16).init(arena);
     defer map.deinit();
 
-    var per_test_arena_impl = ArenaAllocator.init(std.heap.page_allocator);
+    var per_test_arena_impl = ArenaAllocator.init(gpa);
     defer per_test_arena_impl.deinit();
 
     var num_succeeded: u32 = 0;
