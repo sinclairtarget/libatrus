@@ -29,10 +29,10 @@ pub fn init(tokenizer: *Tokenizer) Self {
     };
 }
 
-pub fn parse(self: *Self, alloc: Allocator) !ast.Node {
+pub fn parse(self: *Self, alloc: Allocator) !*ast.Node {
     _ = try self.advance(alloc); // Load first token
 
-    var children: ArrayList(ast.Node) = .empty;
+    var children: ArrayList(*ast.Node) = .empty;
 
     while (self.current.?.token_type != .eof) {
         const len_start = children.items.len;
@@ -52,16 +52,16 @@ pub fn parse(self: *Self, alloc: Allocator) !ast.Node {
         }
     }
 
-    const root = ast.Node{
+    const node = try alloc.create(ast.Node);
+    node.* = .{
         .root = .{
             .children = try children.toOwnedSlice(alloc),
         },
     };
-
-    return root;
+    return node;
 }
 
-fn parseHeading(self: *Self, alloc: Allocator) !?ast.Node {
+fn parseHeading(self: *Self, alloc: Allocator) !?*ast.Node {
     var depth: u8 = 0;
     var token = try self.consume(alloc, .pound);
     if (token == null) {
@@ -72,7 +72,7 @@ fn parseHeading(self: *Self, alloc: Allocator) !?ast.Node {
         depth += 1;
     }
 
-    var children: ArrayList(ast.Node) = .empty;
+    var children: ArrayList(*ast.Node) = .empty;
     while (true) {
         const text = try self.parseText(alloc);
         if (text) |t| {
@@ -84,16 +84,18 @@ fn parseHeading(self: *Self, alloc: Allocator) !?ast.Node {
 
     _ = try self.consume(alloc, .newline);
 
-    return .{
+    const node = try alloc.create(ast.Node);
+    node.* = .{
         .heading = .{
             .depth = depth,
             .children = try children.toOwnedSlice(alloc),
         },
     };
+    return node;
 }
 
-fn parseParagraph(self: *Self, alloc: Allocator) !?ast.Node {
-    var children: ArrayList(ast.Node) = .empty;
+fn parseParagraph(self: *Self, alloc: Allocator) !?*ast.Node {
+    var children: ArrayList(*ast.Node) = .empty;
 
     while (try self.parseText(alloc)) |t| {
         try children.append(alloc, t);
@@ -106,24 +108,28 @@ fn parseParagraph(self: *Self, alloc: Allocator) !?ast.Node {
 
     _ = try self.consume(alloc, .newline);
 
-    return .{
+    const node = try alloc.create(ast.Node);
+    node.* = .{
         .paragraph = .{
             .children = try children.toOwnedSlice(alloc),
         },
     };
+    return node;
 }
 
-fn parseText(self: *Self, alloc: Allocator) !?ast.Node {
+fn parseText(self: *Self, alloc: Allocator) !?*ast.Node {
     const token = try self.consume(alloc, .text);
     if (token == null) {
         return null;
     }
 
-    return .{
+    const node = try alloc.create(ast.Node);
+    node.* = .{
         .text = .{
             .value = token.?.value orelse "",
         },
     };
+    return node;
 }
 
 fn consume(self: *Self, alloc: Allocator, token_type: TokenType) !?Token {

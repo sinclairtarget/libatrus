@@ -31,33 +31,27 @@ const Test = struct {
         alloc: Allocator,
         options: struct { verbose: bool = false },
     ) !void {
-        var myst_reader: Io.Reader = .fixed(self.case.myst);
-        const ast = try atrus.parse(alloc, &myst_reader);
-
-        var actual = Io.Writer.Allocating.init(alloc);
-        try atrus.renderJSON(
-            ast,
-            &actual.writer,
-            .{
-                .json_options = .{
-                    .whitespace = .indent_2,
-                },
-            },
-        );
-
-        var expected = Io.Writer.Allocating.init(alloc);
+        var buf = Io.Writer.Allocating.init(alloc);
         var stringify = json.Stringify{
-            .writer = &expected.writer,
+            .writer = &buf.writer,
             .options = .{
                 .whitespace = .indent_2,
             },
         };
         try stringify.write(self.case.mdast);
+        const expected = buf.written();
 
-        if (!std.mem.eql(u8, expected.written(), actual.written())) {
+        const ast = try atrus.parse(alloc, self.case.myst);
+        const actual = try atrus.renderJSON(
+            alloc,
+            ast,
+            .{ .whitespace = .indent_2 },
+        );
+
+        if (!std.mem.eql(u8, expected, actual)) {
             if (options.verbose) {
-                std.debug.print("expected:\n{s}\n", .{expected.written()});
-                std.debug.print("actual:\n{s}\n", .{actual.written()});
+                std.debug.print("expected:\n{s}\n", .{expected});
+                std.debug.print("actual:\n{s}\n", .{actual});
             }
             return error.NotEqual;
         }
@@ -125,7 +119,7 @@ pub fn main() !void {
         t.func(per_test_arena_impl.allocator(), .{}) catch |err| {
             std.debug.print(
                 "{d}/{d} \x1b[31m{any}: {s}\x1b[0m\n",
-                .{i, tests.len, err, t.case.title},
+                .{ i, tests.len, err, t.case.title },
             );
 
             const existing_count = map.get(err);
@@ -141,21 +135,21 @@ pub fn main() !void {
 
         std.debug.print(
             "{d}/{d} \x1b[32m{s}\x1b[0m\n",
-            .{i, tests.len, t.case.title},
+            .{ i, tests.len, t.case.title },
         );
         num_succeeded += 1;
     }
 
     std.debug.print(
-        "{d} cases succeeded. {d} cases failed.\n", 
-        .{num_succeeded, num_failed},
+        "{d} cases succeeded. {d} cases failed.\n",
+        .{ num_succeeded, num_failed },
     );
     if (num_failed > 0) {
         var it = map.iterator();
         while (it.next()) |entry| {
             std.debug.print(
-                "{any}: {d}\n", 
-                .{entry.key_ptr.*, entry.value_ptr.*},
+                "{any}: {d}\n",
+                .{ entry.key_ptr.*, entry.value_ptr.* },
             );
         }
 

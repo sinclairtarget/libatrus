@@ -1,6 +1,7 @@
 //! Abstract syntax tree for a MyST document.
 //!
 //! https://mystmd.org/spec
+
 const std = @import("std");
 const ArrayList = std.ArrayList;
 
@@ -19,12 +20,12 @@ pub const Node = union(NodeType) {
 };
 
 pub const Container = struct {
-    children: []const Node,
+    children: []const *Node,
 };
 
 pub const Heading = struct {
     depth: u8,
-    children: []const Node,
+    children: []const *Node,
 };
 
 pub const Text = struct {

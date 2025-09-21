@@ -69,23 +69,22 @@ pub fn main() !void {
             const description = try options.format(arena);
             logger.debug("Parsing with options: {s}", .{description});
 
-            // TODO: Encapsulate opening the input stream?
-            var file = if (options.filepath) |filepath|
-                try std.fs.cwd().openFile(filepath, .{})
-            else
-                std.fs.File.stdin();
-            defer file.close();
-
-            var buffer: [max_line_len]u8 = undefined;
-            var reader_impl = file.reader(&buffer);
-            const reader = &reader_impl.interface;
-
-            const ast = try atrus.parse(arena, reader);
+            const myst = slurp(arena, options.filepath) catch |err| {
+                switch (err) {
+                    error.FileNotFound => {
+                        const path = options.filepath.?;
+                        die("file did not exist: \"{s}\"\n", .{path});
+                    },
+                    else => return err,
+                }
+            };
+            const ast = try atrus.parse(arena, myst);
 
             logger.debug("Rendering...", .{});
             switch (options.output_choice) {
                 .json => {
-                    try atrus.renderJSON(ast, stdout, .{});
+                    const s = try atrus.renderJSON(arena, ast, .{});
+                    try stdout.print("{s}\n", .{s});
                 },
                 .yaml => {
                     return error.NotImplemented;
@@ -122,6 +121,25 @@ pub fn main() !void {
     }
 
     try stdout.flush();
+}
+
+fn slurp(alloc: Allocator, filepath: ?[]const u8) ![]const u8 {
+    var buffer: [128]u8 = undefined;
+
+    if (filepath) |fp| {
+        var file = try std.fs.cwd().openFile(fp, .{});
+        defer file.close();
+
+        var reader_impl = file.reader(&buffer);
+        const reader = &reader_impl.interface;
+        const bytes = try reader.allocRemaining(alloc, .unlimited);
+        return bytes;
+    } else {
+        var reader_impl = std.fs.File.stdin().reader(&buffer);
+        const reader = &reader_impl.interface;
+        const bytes = try reader.allocRemaining(alloc, .unlimited);
+        return bytes;
+    }
 }
 
 pub fn die(comptime fmt: []const u8, args: anytype) noreturn {

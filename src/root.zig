@@ -1,3 +1,7 @@
+//! libatrus parses MyST-flavored markdown into the MyST AST.
+//!
+//! It can also render the AST to JSON, YAML, and HTML.
+
 const std = @import("std");
 const builtin = @import("builtin");
 const config = @import("config");
@@ -11,33 +15,77 @@ const json = @import("render/json.zig");
 
 // The below `pub` variable and function declarations define the public
 // interface of libatrus.
+
 pub const ast = @import("parse/ast.zig");
 pub const version = config.version;
 
-pub fn parse(alloc: Allocator, in: *Io.Reader) !ast.Node {
-    var tokenizer = Tokenizer.init(in);
+/// Parses the input string (containing MyST markdown) into a MyST AST. Returns
+/// a pointer to the root node.
+///
+/// The caller is responsible for freeing the memory used by the AST nodes.
+pub fn parse(alloc: Allocator, in: []const u8) !*ast.Node {
+    var reader: Io.Reader = .fixed(in);
+    var tokenizer = Tokenizer.init(&reader);
     var parser = Parser.init(&tokenizer);
     return try parser.parse(alloc);
 }
 
+/// Parses the input string (containing a MyST AST in JSON form) into a MYST
+/// AST. Returns a pointer to the root node.
+///
+/// The caller is responsible for freeing the memory used by the AST nodes.
+pub fn parseJSON(alloc: Allocator, in: []const u8) !*ast.Node {
+    _ = alloc;
+    _ = in;
+    return error.NotImplemented;
+}
+
+pub const JSONOptions = json.Options;
+
+/// Takes the root node of a MyST AST. Returns the rendered JSON as a string.
+///
+/// The caller is responsible for freeing the returned string.
 pub fn renderJSON(
-    root: ast.Node,
-    out: *Io.Writer,
-    options: struct { json_options: std.json.Stringify.Options = .{} },
-) !void {
-    try json.render(root, out, .{ .json_options = options.json_options });
+    alloc: Allocator,
+    root: *ast.Node,
+    options: JSONOptions,
+) ![]const u8 {
+    var buf = Io.Writer.Allocating.init(alloc);
+
+    try json.render(
+        root,
+        &buf.writer,
+        options,
+    );
+    return buf.written();
 }
 
-pub fn renderYAML(root: []const u8) []const u8 {
-    return root;
+/// Takes the root node of a MyST AST. Returns the rendered YAML as a string.
+///
+/// The caller is responsible for freeing the returned string.
+pub fn renderYAML(
+    alloc: Allocator,
+    root: *ast.Node,
+) ![]const u8 {
+    _ = alloc;
+    _ = root;
+    return error.NotImplemented;
 }
 
-pub fn renderHTML(root: []const u8) []const u8 {
-    return root;
+/// Takes the root node of a MyST AST. Returns the rendered HTML as a string.
+///
+/// The caller is responsible for freeing the returned string.
+pub fn renderHTML(
+    alloc: Allocator,
+    root: *ast.Node,
+) ![]const u8 {
+    _ = alloc;
+    _ = root;
+    return error.NotImplemented;
 }
 
-// Tokenization is not part of the public interface of the library except in
-// debug mode.
+// Tokenization is part of the public interface of the library only in debug
+// mode.
 pub const Token = blk: {
     if (builtin.mode != .Debug) {
         @compileError("tokens are only supported in the debug release mode");
