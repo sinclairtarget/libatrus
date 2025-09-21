@@ -7,8 +7,9 @@ const cli = @import("cli.zig");
 const Allocator = std.mem.Allocator;
 const Io = std.Io;
 const ArgsError = cli.ArgsError;
+const log = std.log;
 
-const logger = std.log.scoped(.main);
+const logger = log.scoped(.main);
 
 const max_line_len = 1024; // bytes
 
@@ -71,8 +72,10 @@ pub fn main() !void {
             try cli.printUsage(stdout);
         },
         .parse => {
-            const description = try options.format(arena);
-            logger.debug("Parsing with options: {s}", .{description});
+            if (log.logEnabled(.debug, .main)) {
+                const description = try options.format(arena);
+                logger.debug("Parsing with options: {s}", .{description});
+            }
 
             const myst = slurp(arena, options.filepath) catch |err| {
                 switch (err) {
@@ -102,8 +105,13 @@ pub fn main() !void {
         },
         .tokenize => {
             if (builtin.mode == .Debug) {
-                const description = try options.format(arena);
-                logger.debug("Tokenizing with options: {s}", .{description});
+                if (log.logEnabled(.debug, .main)) {
+                    const description = try options.format(arena);
+                    logger.debug(
+                        "Tokenizing with options: {s}", 
+                        .{description},
+                    );
+                }
 
                 var file = if (options.filepath) |filepath|
                     try std.fs.cwd().openFile(filepath, .{})
