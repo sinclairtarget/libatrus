@@ -10,7 +10,8 @@ const TokenType = @import("tokens.zig").TokenType;
 
 pub const Error = error{
     LineTooLong,
-};
+    ReadFailed,
+} || Allocator.Error;
 
 pub const State = enum {
     not_started,
@@ -36,7 +37,7 @@ pub fn init(in: *Io.Reader) Self {
 // Get next token from the stream.
 //
 // Caller responsible for freeing memory associated with tokens.
-pub fn next(self: *Self, alloc: Allocator) !Token {
+pub fn next(self: *Self, alloc: Allocator) Error!Token {
     while (self.i >= self.line.len) {
         const should_emit_newline = self.state != .not_started;
         self.line = read_line(self.in) catch |err| {
@@ -47,9 +48,7 @@ pub fn next(self: *Self, alloc: Allocator) !Token {
                 DelimiterError.StreamTooLong => {
                     return Error.LineTooLong;
                 },
-                else => {
-                    return err;
-                },
+                else => |e| return e,
             }
         };
         self.i = 0;
@@ -80,7 +79,7 @@ fn evaluate(
     self: Self,
     alloc: Allocator,
     token_type: TokenType,
-) !struct { ?[]const u8, usize } {
+) Allocator.Error!struct { ?[]const u8, usize } {
     switch (token_type) {
         .text => {
             const value = try alloc.dupe(u8, self.line[self.i..]);

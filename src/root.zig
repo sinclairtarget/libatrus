@@ -19,11 +19,16 @@ const json = @import("render/json.zig");
 pub const ast = @import("parse/ast.zig");
 pub const version = config.version;
 
+pub const ParseError = error {
+    ReadFailed,
+    LineTooLong, // TODO: Remove this?
+} || Allocator.Error;
+
 /// Parses the input string (containing MyST markdown) into a MyST AST. Returns
 /// a pointer to the root node.
 ///
 /// The caller is responsible for freeing the memory used by the AST nodes.
-pub fn parse(alloc: Allocator, in: []const u8) !*ast.Node {
+pub fn parse(alloc: Allocator, in: []const u8) ParseError!*ast.Node {
     var reader: Io.Reader = .fixed(in);
     var tokenizer = Tokenizer.init(&reader);
     var parser = Parser.init(&tokenizer);
@@ -42,6 +47,10 @@ pub fn parseJSON(alloc: Allocator, in: []const u8) !*ast.Node {
 
 pub const JSONOptions = json.Options;
 
+pub const RenderJSONError = error {
+    WriteFailed,
+};
+
 /// Takes the root node of a MyST AST. Returns the rendered JSON as a string.
 ///
 /// The caller is responsible for freeing the returned string.
@@ -49,7 +58,7 @@ pub fn renderJSON(
     alloc: Allocator,
     root: *ast.Node,
     options: JSONOptions,
-) ![]const u8 {
+) RenderJSONError![]const u8 {
     var buf = Io.Writer.Allocating.init(alloc);
 
     try json.render(
