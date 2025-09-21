@@ -37,7 +37,7 @@ pub fn init(in: *Io.Reader) Self {
 //
 // Caller responsible for freeing memory associated with tokens.
 pub fn next(self: *Self, alloc: Allocator) !Token {
-    if (self.i >= self.line.len) {
+    while (self.i >= self.line.len) {
         const should_emit_newline = self.state != .not_started;
         self.line = read_line(self.in) catch |err| {
             switch (err) {
