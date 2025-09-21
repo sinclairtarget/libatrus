@@ -10,6 +10,7 @@ const testing = std.testing;
 const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
 const ArrayList = std.ArrayList;
+const AutoHashMap = std.AutoHashMap;
 const Io = std.Io;
 
 const atrus = @import("atrus");
@@ -111,30 +112,53 @@ pub fn main() !void {
         return;
     }
 
+    var map = AutoHashMap(anyerror, u16).init(arena);
+    defer map.deinit();
+
     var per_test_arena_impl = ArenaAllocator.init(std.heap.page_allocator);
     defer per_test_arena_impl.deinit();
 
     var num_succeeded: u32 = 0;
+    var num_failed: u32 = 0;
     for (tests, 1..) |t, i| {
         defer _ = per_test_arena_impl.reset(.retain_capacity);
         t.func(per_test_arena_impl.allocator(), .{}) catch |err| {
             std.debug.print(
-                "test {d}/{d} (\"{s}\") failed: {any}\n",
-                .{
-                    i,
-                    tests.len,
-                    t.case.title,
-                    err,
-                },
+                "{d}/{d} \x1b[31m{any}: {s}\x1b[0m\n",
+                .{i, tests.len, err, t.case.title},
             );
 
+            const existing_count = map.get(err);
+            if (existing_count) |ec| {
+                try map.put(err, ec + 1);
+            } else {
+                try map.put(err, 1);
+            }
+
+            num_failed += 1;
             continue;
         };
 
+        std.debug.print(
+            "{d}/{d} \x1b[32m{s}\x1b[0m\n",
+            .{i, tests.len, t.case.title},
+        );
         num_succeeded += 1;
     }
 
-    if (num_succeeded < tests.len) {
+    std.debug.print(
+        "{d} cases succeeded. {d} cases failed.\n", 
+        .{num_succeeded, num_failed},
+    );
+    if (num_failed > 0) {
+        var it = map.iterator();
+        while (it.next()) |entry| {
+            std.debug.print(
+                "{any}: {d}\n", 
+                .{entry.key_ptr.*, entry.value_ptr.*},
+            );
+        }
+
         std.process.exit(1);
     }
 }
