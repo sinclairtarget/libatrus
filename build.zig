@@ -48,19 +48,54 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    addTests(b, atrus, exe, spec_test_case_filter);
+    const lib = addCLibraries(b, atrus, target, optimize);
+    addTests(b, atrus, exe, lib, spec_test_case_filter);
     addBenchmarks(b, optimize);
-    addCLibraries(b, atrus, target, optimize);
+}
+
+fn addCLibraries(
+    b: *std.Build,
+    atrus: *std.Build.Module,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) *std.Build.Step.Compile {
+    const c_api_module = b.createModule(.{
+        .root_source_file = b.path("src/c_api.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "atrus", .module = atrus },
+        },
+    });
+
+    const lib = b.addLibrary(.{
+        .linkage = .static,
+        .name = "atrus",
+        .root_module = c_api_module,
+    });
+    lib.linkLibC();
+    b.installArtifact(lib);
+
+    const c_header = b.addInstallFileWithDir(
+        b.path("include/atrus.h"),
+        .header,
+        "atrus.h",
+    );
+    b.getInstallStep().dependOn(&c_header.step);
+
+    return lib;
 }
 
 // We have multiple groups of tests:
 // * Unit tests (defined along side the source code for the library)
 // * Spec tests (test conformance with the MyST spec)
 // * CLI tests (runs atrus as a subprocess, functional tests)
+// * C API tests (makes sure the C API links and works)
 fn addTests(
     b: *std.Build, 
     atrus: *std.Build.Module,
     exe: *std.Build.Step.Compile,
+    lib: *std.Build.Step.Compile,
     filter: ?[]const u8,
 ) void {
     // Unit tests
@@ -104,10 +139,27 @@ fn addTests(
     cli_tests.root_module.addOptions("config", options);
     const run_cli_tests = b.addRunArtifact(cli_tests);
 
+    // C API tests
+    const c_exe = b.addExecutable(.{
+        .name = "c-api-tests",
+        .root_module = b.createModule(.{
+            .link_libc = true,
+            .target = b.graph.host, 
+        }),
+    });
+    c_exe.root_module.addCSourceFile(.{
+        .file = b.path("tests/c_api/main.c"),
+        .flags = &.{"-std=c99"},
+    });
+    c_exe.root_module.addIncludePath(b.path("include/"));
+    c_exe.root_module.linkLibrary(lib);
+    const run_c_exe = b.addRunArtifact(c_exe);
+
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_unit_tests.step);
     test_step.dependOn(&run_spec_exe.step);
     test_step.dependOn(&run_cli_tests.step);
+    test_step.dependOn(&run_c_exe.step);
 }
 
 // We have two benchmark executables, one that benchmarks peak memory usage and
@@ -139,35 +191,4 @@ fn addBenchmarks(
     const benchmark_step = b.step("benchmark", "Run benchmarks");
     benchmark_step.dependOn(&memory_cmd.step);
     benchmark_step.dependOn(&speed_cmd.step);
-}
-
-fn addCLibraries(
-    b: *std.Build,
-    atrus: *std.Build.Module,
-    target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
-) void {
-    const c_api_module = b.createModule(.{
-        .root_source_file = b.path("src/c_api.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{
-            .{ .name = "atrus", .module = atrus },
-        },
-    });
-
-    const lib = b.addLibrary(.{
-        .linkage = .static,
-        .name = "atrus",
-        .root_module = c_api_module,
-    });
-    lib.linkLibC();
-    b.installArtifact(lib);
-
-    const c_header = b.addInstallFileWithDir(
-        b.path("include/atrus.h"),
-        .header,
-        "atrus.h",
-    );
-    b.getInstallStep().dependOn(&c_header.step);
 }
