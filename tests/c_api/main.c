@@ -26,6 +26,7 @@ int main() {
     }
 
     atrus_ast_free(node);
+    free(out);
 
     return 0;
 }
