@@ -25,6 +25,7 @@ Much more work remains:
 - [x] Set up MyST spec test suite
 - [x] Get basic C API working
 - [ ] ...actually implement a spec-compliant parser
+- [ ] Implement HTML renderer
 - [ ] Implement YAML renderer
 - [ ] Implement JSON AST parser
 - [ ] Add benchmarks
