@@ -109,7 +109,7 @@ fn addTests(
     const spec_exe = b.addExecutable(.{
         .name = "spec-tests",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("tests/myst-spec/main.zig"),
+            .root_source_file = b.path("tests/myst_spec/main.zig"),
             .target = b.graph.host, 
             .imports = &.{
                 .{ .name = "atrus", .module = atrus },
@@ -117,7 +117,7 @@ fn addTests(
         }),
     });
     const run_spec_exe = b.addRunArtifact(spec_exe);
-    const spec_cases_path = b.path("tests/myst-spec/myst.tests.json");
+    const spec_cases_path = b.path("tests/myst_spec/myst.tests.json");
     run_spec_exe.addFileArg(spec_cases_path);
 
     if (filter) |f| {
