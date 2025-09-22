@@ -50,6 +50,7 @@ pub fn build(b: *std.Build) void {
 
     addTests(b, atrus, exe, spec_test_case_filter);
     addBenchmarks(b, optimize);
+    addCLibraries(b, atrus, target, optimize);
 }
 
 // We have multiple groups of tests:
@@ -138,4 +139,35 @@ fn addBenchmarks(
     const benchmark_step = b.step("benchmark", "Run benchmarks");
     benchmark_step.dependOn(&memory_cmd.step);
     benchmark_step.dependOn(&speed_cmd.step);
+}
+
+fn addCLibraries(
+    b: *std.Build,
+    atrus: *std.Build.Module,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) void {
+    const c_api_module = b.createModule(.{
+        .root_source_file = b.path("src/c_api.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "atrus", .module = atrus },
+        },
+    });
+
+    const lib = b.addLibrary(.{
+        .linkage = .static,
+        .name = "atrus",
+        .root_module = c_api_module,
+    });
+    lib.linkLibC();
+    b.installArtifact(lib);
+
+    const c_header = b.addInstallFileWithDir(
+        b.path("include/atrus.h"),
+        .header,
+        "atrus.h",
+    );
+    b.getInstallStep().dependOn(&c_header.step);
 }

@@ -51,14 +51,15 @@ pub const RenderJSONError = error {
     WriteFailed,
 };
 
-/// Takes the root node of a MyST AST. Returns the rendered JSON as a string.
+/// Takes the root node of a MyST AST. Returns the rendered JSON as a
+/// null-terminated string.
 ///
 /// The caller is responsible for freeing the returned string.
 pub fn renderJSON(
     alloc: Allocator,
     root: *ast.Node,
     options: JSONOptions,
-) RenderJSONError![]const u8 {
+) RenderJSONError![:0]const u8 {
     var buf = Io.Writer.Allocating.init(alloc);
 
     try json.render(
@@ -66,7 +67,10 @@ pub fn renderJSON(
         &buf.writer,
         options,
     );
-    return buf.written();
+
+    try buf.writer.writeByte(0);
+    const written = buf.written();
+    return written[0..written.len - 1 :0];
 }
 
 /// Takes the root node of a MyST AST. Returns the rendered YAML as a string.
