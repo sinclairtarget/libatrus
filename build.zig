@@ -1,5 +1,7 @@
 const std = @import("std");
 
+const Step = std.Build.Step;
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -58,7 +60,7 @@ fn addCLibraries(
     atrus: *std.Build.Module,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
-) *std.Build.Step.Compile {
+) *Step.Compile {
     const c_api_module = b.createModule(.{
         .root_source_file = b.path("src/c_api.zig"),
         .target = target,
@@ -74,14 +76,43 @@ fn addCLibraries(
         .root_module = c_api_module,
     });
     lib.linkLibC();
-    b.installArtifact(lib);
 
     const c_header = b.addInstallFileWithDir(
         b.path("include/atrus.h"),
         .header,
         "atrus.h",
     );
+
+    // pkgconfig
+    const pc: *Step.InstallFile = pc: {
+        const file = b.addWriteFile(
+            "libatrus.pc", 
+            b.fmt(
+                \\prefix={s}
+                \\includedir=${{prefix}}/include
+                \\libdir=${{prefix}}/lib
+                \\
+                \\Name: libatrus
+                \\URL: https://github.com/sinclairtarget/libatrus
+                \\Description: A MyST parser/document engine
+                \\Version: 0.1.0
+                \\Cflags: -I${{includedir}}
+                \\Libs: -L${{libdir}} -latrus
+                \\
+                , 
+                .{b.install_prefix},
+            )
+        );
+        break :pc b.addInstallFileWithDir(
+            file.getDirectory().path(b, "libatrus.pc"),
+            .prefix,
+            "share/pkconfig/libatrus.pc",
+        );
+    };
+
+    b.installArtifact(lib);
     b.getInstallStep().dependOn(&c_header.step);
+    b.getInstallStep().dependOn(&pc.step);
 
     return lib;
 }
@@ -94,8 +125,8 @@ fn addCLibraries(
 fn addTests(
     b: *std.Build, 
     atrus: *std.Build.Module,
-    exe: *std.Build.Step.Compile,
-    lib: *std.Build.Step.Compile,
+    exe: *Step.Compile,
+    lib: *Step.Compile,
     filter: ?[]const u8,
 ) void {
     // Unit tests
