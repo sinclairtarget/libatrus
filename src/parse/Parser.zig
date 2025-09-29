@@ -49,9 +49,7 @@ pub fn parse(self: *Self, gpa: Allocator) !*ast.Node {
         }
 
         var paragraph = try self.parseParagraph(gpa, arena);
-        while (paragraph) |p| : (
-            paragraph = try self.parseParagraph(gpa, arena)
-        ) {
+        while (paragraph) |p| : (paragraph = try self.parseParagraph(gpa, arena)) {
             try children.append(gpa, p);
         }
 
@@ -134,12 +132,10 @@ fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
     const node = try gpa.create(ast.Node);
     node.* = .{
         .text = .{
-            .value = 
-                if (token.?.value) |v| 
-                    try gpa.dupe(u8, v)
-                else
-                    ""
-            ,
+            .value = if (token.?.value) |v|
+                try gpa.dupe(u8, v)
+            else
+                "",
         },
     };
     return node;

@@ -99,7 +99,8 @@ pub fn main() !void {
                     return error.NotImplemented;
                 },
                 .html => {
-                    return error.NotImplemented;
+                    const s = try atrus.renderHTML(arena, ast);
+                    try stdout.print("{s}", .{s});
                 },
             }
         },
@@ -108,7 +109,7 @@ pub fn main() !void {
                 if (log.logEnabled(.debug, .main)) {
                     const description = try options.format(arena);
                     logger.debug(
-                        "Tokenizing with options: {s}", 
+                        "Tokenizing with options: {s}",
                         .{description},
                     );
                 }

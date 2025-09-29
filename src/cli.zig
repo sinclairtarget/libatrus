@@ -77,7 +77,7 @@ pub const Diagnostic = struct {
 ///
 /// Caller responsible for freeing memory held by returned Options.
 pub fn parseArgs(
-    gpa: Allocator,  
+    gpa: Allocator,
     arena: Allocator,
     diagnostic: *Diagnostic,
 ) !struct { Action, Options } {
@@ -119,10 +119,10 @@ pub fn parseArgs(
         filepath = try arena.dupe(u8, final);
     }
 
-    return .{ 
-        action, 
-        Options { 
-            .filepath = filepath, 
+    return .{
+        action,
+        Options{
+            .filepath = filepath,
             .output_choice = output_choice,
         },
     };

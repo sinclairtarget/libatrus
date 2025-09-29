@@ -12,6 +12,7 @@ const ArrayList = std.ArrayList;
 const Tokenizer = @import("lex/Tokenizer.zig");
 const Parser = @import("parse/Parser.zig");
 const json = @import("render/json.zig");
+const html = @import("render/html.zig");
 
 // The below `pub` variable and function declarations define the public
 // interface of libatrus.
@@ -19,7 +20,7 @@ const json = @import("render/json.zig");
 pub const ast = @import("parse/ast.zig");
 pub const version = config.version;
 
-pub const ParseError = error {
+pub const ParseError = error{
     ReadFailed,
     LineTooLong, // TODO: Remove this?
 } || Allocator.Error;
@@ -47,7 +48,7 @@ pub fn parseJSON(alloc: Allocator, in: []const u8) !*ast.Node {
 
 pub const JSONOptions = json.Options;
 
-pub const RenderJSONError = error {
+pub const RenderJSONError = error{
     WriteFailed,
 };
 
@@ -68,9 +69,9 @@ pub fn renderJSON(
         options,
     );
 
-    try buf.writer.writeByte(0);
+    try buf.writer.writeByte(0); // zero terminate
     const written = buf.written();
-    return written[0..written.len - 1 :0];
+    return written[0 .. written.len - 1 :0];
 }
 
 /// Takes the root node of a MyST AST. Returns the rendered YAML as a string.
@@ -92,9 +93,16 @@ pub fn renderHTML(
     alloc: Allocator,
     root: *ast.Node,
 ) ![]const u8 {
-    _ = alloc;
-    _ = root;
-    return error.NotImplemented;
+    var buf = Io.Writer.Allocating.init(alloc);
+
+    try html.render(
+        root,
+        &buf.writer,
+    );
+
+    try buf.writer.writeByte(0); // zero terminate
+    const written = buf.written();
+    return written[0 .. written.len - 1 :0];
 }
 
 // Tokenization is part of the public interface of the library only in debug
@@ -133,11 +141,12 @@ pub fn tokenize(alloc: Allocator, in: *Io.Reader) ![]const Token {
 }
 
 // ----------------------------------------------------------------------------
+const md =
+    \\# I am a heading
+    \\I am a paragraph.
+;
+
 test tokenize {
-    const md =
-        \\# I am a heading
-        \\I am a paragraph.
-    ;
     var reader: Io.Reader = .fixed(md);
 
     var arena_impl = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -159,4 +168,18 @@ test tokenize {
     }
 
     try std.testing.expectEqualSlices(TokenType, &expected, results.items);
+}
+
+test renderHTML {
+    var arena_impl = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_impl.deinit();
+    const arena = arena_impl.allocator();
+
+    const root = try parse(arena, md);
+    const result = try renderHTML(arena, root);
+
+    try std.testing.expectEqualStrings(
+        "<h1>I am a heading</h1>\n<p>I am a paragraph.</p>\n",
+        result,
+    );
 }
