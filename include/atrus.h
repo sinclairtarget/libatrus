@@ -30,4 +30,12 @@ void atrus_ast_free(atrus_ast_node* root);
  */
 int atrus_render_json(atrus_ast_node* root, char** out);
 
+/*
+ * Give a MyST AST, renders the tree as HTML into a string. Returns the length
+ * of the string or -1 on error.
+ *
+ * The caller is responsible for freeing the string.
+ */
+int atrus_render_html(atrus_ast_node* root, char** out);
+
 #endif

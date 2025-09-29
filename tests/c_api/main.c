@@ -21,12 +21,21 @@ int main() {
     char* out;
     int len = atrus_render_json(node, &out);
     if (len == -1) {
-        fprintf(stderr, "Failed to render.\n");
+        fprintf(stderr, "Failed to render JSON.\n");
         exit(1);
     }
 
-    atrus_ast_free(node);
     free(out);
+
+    len = atrus_render_html(node, &out);
+    if (len == -1) {
+        fprintf(stderr, "Failed to render HTML.\n");
+        exit(1);
+    }
+
+    free(out);
+
+    atrus_ast_free(node);
 
     return 0;
 }

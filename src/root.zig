@@ -86,13 +86,17 @@ pub fn renderYAML(
     return error.NotImplemented;
 }
 
+pub const RenderHTMLError = error{
+    WriteFailed,
+};
+
 /// Takes the root node of a MyST AST. Returns the rendered HTML as a string.
 ///
 /// The caller is responsible for freeing the returned string.
 pub fn renderHTML(
     alloc: Allocator,
     root: *ast.Node,
-) ![]const u8 {
+) RenderHTMLError![:0]const u8 {
     var buf = Io.Writer.Allocating.init(alloc);
 
     try html.render(

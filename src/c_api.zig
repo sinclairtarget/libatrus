@@ -34,3 +34,13 @@ export fn atrus_render_json(root: *atrus.ast.Node, out: *[*:0]const u8) c_int {
     out.* = s.ptr;
     return @intCast(s.len);
 }
+
+export fn atrus_render_html(root: *atrus.ast.Node, out: *[*:0]const u8) c_int {
+    const s = atrus.renderHTML(alloc, root) catch |err| {
+        switch (err) {
+            RenderJSONError.WriteFailed => return -1,
+        }
+    };
+    out.* = s.ptr;
+    return @intCast(s.len);
+}
