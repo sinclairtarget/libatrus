@@ -52,7 +52,7 @@ pub fn build(b: *std.Build) void {
 
     const lib = addCLibraries(b, atrus, target, optimize);
     addTests(b, atrus, exe, lib, spec_test_case_filter);
-    addBenchmarks(b, optimize);
+    addBenchmarks(b, exe, optimize);
 }
 
 fn addCLibraries(
@@ -86,7 +86,7 @@ fn addCLibraries(
     // pkgconfig
     const pc: *Step.InstallFile = pc: {
         const file = b.addWriteFile(
-            "libatrus.pc", 
+            "libatrus.pc",
             b.fmt(
                 \\prefix={s}
                 \\includedir=${{prefix}}/include
@@ -99,7 +99,7 @@ fn addCLibraries(
                 \\Cflags: -I${{includedir}}
                 \\Libs: -L${{libdir}} -latrus
                 \\
-                , 
+                ,
                 .{b.install_prefix},
             )
         );
@@ -123,7 +123,7 @@ fn addCLibraries(
 // * CLI tests (runs atrus as a subprocess, functional tests)
 // * C API tests (makes sure the C API links and works)
 fn addTests(
-    b: *std.Build, 
+    b: *std.Build,
     atrus: *std.Build.Module,
     exe: *Step.Compile,
     lib: *Step.Compile,
@@ -141,7 +141,7 @@ fn addTests(
         .name = "spec-tests",
         .root_module = b.createModule(.{
             .root_source_file = b.path("tests/myst_spec/main.zig"),
-            .target = b.graph.host, 
+            .target = b.graph.host,
             .imports = &.{
                 .{ .name = "atrus", .module = atrus },
             },
@@ -162,7 +162,7 @@ fn addTests(
         .name = "cli",
         .root_module = b.createModule(.{
             .root_source_file = b.path("tests/cli/root.zig"),
-            .target = b.graph.host, 
+            .target = b.graph.host,
         }),
     });
     const options = b.addOptions();
@@ -175,7 +175,7 @@ fn addTests(
         .name = "c-api-tests",
         .root_module = b.createModule(.{
             .link_libc = true,
-            .target = b.graph.host, 
+            .target = b.graph.host,
         }),
     });
     c_exe.root_module.addCSourceFile(.{
@@ -197,6 +197,7 @@ fn addTests(
 // another that benchmarks (wall clock) performance.
 fn addBenchmarks(
     b: *std.Build,
+    exe: *Step.Compile,
     optimize: std.builtin.OptimizeMode,
 ) void {
     const memory = b.addExecutable(.{
@@ -207,6 +208,9 @@ fn addBenchmarks(
             .optimize = optimize,
         }),
     });
+    const options = b.addOptions();
+    options.addOptionPath("exec_path", exe.getEmittedBin()); // Adds dependency
+    memory.root_module.addOptions("config", options);
     const memory_cmd = b.addRunArtifact(memory);
 
     const speed = b.addExecutable(.{
