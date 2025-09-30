@@ -1,5 +1,11 @@
 # Atrus
-A MyST document engine. Atrus parses [MyST-flavored
+
+> Reward? I'm sorry but all I have to offer you is... the library on the island
+> of Myst. The books, that are contained there. Feel free to explore.
+
+—Atrus, _Myst_
+
+Atrus is a MyST document engine. Atrus parses [MyST-flavored
 Markdown](https://mystmd.org/spec/overview) and can output MyST AST or HTML.
 Other renderers might be added in the future.
 
