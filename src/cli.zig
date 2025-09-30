@@ -16,9 +16,8 @@ pub const Options = struct {
 
     const Self = @This();
 
-    pub fn format(self: Self, alloc: Allocator) ![]u8 {
-        return std.fmt.allocPrint(
-            alloc,
+    pub fn format(self: Self, w: *Io.Writer) Io.Writer.Error!void {
+        try w.print(
             ".{{ .filepath = '{?s}', .output_choice = {any} }}",
             .{ self.filepath, self.output_choice },
         );

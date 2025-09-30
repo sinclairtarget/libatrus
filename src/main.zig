@@ -73,8 +73,7 @@ pub fn main() !void {
         },
         .parse => {
             if (log.logEnabled(.debug, .main)) {
-                const description = try options.format(arena);
-                logger.debug("Parsing with options: {s}", .{description});
+                logger.debug("Parsing with options: {f}", .{options});
             }
 
             const myst = slurp(arena, options.filepath) catch |err| {
@@ -106,14 +105,6 @@ pub fn main() !void {
         },
         .tokenize => {
             if (builtin.mode == .Debug) {
-                if (log.logEnabled(.debug, .main)) {
-                    const description = try options.format(arena);
-                    logger.debug(
-                        "Tokenizing with options: {s}",
-                        .{description},
-                    );
-                }
-
                 var file = if (options.filepath) |filepath|
                     try std.fs.cwd().openFile(filepath, .{})
                 else
