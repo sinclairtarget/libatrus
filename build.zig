@@ -221,6 +221,7 @@ fn addBenchmarks(
             .optimize = optimize,
         }),
     });
+    speed.root_module.addOptions("config", options);
     const speed_cmd = b.addRunArtifact(speed);
 
     const benchmark_step = b.step("benchmark", "Run benchmarks");

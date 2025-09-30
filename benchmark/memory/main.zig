@@ -39,7 +39,7 @@ pub fn main() !void {
 
     if (rusage.getMaxRss()) |rss_bytes| {
         const rss_mb = @as(f32, @floatFromInt(rss_bytes)) / 1_000_000.0;
-        try stdout.print("Max RSS: {d:.1} mb\n", .{rss_mb});
+        try stdout.print("Max RSS: {d:.1}mb\n", .{rss_mb});
     } else {
         try stdout.print("Max RSS was unavailable.\n", .{});
     }
