@@ -107,6 +107,7 @@ pub fn renderYAML(
 
 pub const RenderHTMLError = error{
     WriteFailed,
+    OutOfMemory,
 };
 
 /// Takes the root node of a MyST AST. Returns the rendered HTML as a string.

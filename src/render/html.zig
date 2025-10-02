@@ -16,6 +16,11 @@ fn render_node(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
         .root => |n| {
             for (n.children) |child| {
                 try render_node(out, child);
+            }
+        },
+        .block => |n| {
+            for (n.children) |child| {
+                try render_node(out, child);
                 try out.print("\n", .{});
             }
         },

@@ -7,6 +7,7 @@ const std = @import("std");
 const atrus = @import("atrus");
 const ParseError = atrus.ParseError;
 const RenderJSONError = atrus.RenderJSONError;
+const RenderHTMLError = atrus.RenderHTMLError;
 
 const alloc = std.heap.c_allocator;
 
@@ -38,7 +39,8 @@ export fn atrus_render_json(root: *atrus.ast.Node, out: *[*:0]const u8) c_int {
 export fn atrus_render_html(root: *atrus.ast.Node, out: *[*:0]const u8) c_int {
     const s = atrus.renderHTML(alloc, root) catch |err| {
         switch (err) {
-            RenderJSONError.WriteFailed => return -1,
+            RenderHTMLError.WriteFailed => return -1,
+            RenderHTMLError.OutOfMemory => return -1,
         }
     };
     out.* = s.ptr;

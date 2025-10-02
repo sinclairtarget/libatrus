@@ -41,7 +41,11 @@ const Test = struct {
         try stringify.write(self.case.mdast);
         const expected = buf.written();
 
-        const ast = try atrus.parse(alloc, self.case.myst);
+        const ast = try atrus.parse(
+            alloc,
+            self.case.myst,
+            .{ .parse_level = .pre },
+        );
         const actual = try atrus.renderJSON(
             alloc,
             ast,
