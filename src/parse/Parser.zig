@@ -14,6 +14,7 @@ const Error = error{
     SyntaxError,
 };
 
+// grammar:
 // root => (heading* paragraph*)*
 // heading => POUND+ text NEWLINE
 // paragraph => (text NEWLINE)+ NEWLINE
@@ -101,23 +102,42 @@ fn parseHeading(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
 }
 
 fn parseParagraph(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
-    var children: ArrayList(*ast.Node) = .empty;
+    var texts: ArrayList(*ast.Node) = .empty;
 
     while (try self.parseText(gpa, arena)) |t| {
-        try children.append(gpa, t);
+        try texts.append(arena, t);
         _ = try self.consume(arena, .newline);
     }
 
-    if (children.items.len == 0) {
+    if (texts.items.len == 0) {
         return null;
     }
 
-    _ = try self.consume(arena, .newline);
+    var buf = Io.Writer.Allocating.init(gpa);
+    for (texts.items, 0..) |t, i| {
+        if (i < texts.items.len - 1) {
+            try buf.writer.print("{s}\n", .{t.text.value});
+        } else {
+            try buf.writer.print("{s}", .{t.text.value});
+        }
+
+        t.deinit(gpa);
+    }
+
+    const text_node = try gpa.create(ast.Node);
+    text_node.* = .{
+        .text = .{
+            .value = try buf.toOwnedSlice(),
+        },
+    };
 
     const node = try gpa.create(ast.Node);
+    var children = try gpa.alloc(*ast.Node, 1);
+    children[0] = text_node;
+
     node.* = .{
         .paragraph = .{
-            .children = try children.toOwnedSlice(gpa),
+            .children = children,
         },
     };
     return node;

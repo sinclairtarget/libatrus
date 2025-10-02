@@ -37,12 +37,12 @@ pub const Node = union(enum) {
 };
 
 pub const Container = struct {
-    children: []*Node,
+    children: []const *Node,
 };
 
 pub const Heading = struct {
     depth: u8,
-    children: []*Node,
+    children: []const *Node,
 };
 
 pub const Text = struct {

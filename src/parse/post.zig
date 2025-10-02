@@ -18,7 +18,8 @@ fn processRoot(gpa: Allocator, node: *ast.Node) !*ast.Node {
         },
     };
 
-    node.root.children = try gpa.alloc(*ast.Node, 1);
-    node.root.children[0] = block;
+    var root_children = try gpa.alloc(*ast.Node, 1);
+    root_children[0] = block;
+    node.root.children = root_children;
     return node;
 }

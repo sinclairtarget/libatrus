@@ -15,8 +15,7 @@ export fn atrus_ast_parse(in: [*:0]const u8, out: **atrus.ast.Node) c_int {
     out.* = atrus.parse(alloc, std.mem.span(in), .{}) catch |err| {
         switch (err) {
             ParseError.ReadFailed => return 1,
-            ParseError.LineTooLong => return 2,
-            ParseError.OutOfMemory => return 2,
+            else => return 2,
         }
     };
     return 0;

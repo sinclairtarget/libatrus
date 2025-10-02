@@ -24,10 +24,10 @@ pub const version = config.version;
 pub const ParseError = error{
     ReadFailed,
     LineTooLong, // TODO: Remove this?
-} || Allocator.Error;
+} || Allocator.Error || Io.Writer.Error;
 
 pub const ParseOptions = struct {
-    parse_level: enum{
+    parse_level: enum {
         pre,
         post,
     } = .post,
