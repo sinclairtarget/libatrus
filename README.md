@@ -31,6 +31,5 @@ Much more work remains:
 - [x] Get basic C API working
 - [ ] ...actually implement a spec-compliant parser
 - [ ] Implement HTML renderer
-- [ ] Implement YAML renderer
 - [ ] Implement JSON AST parser
 - [ ] Add benchmarks

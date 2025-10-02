@@ -35,7 +35,6 @@ pub fn printUsage(out: *Io.Writer) !void {
         \\
         \\Options:
         \\  --pre     Skip post-process/resolution phase.
-        \\  --yaml    Output AST as YAML.
         \\  --html    Output HTML.
         \\
     ;

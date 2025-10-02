@@ -1,6 +1,6 @@
 //! libatrus parses MyST-flavored markdown into the MyST AST.
 //!
-//! It can also render the AST to JSON, YAML, and HTML.
+//! It can also render the AST to JSON and HTML.
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -91,18 +91,6 @@ pub fn renderJSON(
     try buf.writer.writeByte(0); // zero terminate
     const written = buf.written();
     return written[0 .. written.len - 1 :0];
-}
-
-/// Takes the root node of a MyST AST. Returns the rendered YAML as a string.
-///
-/// The caller is responsible for freeing the returned string.
-pub fn renderYAML(
-    alloc: Allocator,
-    root: *ast.Node,
-) ![]const u8 {
-    _ = alloc;
-    _ = root;
-    return error.NotImplemented;
 }
 
 pub const RenderHTMLError = error{
