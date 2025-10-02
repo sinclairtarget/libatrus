@@ -11,7 +11,7 @@ const RenderJSONError = atrus.RenderJSONError;
 const alloc = std.heap.c_allocator;
 
 export fn atrus_ast_parse(in: [*:0]const u8, out: **atrus.ast.Node) c_int {
-    out.* = atrus.parse(alloc, std.mem.span(in)) catch |err| {
+    out.* = atrus.parse(alloc, std.mem.span(in), .{}) catch |err| {
         switch (err) {
             ParseError.ReadFailed => return 1,
             ParseError.LineTooLong => return 2,

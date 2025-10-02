@@ -13,13 +13,14 @@ pub const OutputChoice = enum {
 pub const Options = struct {
     filepath: ?[]const u8 = null,
     output_choice: OutputChoice = .json,
+    pre_only: bool = false,
 
     const Self = @This();
 
     pub fn format(self: Self, w: *Io.Writer) Io.Writer.Error!void {
         try w.print(
-            ".{{ .filepath = '{?s}', .output_choice = {any} }}",
-            .{ self.filepath, self.output_choice },
+            ".{{ .filepath = '{?s}', .output_choice = {any}, .pre_only = {any} }}",
+            .{ self.filepath, self.output_choice, self.pre_only },
         );
     }
 };
@@ -33,8 +34,9 @@ pub fn printUsage(out: *Io.Writer) !void {
         \\If "-" is given as the filepath, input is read from STDIN.
         \\
         \\Options:
-        \\  --html    Output HTML.
+        \\  --pre     Skip post-process/resolution phase.
         \\  --yaml    Output AST as YAML.
+        \\  --html    Output HTML.
         \\
     ;
 
@@ -96,12 +98,15 @@ pub fn parseArgs(
 
     var action = Action.parse;
     var output_choice = OutputChoice.json;
+    var pre_only = false;
     var filepath: ?[]const u8 = null;
     for (args[1 .. args.len - 1]) |arg| {
         if (std.mem.eql(u8, arg, "--yaml")) {
             output_choice = .yaml;
         } else if (std.mem.eql(u8, arg, "--html")) {
             output_choice = .html;
+        } else if (std.mem.eql(u8, arg, "--pre")) {
+            pre_only = true;
         } else if (builtin.mode == .Debug and std.mem.eql(u8, arg, "--tokens")) {
             action = .tokenize;
         } else {
@@ -123,6 +128,7 @@ pub fn parseArgs(
         Options{
             .filepath = filepath,
             .output_choice = output_choice,
+            .pre_only = pre_only,
         },
     };
 }

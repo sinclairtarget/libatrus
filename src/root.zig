@@ -11,6 +11,7 @@ const ArrayList = std.ArrayList;
 
 const Tokenizer = @import("lex/Tokenizer.zig");
 const Parser = @import("parse/Parser.zig");
+const post = @import("parse/post.zig");
 const json = @import("render/json.zig");
 const html = @import("render/html.zig");
 
@@ -25,15 +26,33 @@ pub const ParseError = error{
     LineTooLong, // TODO: Remove this?
 } || Allocator.Error;
 
+pub const ParseOptions = struct {
+    parse_level: enum{
+        pre,
+        post,
+    } = .post,
+};
+
 /// Parses the input string (containing MyST markdown) into a MyST AST. Returns
 /// a pointer to the root node.
 ///
 /// The caller is responsible for freeing the memory used by the AST nodes.
-pub fn parse(alloc: Allocator, in: []const u8) ParseError!*ast.Node {
+pub fn parse(
+    alloc: Allocator,
+    in: []const u8,
+    options: ParseOptions,
+) ParseError!*ast.Node {
     var reader: Io.Reader = .fixed(in);
     var tokenizer = Tokenizer.init(&reader);
     var parser = Parser.init(&tokenizer);
-    return try parser.parse(alloc);
+    const root = try parser.parse(alloc);
+
+    if (options.parse_level == .pre) {
+        return root;
+    }
+
+    const postprocessed_root = try post.postProcess(alloc, root);
+    return postprocessed_root;
 }
 
 /// Parses the input string (containing a MyST AST in JSON form) into a MYST
@@ -97,10 +116,11 @@ pub fn renderHTML(
     alloc: Allocator,
     root: *ast.Node,
 ) RenderHTMLError![:0]const u8 {
-    var buf = Io.Writer.Allocating.init(alloc);
+    const postprocessed_root = try post.postProcess(alloc, root);
 
+    var buf = Io.Writer.Allocating.init(alloc);
     try html.render(
-        root,
+        postprocessed_root,
         &buf.writer,
     );
 
@@ -179,7 +199,7 @@ test renderHTML {
     defer arena_impl.deinit();
     const arena = arena_impl.allocator();
 
-    const root = try parse(arena, md);
+    const root = try parse(arena, md, .{});
     const result = try renderHTML(arena, root);
 
     try std.testing.expectEqualStrings(
