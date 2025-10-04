@@ -4,10 +4,9 @@ const Io = std.Io;
 
 pub const TokenType = enum {
     text,
-    pound,         // one or more pound symbols
+    pound,         // one or more consecutive '#' symbols, then whitespace
     backslash,
     newline,
-    eof,
 };
 
 pub const Token = struct {

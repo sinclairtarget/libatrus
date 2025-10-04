@@ -19,7 +19,6 @@ const State = enum{
     started,
     pound,
     text,
-    done,
 };
 
 in: *Io.Reader,
@@ -42,17 +41,12 @@ pub fn init(in: *Io.Reader) Self {
 //
 // Caller responsible for freeing memory associated with each returned token.
 pub fn next(self: *Self, alloc: Allocator) Error!?Token {
-    if (self.state == .done) {
-        return null;
-    }
-
     // Load new input line when needed
     while (self.i >= self.line.len) {
         self.line = read_line(alloc, self.in) catch |err| {
             switch (err) {
                 DelimiterError.EndOfStream => {
-                    self.state = .done;
-                    return Token{ .token_type = .eof };
+                    return null;
                 },
                 DelimiterError.StreamTooLong => {
                     return Error.LineTooLong;
@@ -91,16 +85,10 @@ fn read_line(alloc: Allocator, in: *Io.Reader) ![]const u8 {
 fn scan(self: *Self, alloc: Allocator) Allocator.Error!Token {
     var lookahead_i = self.i;
     const token_type: TokenType = fsm: switch (self.state) {
-        .done => unreachable,
         .started => {
             switch (self.line[lookahead_i]) {
                 '#' => {
                     continue :fsm .pound;
-                },
-                ' ', '\t' => {
-                    self.i += 1;
-                    lookahead_i += 1;
-                    continue :fsm .started;
                 },
                 '\n' => {
                     lookahead_i += 1;
@@ -204,11 +192,12 @@ test "can tokenize" {
         .newline,
         .text,
         .newline,
-        .eof,
     };
 
     for (expected) |exp| {
         const token = try tokenizer.next(arena);
         try std.testing.expectEqual(exp, token.?.token_type);
     }
+
+    try std.testing.expectEqual(null, try tokenizer.next(arena));
 }

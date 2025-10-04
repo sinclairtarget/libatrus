@@ -1,3 +1,14 @@
+//! Parser pulls tokens from the tokenizer as needed. The tokens are stored in
+//! an array list. The array list is cleared as each line is successfully
+//! parsed.
+//!
+//! intended grammar:
+//! root          => (atx-heading | paragraph | blank)*
+//! atx-heading   => POUND text? POUND? NEWLINE
+//! paragraph     => (text-start text* NEWLINE)+
+//! text-start    => TEXT | BACKSLASH
+//! text          => TEXT | BACKSLASH | POUND
+
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
@@ -14,20 +25,17 @@ const Error = error{
     SyntaxError,
 };
 
-// grammar:
-// root => (heading* paragraph*)*
-// heading => POUND+ text NEWLINE
-// paragraph => (text NEWLINE)+ NEWLINE
-// text => TEXT
 tokenizer: *Tokenizer,
-current: ?Token,
+line: ArrayList(Token),
+i: usize,
 
 const Self = @This();
 
 pub fn init(tokenizer: *Tokenizer) Self {
     return .{
         .tokenizer = tokenizer,
-        .current = null,
+        .line = .empty,
+        .i = 0,
     };
 }
 
@@ -37,25 +45,35 @@ pub fn parse(self: *Self, gpa: Allocator) !*ast.Node {
     defer arena_impl.deinit();
     const arena = arena_impl.allocator();
 
-    _ = try self.advance(arena); // Load first token
-
     var children: ArrayList(*ast.Node) = .empty;
+    errdefer {
+        for (children.items) |child| {
+            child.deinit(gpa);
+        }
+        children.deinit(gpa);
+    }
 
-    while (self.current.?.token_type != .eof) {
+    while (try self.peek(arena) != null) {
         const len_start = children.items.len;
 
-        var heading = try self.parseHeading(gpa, arena);
-        while (heading) |h| : (heading = try self.parseHeading(gpa, arena)) {
+        var heading = try self.parseATXHeading(gpa, arena);
+        while (heading) |h| {
             try children.append(gpa, h);
+            try self.clear_line(arena);
+            heading = try self.parseATXHeading(gpa, arena);
         }
 
         var paragraph = try self.parseParagraph(gpa, arena);
         while (paragraph) |p| : (paragraph = try self.parseParagraph(gpa, arena)) {
             try children.append(gpa, p);
+            try self.clear_line(arena);
         }
 
+        // blank lines
+        while (try self.consume(arena, .newline) != null) {}
+
         if (children.items.len <= len_start) { // Nothing was parsed this loop
-            break;
+            return Error.SyntaxError;
         }
     }
 
@@ -68,19 +86,33 @@ pub fn parse(self: *Self, gpa: Allocator) !*ast.Node {
     return node;
 }
 
-fn parseHeading(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
-    var depth: u8 = 0;
-    var token = try self.consume(arena, .pound);
+fn parseATXHeading(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
+    const token = try self.consume(arena, .pound);
     if (token == null) {
         return null;
     }
 
-    while (token) |_| : (token = try self.consume(arena, .pound)) {
-        depth += 1;
+    const depth = token.?.lexeme.?.len;
+    if (depth > 6) { // https://spec.commonmark.org/0.31.2/#example-63
+        self.i = 0; // backtrack
+        return null;
     }
 
     var children: ArrayList(*ast.Node) = .empty;
+
     while (true) {
+        const current = try self.peek(arena);
+        if (current == null) {
+            break;
+        }
+
+        const pound = try self.consume(arena, .pound);
+        if (pound != null and try self.consume(arena, .newline) != null) {
+            break;
+        } else if (pound != null) {
+            self.i -= 1; // backtrack
+        }
+
         const text = try self.parseText(gpa, arena);
         if (text) |t| {
             try children.append(gpa, t);
@@ -94,7 +126,7 @@ fn parseHeading(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
     const node = try gpa.create(ast.Node);
     node.* = .{
         .heading = .{
-            .depth = depth,
+            .depth = @truncate(token.?.lexeme.?.len),
             .children = try children.toOwnedSlice(gpa),
         },
     };
@@ -104,8 +136,18 @@ fn parseHeading(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
 fn parseParagraph(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
     var texts: ArrayList(*ast.Node) = .empty;
 
-    while (try self.parseText(gpa, arena)) |t| {
-        try texts.append(arena, t);
+    while (true) {
+        const start = try self.parseTextStart(gpa, arena);
+        if (start == null) {
+            break;
+        }
+
+        try texts.append(arena, start.?);
+
+        while (try self.parseText(gpa, arena)) |t| {
+            try texts.append(arena, t);
+        }
+
         _ = try self.consume(arena, .newline);
     }
 
@@ -113,23 +155,13 @@ fn parseParagraph(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
         return null;
     }
 
-    var buf = Io.Writer.Allocating.init(gpa);
-    for (texts.items, 0..) |t, i| {
-        if (i < texts.items.len - 1) {
-            try buf.writer.print("{s}\n", .{t.text.value});
-        } else {
-            try buf.writer.print("{s}", .{t.text.value});
-        }
-
+    var buf = Io.Writer.Allocating.init(arena);
+    for (texts.items) |t| {
+        try buf.writer.print("{s}", .{ t.text.value });
         t.deinit(gpa);
     }
 
-    const text_node = try gpa.create(ast.Node);
-    text_node.* = .{
-        .text = .{
-            .value = try buf.toOwnedSlice(),
-        },
-    };
+    const text_node = try createTextNode(gpa, buf.written());
 
     const node = try gpa.create(ast.Node);
     var children = try gpa.alloc(*ast.Node, 1);
@@ -144,37 +176,99 @@ fn parseParagraph(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
 }
 
 fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
-    const token = try self.consume(arena, .text);
+    const token = try self.peek(arena);
     if (token == null) {
         return null;
     }
 
+    switch (token.?.token_type) {
+        .text, .pound => {
+            const value = if (token.?.lexeme) |v| v else "";
+            self.advance();
+            return createTextNode(gpa, value);
+        },
+        .backslash => {
+            self.advance();
+            return createTextNode(gpa, "/");
+        },
+        else => {
+            return null;
+        }
+    }
+}
+
+fn parseTextStart(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
+    const token = try self.peek(arena);
+    if (token == null) {
+        return null;
+    }
+
+    switch (token.?.token_type) {
+        .text => {
+            const value = if (token.?.lexeme) |v| v else "";
+            self.advance();
+            return createTextNode(gpa, value);
+        },
+        .backslash => {
+            self.advance();
+            return createTextNode(gpa, "/");
+        },
+        else => {
+            return null;
+        }
+    }
+}
+
+fn createTextNode(gpa: Allocator, value: []const u8) !*ast.Node {
     const node = try gpa.create(ast.Node);
     node.* = .{
         .text = .{
-            .value = if (token.?.lexeme) |v|
-                try gpa.dupe(u8, v)
-            else
-                "",
+            .value = try gpa.dupe(u8, std.mem.trimEnd(u8, value, " \t")),
         },
     };
     return node;
 }
 
-fn consume(self: *Self, arena: Allocator, token_type: TokenType) !?Token {
-    if (self.current == null) {
-        return null;
+fn peek(self: *Self, arena: Allocator) !?Token {
+    if (self.i >= self.line.items.len) {
+        const next = try self.tokenizer.next(arena);
+        if (next == null) {
+            return null; // end of input
+        }
+
+        try self.line.append(arena, next.?);
     }
 
-    if (self.current.?.token_type != token_type) {
-        return null;
-    }
-
-    return try self.advance(arena);
+    return self.line.items[self.i];
 }
 
-fn advance(self: *Self, arena: Allocator) !?Token {
-    const prev = self.current;
-    self.current = try self.tokenizer.next(arena);
-    return prev;
+fn consume(self: *Self, arena: Allocator, token_type: TokenType) !?Token {
+    const current = try self.peek(arena);
+
+    if (current == null) {
+        return null;
+    }
+
+    if (current.?.token_type != token_type) {
+        return null;
+    }
+
+    self.advance();
+    return current;
+}
+
+fn advance(self: *Self) void {
+    self.i += 1;
+}
+
+fn clear_line(self: *Self, arena: Allocator) !void {
+    std.debug.assert(self.line.items.len > 0);
+
+    const current = try self.peek(arena);
+    self.i = 0;
+    self.line.clearRetainingCapacity();
+
+    if (current) |c| {
+        try self.line.append(arena, c);
+    }
 }
