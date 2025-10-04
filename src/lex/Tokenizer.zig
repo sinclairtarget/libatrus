@@ -91,10 +91,16 @@ fn scan(self: *Self, alloc: Allocator) Allocator.Error!Token {
             };
             switch (c) {
                 '#' => {
+                    if ((lookahead_i - self.i) >= 6) {
+                        // https://spec.commonmark.org/0.31.2/#example-63
+                        lookahead_i = self.i;
+                        continue :fsm .text;
+                    }
+
                     lookahead_i += 1;
                     continue :fsm .pound;
                 },
-                ' ', '\t'...'\r' => {
+                ' ', '\t' => {
                     break :fsm .pound;
                 },
                 else => {
