@@ -152,7 +152,7 @@ fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
     const node = try gpa.create(ast.Node);
     node.* = .{
         .text = .{
-            .value = if (token.?.value) |v|
+            .value = if (token.?.lexeme) |v|
                 try gpa.dupe(u8, v)
             else
                 "",

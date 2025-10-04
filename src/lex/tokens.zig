@@ -10,7 +10,7 @@ pub const TokenType = enum {
 
 pub const Token = struct {
     token_type: TokenType,
-    value: ?[]const u8 = null,
+    lexeme: ?[]const u8 = null,
 
     const Self = @This();
 
@@ -20,13 +20,13 @@ pub const Token = struct {
             @tagName(self.token_type),
         );
 
-        if (self.value) |value| {
+        if (self.lexeme) |lexeme| {
             return std.fmt.allocPrint(
                 alloc,
                 "{s} \"{s}\"",
                 .{
                     name,
-                    value,
+                    lexeme,
                 },
             );
         }
