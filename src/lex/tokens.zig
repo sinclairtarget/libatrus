@@ -1,5 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const Io = std.Io;
 
 pub const TokenType = enum {
     text,
@@ -15,23 +16,14 @@ pub const Token = struct {
 
     const Self = @This();
 
-    pub fn format(self: Self, alloc: Allocator) ![]const u8 {
-        const name = try std.ascii.allocUpperString(
-            alloc,
-            @tagName(self.token_type),
-        );
+    pub fn format(self: Self, w: *Io.Writer) !void {
+        var buf: [128]u8 = undefined;
+        const name = std.ascii.upperString(&buf, @tagName(self.token_type));
 
         if (self.lexeme) |lexeme| {
-            return std.fmt.allocPrint(
-                alloc,
-                "{s} \"{s}\"",
-                .{
-                    name,
-                    lexeme,
-                },
-            );
+            try w.print("{s} \"{s}\"", .{ name, lexeme });
+        } else {
+            try w.print("{s}", .{ name });
         }
-
-        return name;
     }
 };

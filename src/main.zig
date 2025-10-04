@@ -109,6 +109,7 @@ pub fn main() !void {
             }
         },
         .tokenize => {
+            std.debug.assert(builtin.mode == .Debug);
             if (builtin.mode == .Debug) {
                 var file = if (options.filepath) |filepath|
                     try std.fs.cwd().openFile(filepath, .{})
@@ -120,13 +121,11 @@ pub fn main() !void {
                 var reader_impl = file.reader(&buffer);
                 const reader = &reader_impl.interface;
 
-                const tokens = try atrus.tokenize(arena, reader);
-                for (tokens) |token| {
-                    const t = try token.format(arena);
-                    try stdout.print("{s}\n", .{t});
+                var tokenizer = atrus.lex.Tokenizer.init(reader);
+                while (try tokenizer.next(arena)) |token| {
+                    try stdout.print("{f}\n", .{token});
+                    try stdout.flush();
                 }
-            } else {
-                std.debug.assert(builtin.mode == .Debug);
             }
         },
     }
