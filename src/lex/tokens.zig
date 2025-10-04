@@ -5,6 +5,7 @@ pub const TokenType = enum {
     text,
     pound,
     newline,
+    thematic_break,
     eof,
 };
 

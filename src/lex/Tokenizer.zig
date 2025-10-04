@@ -18,6 +18,7 @@ const State = enum{
     started,
     pound,
     text,
+    thematic_break,
 };
 
 in: *Io.Reader,
@@ -79,6 +80,9 @@ fn scan(self: *Self, alloc: Allocator) Allocator.Error!Token {
                     lookahead_i = self.i;
                     break :fsm .newline;
                 },
+                '-', '_', '*' => {
+                    continue :fsm .thematic_break;
+                },
                 else => {
                     continue :fsm .text;
                 },
@@ -102,6 +106,32 @@ fn scan(self: *Self, alloc: Allocator) Allocator.Error!Token {
                 },
                 ' ', '\t' => {
                     break :fsm .pound;
+                },
+                else => {
+                    lookahead_i = self.i;
+                    continue :fsm .text;
+                },
+            }
+        },
+        .thematic_break => {
+            const c = self.peek(lookahead_i) orelse {
+                lookahead_i = self.i;
+                continue :fsm .text;
+            };
+            switch (c) {
+                '-', '_', '*' => {
+                    lookahead_i += 1;
+                    if (lookahead_i - self.i == 3) {
+                        self.i = lookahead_i;
+                        break :fsm .thematic_break;
+                    }
+
+                    if (self.line[lookahead_i] != self.line[self.i]) {
+                        lookahead_i = self.i;
+                        continue :fsm .text;
+                    }
+
+                    continue :fsm .thematic_break;
                 },
                 else => {
                     lookahead_i = self.i;
