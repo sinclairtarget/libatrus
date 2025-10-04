@@ -1,6 +1,7 @@
 //! Takes an input reader and tokenizes line by line.
 const std = @import("std");
 const ascii = std.ascii;
+const fmt = std.fmt;
 const Allocator = std.mem.Allocator;
 const Io = std.Io;
 const DelimiterError = Io.Reader.DelimiterError;
@@ -18,7 +19,6 @@ const State = enum{
     started,
     pound,
     text,
-    thematic_break,
     done,
 };
 
@@ -106,8 +106,9 @@ fn scan(self: *Self, alloc: Allocator) Allocator.Error!Token {
                     lookahead_i += 1;
                     break :fsm .newline;
                 },
-                '-', '_', '*' => {
-                    continue :fsm .thematic_break;
+                '\\' => {
+                    lookahead_i += 1;
+                    break :fsm .backslash;
                 },
                 else => {
                     continue :fsm .text;
@@ -124,41 +125,13 @@ fn scan(self: *Self, alloc: Allocator) Allocator.Error!Token {
                     break :fsm .pound;
                 },
                 else => {
-                    lookahead_i = self.i;
-                    continue :fsm .text;
-                },
-            }
-        },
-        .thematic_break => {
-            const c = self.peek(lookahead_i) orelse {
-                lookahead_i = self.i;
-                continue :fsm .text;
-            };
-            switch (c) {
-                '-', '_', '*' => {
-                    lookahead_i += 1;
-                    if (lookahead_i - self.i == 3) {
-                        self.i = lookahead_i;
-                        break :fsm .thematic_break;
-                    }
-
-                    if (self.line[lookahead_i] != self.line[self.i]) {
-                        lookahead_i = self.i;
-                        continue :fsm .text;
-                    }
-
-                    continue :fsm .thematic_break;
-                },
-                else => {
-                    lookahead_i = self.i;
                     continue :fsm .text;
                 },
             }
         },
         .text => {
-            const c = self.peek(lookahead_i) orelse break :fsm .text;
-            switch (c) {
-                '\n' => {
+            switch (self.line[lookahead_i]) {
+                '\n', '\\', '#' => {
                     break :fsm .text;
                 },
                 else => {
@@ -236,6 +209,6 @@ test "can tokenize" {
 
     for (expected) |exp| {
         const token = try tokenizer.next(arena);
-        try std.testing.expectEqual(exp, token.token_type);
+        try std.testing.expectEqual(exp, token.?.token_type);
     }
 }

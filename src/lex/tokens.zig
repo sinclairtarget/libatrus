@@ -4,9 +4,9 @@ const Io = std.Io;
 
 pub const TokenType = enum {
     text,
-    pound,
+    pound,         // one or more pound symbols
+    backslash,
     newline,
-    thematic_break,
     eof,
 };
 
