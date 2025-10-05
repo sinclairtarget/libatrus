@@ -26,6 +26,8 @@ const Test = struct {
     // We parse the myst, rendering the AST as JSON to a buffer. Then we parse
     // that AST as a dynamic JSON value and compare it to the dynamic JSON value
     // for the AST we loaded from the spec test cases.
+    //
+    // If there is an expected HTML rendering we test that too.
     pub fn func(
         self: Self,
         alloc: Allocator,
@@ -54,10 +56,27 @@ const Test = struct {
 
         if (!std.mem.eql(u8, expected, actual)) {
             if (options.verbose) {
-                std.debug.print("expected:\n{s}\n", .{expected});
-                std.debug.print("actual:\n{s}\n", .{actual});
+                std.debug.print("expected json:\n{s}\n", .{expected});
+                std.debug.print("actual json:\n{s}\n", .{actual});
             }
             return error.NotEqual;
+        }
+
+        // html
+        const post_ast = try atrus.parse(
+            alloc,
+            self.case.myst,
+            .{ .parse_level = .post },
+        );
+        if (self.case.html) |expected_html| {
+            const actual_html = try atrus.renderHTML(alloc, post_ast);
+            if (!std.mem.eql(u8, expected_html, actual_html)) {
+                if (options.verbose) {
+                    std.debug.print("expected html:\n{s}\n", .{expected_html});
+                    std.debug.print("actual html:\n{s}\n", .{actual_html});
+                }
+                return error.HTMLNotEqual;
+            }
         }
     }
 };
