@@ -41,10 +41,10 @@ pub fn init(in: *Io.Reader) Self {
 // Get next token from the stream.
 //
 // Caller responsible for freeing memory associated with each returned token.
-pub fn next(self: *Self, alloc: Allocator) Error!?Token {
+pub fn next(self: *Self, arena: Allocator) Error!?Token {
     // Load new input line when needed
     while (self.i >= self.line.len) {
-        self.line = read_line(alloc, self.in) catch |err| {
+        self.line = read_line(arena, self.in) catch |err| {
             switch (err) {
                 DelimiterError.EndOfStream => {
                     return null;
@@ -58,20 +58,23 @@ pub fn next(self: *Self, alloc: Allocator) Error!?Token {
         self.i = 0;
     }
 
-    return try self.scan(alloc);
+    return try self.scan(arena);
 }
 
 // Reads the next line from the input stream.
 //
 // Returned line will always be terminated by a newline character.
-fn read_line(alloc: Allocator, in: *Io.Reader) ![]const u8 {
+//
+// This basically implements `takeDelimiterInclusive` so that it treats EOF as
+// a break the same way `takeDelimiterExclusive` does.
+fn read_line(arena: Allocator, in: *Io.Reader) ![]const u8 {
     const line = in.takeDelimiterInclusive('\n') catch |err| blk: {
         switch (err) {
             DelimiterError.EndOfStream => {
                 if (in.bufferedLen() > 0) {
                     // terminate with newline
                     const line = try fmt.allocPrint(
-                        alloc,
+                        arena,
                         "{s}\n",
                         .{ in.buffered() },
                     );
@@ -86,7 +89,7 @@ fn read_line(alloc: Allocator, in: *Io.Reader) ![]const u8 {
                 // reader's buffer. If the stream is about to end anyway though,
                 // we just treat that the same as the end-of-stream case.
                 const line = try fmt.allocPrint(
-                    alloc,
+                    arena,
                     "{s}\n",
                     .{ in.buffered() },
                 );
@@ -110,7 +113,7 @@ fn read_line(alloc: Allocator, in: *Io.Reader) ![]const u8 {
 }
 
 // Returns the next token starting at the current index.
-fn scan(self: *Self, alloc: Allocator) Allocator.Error!Token {
+fn scan(self: *Self, arena: Allocator) Allocator.Error!Token {
     var lookahead_i = self.i;
     const token_type: TokenType = fsm: switch (self.state) {
         .started => {
@@ -172,7 +175,7 @@ fn scan(self: *Self, alloc: Allocator) Allocator.Error!Token {
         },
     };
 
-    const lexeme = try evaluate_lexeme(self, alloc, token_type, lookahead_i);
+    const lexeme = try evaluate_lexeme(self, arena, token_type, lookahead_i);
     const token = Token{
         .token_type = token_type,
         .lexeme = lexeme,
@@ -184,7 +187,7 @@ fn scan(self: *Self, alloc: Allocator) Allocator.Error!Token {
 
 fn evaluate_lexeme(
     self: *Self,
-    alloc: Allocator,
+    arena: Allocator,
     token_type: TokenType,
     lookahead_i: usize,
 ) !?[]const u8 {
@@ -193,7 +196,7 @@ fn evaluate_lexeme(
             return null;
         },
         else => {
-            return try alloc.dupe(u8, self.line[self.i..lookahead_i]);
+            return try arena.dupe(u8, self.line[self.i..lookahead_i]);
         },
     }
 }
