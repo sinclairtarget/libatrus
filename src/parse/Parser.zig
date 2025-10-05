@@ -77,6 +77,8 @@ pub fn parse(self: *Self, gpa: Allocator) !*ast.Node {
 
         if (children.items.len <= len_start and lines_skipped == 0) {
             // Nothing parsed this loop
+            const t = try self.peek(arena);
+            std.debug.print("unsure how to parse: {f}\n", .{ t.? });
             return Error.UnrecognizedSyntax;
         }
     }
