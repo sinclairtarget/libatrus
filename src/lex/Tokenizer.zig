@@ -17,6 +17,7 @@ pub const Error = error{
 
 const State = enum {
     started,
+    indent,
     pound,
     text,
     text_whitespace,
@@ -125,9 +126,34 @@ fn scan(self: *Self, arena: Allocator) Allocator.Error!Token {
                     lookahead_i += 1;
                     break :fsm .newline;
                 },
+                ' ', '\t' => {
+                    if (lookahead_i == 0) { // indent only at beginning of line
+                        continue :fsm .indent;
+                    }
+
+                    continue :fsm .text;
+                },
                 else => {
                     continue :fsm .text;
                 },
+            }
+        },
+        .indent => {
+            switch (self.line[lookahead_i]) {
+                '\t' => {
+                    lookahead_i += 1;
+                    break :fsm .indent;
+                },
+                ' ' => {
+                    lookahead_i += 1;
+                    if (lookahead_i - self.i == 4) {
+                        break :fsm .indent;
+                    }
+
+                    continue :fsm .indent;
+                },
+                '#' => continue :fsm .pound,
+                else => continue :fsm .text,
             }
         },
         .pound => {
@@ -192,8 +218,15 @@ fn evaluate_lexeme(
     lookahead_i: usize,
 ) !?[]const u8 {
     switch (token_type) {
-        .newline => {
+        .newline, .indent => {
             return null;
+        },
+        .pound => {
+            const lexeme = try copyWithoutEscapes(
+                arena,
+                std.mem.trim(u8, self.line[self.i..lookahead_i], " \t"),
+            );
+            return lexeme;
         },
         else => {
             return try copyWithoutEscapes(arena, self.line[self.i..lookahead_i]);

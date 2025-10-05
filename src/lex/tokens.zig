@@ -4,6 +4,7 @@ const Io = std.Io;
 
 pub const TokenType = enum {
     text,
+    indent, // indent at beginning of line
     pound, // one or more consecutive '#' symbols, word-bounded
     newline,
 };
