@@ -4,7 +4,7 @@
 //!
 //! intended grammar:
 //! root          => (atx-heading | paragraph | blank)*
-//! atx-heading   => POUND text? POUND? NEWLINE
+//! atx-heading   => POUND text* (POUND? NEWLINE)?
 //! paragraph     => (text-start text* NEWLINE)+
 //! text-start    => TEXT | BACKSLASH | POUND(>6)
 //! text          => TEXT | BACKSLASH | POUND
@@ -56,16 +56,13 @@ pub fn parse(self: *Self, gpa: Allocator) !*ast.Node {
     while (try self.peek(arena) != null) {
         const len_start = children.items.len;
 
-        var heading = try self.parseATXHeading(gpa, arena);
-        while (heading) |h| {
-            try children.append(gpa, h);
+        while (try self.parseATXHeading(gpa, arena)) |heading| {
+            try children.append(gpa, heading);
             try self.clear_line(arena);
-            heading = try self.parseATXHeading(gpa, arena);
         }
 
-        var paragraph = try self.parseParagraph(gpa, arena);
-        while (paragraph) |p| : (paragraph = try self.parseParagraph(gpa, arena)) {
-            try children.append(gpa, p);
+        while (try self.parseParagraph(gpa, arena)) |paragraph| {
+            try children.append(gpa, paragraph);
             try self.clear_line(arena);
         }
 
@@ -93,35 +90,34 @@ pub fn parse(self: *Self, gpa: Allocator) !*ast.Node {
 }
 
 fn parseATXHeading(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
-    const token = try self.consume(arena, .pound);
-    if (token == null) {
+    const token = try self.peek(arena);
+    if (token == null or token.?.token_type != .pound) {
         return null;
     }
 
     const depth = token.?.lexeme.?.len;
     if (depth > 6) { // https://spec.commonmark.org/0.31.2/#example-63
-        self.i -= 1; // backtrack
         return null;
     }
+
+    self.advance();
 
     var children: ArrayList(*ast.Node) = .empty;
 
     var buf = Io.Writer.Allocating.init(arena);
-    while (true) {
-        const current = try self.peek(arena);
-        if (current == null) {
-            break;
-        }
-
-        const pound = try self.consume(arena, .pound);
-        if (pound != null) {
+    while (try self.peek(arena)) |current| {
+        if (current.token_type == .pound) {
+            // Look ahead for a newline. If there is one, this is a closing
+            // sequence of #.
+            self.advance();
             if (try self.peek(arena)) |t| {
                 if (t.token_type == .newline) {
                     break;
                 }
             }
 
-            self.i -= 1; // backtrack
+            // Okay, not a closing sequence.
+            self.backtrack();
         }
 
         const text = try self.parseText(gpa, arena);
@@ -135,9 +131,9 @@ fn parseATXHeading(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
 
     _ = try self.consume(arena, .newline);
 
-    const text_value = std.mem.trim(u8, buf.written(), " \t");
-    if (text_value.len > 0) {
-        const text_node = try createTextNode(gpa, text_value);
+    const inner_value = std.mem.trim(u8, buf.written(), " \t");
+    if (inner_value.len > 0) {
+        const text_node = try createTextNode(gpa, inner_value);
         try children.append(gpa, text_node);
     }
 
@@ -153,16 +149,11 @@ fn parseATXHeading(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
 
 fn parseParagraph(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
     var lines: ArrayList([]const u8) = .empty;
-    while (true) {
-        const start = try self.parseTextStart(gpa, arena);
-        if (start == null) {
-            break;
-        }
-
+    while (try self.parseTextStart(gpa, arena)) |start| {
         var line = Io.Writer.Allocating.init(arena);
 
-        try line.writer.print("{s}", .{start.?.text.value});
-        start.?.deinit(gpa);
+        try line.writer.print("{s}", .{start.text.value});
+        start.deinit(gpa);
 
         while (try self.parseText(gpa, arena)) |t| {
             try line.writer.print("{s}", .{t.text.value});
@@ -283,6 +274,10 @@ fn consume(self: *Self, arena: Allocator, token_type: TokenType) !?Token {
 
 fn advance(self: *Self) void {
     self.i += 1;
+}
+
+fn backtrack(self: *Self) void {
+    self.i -= 1;
 }
 
 fn clear_line(self: *Self, arena: Allocator) !void {
