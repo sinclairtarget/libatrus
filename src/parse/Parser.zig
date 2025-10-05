@@ -134,8 +134,10 @@ fn parseATXHeading(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
     _ = try self.consume(arena, .newline);
 
     const text_value = std.mem.trim(u8, buf.written(), " \t");
-    const text_node = try createTextNode(gpa, text_value);
-    try children.append(gpa, text_node);
+    if (text_value.len > 0) {
+        const text_node = try createTextNode(gpa, text_value);
+        try children.append(gpa, text_node);
+    }
 
     const node = try gpa.create(ast.Node);
     node.* = .{
