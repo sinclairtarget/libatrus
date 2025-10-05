@@ -39,7 +39,10 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
     try stringify.write(@tagName(node.*));
 
     switch (node.*) {
-        .root, .paragraph, .block => |n| {
+        .root => |n| {
+            try render_children(stringify, n);
+        },
+        .paragraph, .block => |n| {
             try render_children(stringify, n);
         },
         .heading => |n| {

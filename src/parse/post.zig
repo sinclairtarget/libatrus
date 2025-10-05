@@ -21,5 +21,6 @@ fn processRoot(gpa: Allocator, node: *ast.Node) !*ast.Node {
     var root_children = try gpa.alloc(*ast.Node, 1);
     root_children[0] = block;
     node.root.children = root_children;
+    node.root.is_post_processed = true;
     return node;
 }

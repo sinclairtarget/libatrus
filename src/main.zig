@@ -58,6 +58,12 @@ pub fn main() !void {
                     const required = diagnostic.argname.?;
                     die("missing required argument: <{s}>\n", .{required});
                 },
+                ArgsError.IncompatibleArgs => {
+                    try cli.printUsage(stdout);
+                    try stdout.print("\n", .{});
+                    try stdout.flush();
+                    die("incompatible arguments\n", .{});
+                },
                 else => return err,
             }
         };
@@ -89,7 +95,9 @@ pub fn main() !void {
             const ast = try atrus.parse(
                 gpa,
                 myst,
-                .{ .parse_level = if (options.pre_only) .pre else .post },
+                .{
+                    .parse_level = if (options.pre_only) .pre else .post,
+                },
             );
             defer ast.deinit(gpa);
 
@@ -98,9 +106,6 @@ pub fn main() !void {
                 .json => {
                     const s = try atrus.renderJSON(arena, ast, .{});
                     try stdout.print("{s}\n", .{s});
-                },
-                .yaml => {
-                    return error.NotImplemented;
                 },
                 .html => {
                     const s = try atrus.renderHTML(arena, ast);

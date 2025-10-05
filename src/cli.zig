@@ -6,7 +6,6 @@ const Io = std.Io;
 
 pub const OutputChoice = enum {
     json,
-    yaml,
     html,
 };
 
@@ -34,8 +33,8 @@ pub fn printUsage(out: *Io.Writer) !void {
         \\If "-" is given as the filepath, input is read from STDIN.
         \\
         \\Options:
-        \\  --pre     Skip post-process/resolution phase.
         \\  --html    Output HTML.
+        \\  --pre     Skip post-process/resolution phase.
         \\
     ;
 
@@ -44,7 +43,7 @@ pub fn printUsage(out: *Io.Writer) !void {
             const debug_usage =
                 \\
                 \\Debug Options:
-                \\  --tokens  Output the token stream prior to parsing.
+                \\  --tokens  Output the token stream.
                 \\
             ;
             break :blk usage ++ debug_usage;
@@ -67,6 +66,7 @@ pub const ArgsError = error{
     NotEnoughArgs,
     UnrecognizedArg,
     MissingRequiredArg,
+    IncompatibleArgs,
 };
 
 pub const Diagnostic = struct {
@@ -100,9 +100,7 @@ pub fn parseArgs(
     var pre_only = false;
     var filepath: ?[]const u8 = null;
     for (args[1 .. args.len - 1]) |arg| {
-        if (std.mem.eql(u8, arg, "--yaml")) {
-            output_choice = .yaml;
-        } else if (std.mem.eql(u8, arg, "--html")) {
+        if (std.mem.eql(u8, arg, "--html")) {
             output_choice = .html;
         } else if (std.mem.eql(u8, arg, "--pre")) {
             pre_only = true;
@@ -120,6 +118,10 @@ pub fn parseArgs(
         return ArgsError.MissingRequiredArg;
     } else {
         filepath = try arena.dupe(u8, final);
+    }
+
+    if (pre_only and output_choice == .html) {
+        return ArgsError.IncompatibleArgs;
     }
 
     return .{

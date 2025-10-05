@@ -40,6 +40,7 @@ export fn atrus_render_html(root: *atrus.ast.Node, out: *[*:0]const u8) c_int {
         switch (err) {
             RenderHTMLError.WriteFailed => return -1,
             RenderHTMLError.OutOfMemory => return -1,
+            RenderHTMLError.NotPostProcessed => return -1, // TODO: Communicate!
         }
     };
     out.* = s.ptr;

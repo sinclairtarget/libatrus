@@ -7,7 +7,7 @@ const ArrayList = std.ArrayList;
 const Allocator = std.mem.Allocator;
 
 pub const Node = union(enum) {
-    root: Container,
+    root: Root,
     block: Container,
     heading: Heading,
     paragraph: Container,
@@ -17,7 +17,13 @@ pub const Node = union(enum) {
 
     pub fn deinit(self: *Self, alloc: Allocator) void {
         switch (self.*) {
-            .root, .paragraph, .block => |n| {
+            .root => |n| {
+                for (n.children) |child| {
+                    child.deinit(alloc);
+                }
+                alloc.free(n.children);
+            },
+            .paragraph, .block => |n| {
                 for (n.children) |child| {
                     child.deinit(alloc);
                 }
@@ -34,6 +40,11 @@ pub const Node = union(enum) {
 
         alloc.destroy(self);
     }
+};
+
+pub const Root = struct {
+    children: []const *Node,
+    is_post_processed: bool = false,
 };
 
 pub const Container = struct {

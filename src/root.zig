@@ -97,6 +97,7 @@ pub fn renderJSON(
 pub const RenderHTMLError = error{
     WriteFailed,
     OutOfMemory,
+    NotPostProcessed,
 };
 
 /// Takes the root node of a MyST AST. Returns the rendered HTML as a string.
@@ -106,11 +107,13 @@ pub fn renderHTML(
     alloc: Allocator,
     root: *ast.Node,
 ) RenderHTMLError![:0]const u8 {
-    const postprocessed_root = try post.postProcess(alloc, root);
+    if (!root.root.is_post_processed) {
+        return RenderHTMLError.NotPostProcessed;
+    }
 
     var buf = Io.Writer.Allocating.init(alloc);
     try html.render(
-        postprocessed_root,
+        root,
         &buf.writer,
     );
 
