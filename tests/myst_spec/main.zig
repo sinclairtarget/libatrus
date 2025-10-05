@@ -72,7 +72,7 @@ fn gatherTests(
     var tests: ArrayList(Test) = .empty;
     for (cases) |case| {
         if (filter) |f| {
-            if (std.mem.indexOf(u8, case.title, f) == null) {
+            if (std.ascii.indexOfIgnoreCase(case.title, f) == null) {
                 continue;
             }
         }
@@ -106,6 +106,7 @@ pub fn main() !void {
         filter = args[2];
     }
 
+    std.debug.print("filter:{s}\n", .{filter.?});
     const tests = gatherTests(arena, path, filter) catch |err| {
         std.debug.print("failed to gather tests\n", .{});
         return err;
