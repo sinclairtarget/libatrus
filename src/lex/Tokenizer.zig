@@ -196,9 +196,49 @@ fn evaluate_lexeme(
             return null;
         },
         else => {
-            return try arena.dupe(u8, self.line[self.i..lookahead_i]);
+            return try copyWithoutEscapes(arena, self.line[self.i..lookahead_i]);
         },
     }
+}
+
+fn copyWithoutEscapes(alloc: Allocator, s: []const u8) ![]const u8 {
+    const copy = try alloc.alloc(u8, s.len);
+
+    const state: enum { normal, escape } = .normal;
+    var source_index: usize = 0;
+    var dest_index: usize = 0;
+    while (source_index < s.len) {
+        fsm: switch (state) {
+            .normal => {
+                switch (s[source_index]) {
+                    '\\' => {
+                        source_index += 1;
+                        continue :fsm .escape;
+                    },
+                    else => {
+                        copy[dest_index] = s[source_index];
+                        source_index += 1;
+                        dest_index += 1;
+                    }
+                }
+            },
+            .escape => {
+                switch (s[source_index]) {
+                    '\\' => {
+                        // literal backslash
+                        copy[dest_index] = s[source_index];
+                        source_index += 1;
+                        dest_index += 1;
+                    },
+                    else => {
+                        continue :fsm .normal;
+                    }
+                }
+            },
+        }
+    }
+
+    return copy[0..dest_index];
 }
 
 test "can tokenize" {

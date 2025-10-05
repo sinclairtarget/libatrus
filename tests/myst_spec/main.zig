@@ -106,7 +106,6 @@ pub fn main() !void {
         filter = args[2];
     }
 
-    std.debug.print("filter:{s}\n", .{filter.?});
     const tests = gatherTests(arena, path, filter) catch |err| {
         std.debug.print("failed to gather tests\n", .{});
         return err;
