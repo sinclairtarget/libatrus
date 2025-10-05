@@ -37,17 +37,18 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
-    b.installArtifact(exe);
+    const exe_install = b.addInstallArtifact(exe, .{});
+    b.getInstallStep().dependOn(&exe_install.step);
 
-    // zig run
+    // zig build run
     const run_cmd = b.addRunArtifact(exe);
-    run_cmd.step.dependOn(b.getInstallStep());
+    run_cmd.step.dependOn(&exe_install.step);
 
     if (b.args) |args| {
         run_cmd.addArgs(args);
     }
 
-    const run_step = b.step("run", "Run the app");
+    const run_step = b.step("run", "Run Atrus CLI");
     run_step.dependOn(&run_cmd.step);
 
     const lib = addCLibraries(b, atrus, target, optimize);
@@ -135,6 +136,8 @@ fn addTests(
         .root_module = atrus,
     });
     const run_unit_tests = b.addRunArtifact(unit_tests);
+    const unit_test_step = b.step("test-unit", "Run unit tests");
+    unit_test_step.dependOn(&run_unit_tests.step);
 
     // MyST Spec tests
     const spec_exe = b.addExecutable(.{
@@ -150,6 +153,8 @@ fn addTests(
     const run_spec_exe = b.addRunArtifact(spec_exe);
     const spec_cases_path = b.path("tests/myst_spec/myst.tests.json");
     run_spec_exe.addFileArg(spec_cases_path);
+    const spec_test_step = b.step("test-spec", "Run MyST spec test cases");
+    spec_test_step.dependOn(&run_spec_exe.step);
 
     if (filter) |f| {
         run_spec_exe.addArg(f);
@@ -186,7 +191,7 @@ fn addTests(
     c_exe.root_module.linkLibrary(lib);
     const run_c_exe = b.addRunArtifact(c_exe);
 
-    const test_step = b.step("test", "Run tests");
+    const test_step = b.step("test", "Run all tests");
     test_step.dependOn(&run_unit_tests.step);
     test_step.dependOn(&run_spec_exe.step);
     test_step.dependOn(&run_cli_tests.step);
