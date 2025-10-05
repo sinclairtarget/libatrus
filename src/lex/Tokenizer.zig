@@ -204,16 +204,16 @@ fn evaluate_lexeme(
 fn copyWithoutEscapes(alloc: Allocator, s: []const u8) ![]const u8 {
     const copy = try alloc.alloc(u8, s.len);
 
-    const state: enum { normal, escape } = .normal;
+    var state: enum { normal, escape } = .normal;
     var source_index: usize = 0;
     var dest_index: usize = 0;
     while (source_index < s.len) {
-        fsm: switch (state) {
+        switch (state) {
             .normal => {
                 switch (s[source_index]) {
                     '\\' => {
                         source_index += 1;
-                        continue :fsm .escape;
+                        state = .escape;
                     },
                     else => {
                         copy[dest_index] = s[source_index];
@@ -230,10 +230,9 @@ fn copyWithoutEscapes(alloc: Allocator, s: []const u8) ![]const u8 {
                         source_index += 1;
                         dest_index += 1;
                     },
-                    else => {
-                        continue :fsm .normal;
-                    }
+                    else => {}
                 }
+                state = .normal;
             },
         }
     }
