@@ -19,6 +19,7 @@ const State = enum{
     started,
     pound,
     text,
+    text_whitespace,
 };
 
 in: *Io.Reader,
@@ -94,10 +95,6 @@ fn scan(self: *Self, alloc: Allocator) Allocator.Error!Token {
                     lookahead_i += 1;
                     break :fsm .newline;
                 },
-                '\\' => {
-                    lookahead_i += 1;
-                    break :fsm .backslash;
-                },
                 else => {
                     continue :fsm .text;
                 },
@@ -119,8 +116,26 @@ fn scan(self: *Self, alloc: Allocator) Allocator.Error!Token {
         },
         .text => {
             switch (self.line[lookahead_i]) {
-                '\n', '\\', '#' => {
+                '\n' => {
                     break :fsm .text;
+                },
+                ' ', '\t' => {
+                    continue :fsm .text_whitespace;
+                },
+                else => {
+                    lookahead_i += 1;
+                    continue :fsm .text;
+                },
+            }
+        },
+        .text_whitespace => {
+            switch (self.line[lookahead_i]) {
+                '\n', '#' => {
+                    break :fsm .text;
+                },
+                ' ', '\t' => {
+                    lookahead_i += 1;
+                    continue :fsm .text_whitespace;
                 },
                 else => {
                     lookahead_i += 1;
@@ -147,7 +162,7 @@ fn evaluate_lexeme(
     lookahead_i: usize,
 ) !?[]const u8 {
     switch (token_type) {
-        .backslash, .newline => {
+        .newline => {
             return null;
         },
         else => {

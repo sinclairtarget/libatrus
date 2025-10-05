@@ -24,7 +24,7 @@ pub const version = config.version;
 pub const ParseError = error{
     ReadFailed,
     LineTooLong, // TODO: Remove this?
-    SyntaxError,
+    UnrecognizedSyntax,
 } || Allocator.Error || Io.Writer.Error;
 
 pub const ParseOptions = struct {

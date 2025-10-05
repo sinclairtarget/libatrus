@@ -6,7 +6,7 @@
 //! root          => (atx-heading | paragraph | blank)*
 //! atx-heading   => POUND text? POUND? NEWLINE
 //! paragraph     => (text-start text* NEWLINE)+
-//! text-start    => TEXT | BACKSLASH
+//! text-start    => TEXT | BACKSLASH | POUND(>6)
 //! text          => TEXT | BACKSLASH | POUND
 
 const std = @import("std");
@@ -22,7 +22,7 @@ const Token = tokens.Token;
 const TokenType = tokens.TokenType;
 
 const Error = error{
-    SyntaxError,
+    UnrecognizedSyntax,
 };
 
 tokenizer: *Tokenizer,
@@ -70,10 +70,14 @@ pub fn parse(self: *Self, gpa: Allocator) !*ast.Node {
         }
 
         // blank lines
-        while (try self.consume(arena, .newline) != null) {}
+        var lines_skipped: u32 = 0;
+        while (try self.consume(arena, .newline) != null) {
+            lines_skipped += 1;
+        }
 
-        if (children.items.len <= len_start) { // Nothing was parsed this loop
-            return Error.SyntaxError;
+        if (children.items.len <= len_start and lines_skipped == 0) {
+            // Nothing parsed this loop
+            return Error.UnrecognizedSyntax;
         }
     }
 
@@ -94,12 +98,13 @@ fn parseATXHeading(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
 
     const depth = token.?.lexeme.?.len;
     if (depth > 6) { // https://spec.commonmark.org/0.31.2/#example-63
-        self.i = 0; // backtrack
+        self.i -= 1; // backtrack
         return null;
     }
 
     var children: ArrayList(*ast.Node) = .empty;
 
+    var buf = Io.Writer.Allocating.init(arena);
     while (true) {
         const current = try self.peek(arena);
         if (current == null) {
@@ -107,21 +112,30 @@ fn parseATXHeading(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
         }
 
         const pound = try self.consume(arena, .pound);
-        if (pound != null and try self.consume(arena, .newline) != null) {
-            break;
-        } else if (pound != null) {
+        if (pound != null) {
+            if (try self.peek(arena)) |t| {
+                if (t.token_type == .newline) {
+                    break;
+                }
+            }
+
             self.i -= 1; // backtrack
         }
 
         const text = try self.parseText(gpa, arena);
         if (text) |t| {
-            try children.append(gpa, t);
+            try buf.writer.print("{s}", .{ t.text.value });
+            t.deinit(gpa);
         } else {
             break;
         }
     }
 
     _ = try self.consume(arena, .newline);
+
+    const text_value = std.mem.trim(u8, buf.written(), " \t");
+    const text_node = try createTextNode(gpa, text_value);
+    try children.append(gpa, text_node);
 
     const node = try gpa.create(ast.Node);
     node.* = .{
@@ -134,31 +148,38 @@ fn parseATXHeading(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
 }
 
 fn parseParagraph(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
-    var texts: ArrayList(*ast.Node) = .empty;
-
+    var lines: ArrayList([]const u8) = .empty;
     while (true) {
         const start = try self.parseTextStart(gpa, arena);
         if (start == null) {
             break;
         }
 
-        try texts.append(arena, start.?);
+        var line = Io.Writer.Allocating.init(arena);
+
+        try line.writer.print("{s}", .{ start.?.text.value });
+        start.?.deinit(gpa);
 
         while (try self.parseText(gpa, arena)) |t| {
-            try texts.append(arena, t);
+            try line.writer.print("{s}", .{ t.text.value });
+            t.deinit(gpa);
         }
 
+        try lines.append(arena, line.written());
         _ = try self.consume(arena, .newline);
     }
 
-    if (texts.items.len == 0) {
+    if (lines.items.len == 0) {
         return null;
     }
 
+    // Join lines by putting a space between them
     var buf = Io.Writer.Allocating.init(arena);
-    for (texts.items) |t| {
-        try buf.writer.print("{s}", .{ t.text.value });
-        t.deinit(gpa);
+    for (lines.items, 0..) |line, i| {
+        try buf.writer.print("{s}", .{ line });
+        if (i < lines.items.len - 1) {
+            try buf.writer.print(" ", .{});
+        }
     }
 
     const text_node = try createTextNode(gpa, buf.written());
@@ -187,10 +208,6 @@ fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
             self.advance();
             return createTextNode(gpa, value);
         },
-        .backslash => {
-            self.advance();
-            return createTextNode(gpa, "/");
-        },
         else => {
             return null;
         }
@@ -203,15 +220,18 @@ fn parseTextStart(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
         return null;
     }
 
-    switch (token.?.token_type) {
+    fsm: switch (token.?.token_type) {
+        .pound => {
+            if (token.?.lexeme != null and token.?.lexeme.?.len > 6) {
+                continue :fsm .text;
+            } else {
+                return null;
+            }
+        },
         .text => {
             const value = if (token.?.lexeme) |v| v else "";
             self.advance();
             return createTextNode(gpa, value);
-        },
-        .backslash => {
-            self.advance();
-            return createTextNode(gpa, "/");
         },
         else => {
             return null;
@@ -223,7 +243,7 @@ fn createTextNode(gpa: Allocator, value: []const u8) !*ast.Node {
     const node = try gpa.create(ast.Node);
     node.* = .{
         .text = .{
-            .value = try gpa.dupe(u8, std.mem.trimEnd(u8, value, " \t")),
+            .value = try gpa.dupe(u8, value),
         },
     };
     return node;
