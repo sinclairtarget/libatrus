@@ -63,21 +63,48 @@ pub fn next(self: *Self, alloc: Allocator) Error!?Token {
 
 // Reads the next line from the input stream.
 //
-// Line will always be terminated by a newline character.
+// Returned line will always be terminated by a newline character.
 fn read_line(alloc: Allocator, in: *Io.Reader) ![]const u8 {
-    const line = in.takeDelimiterInclusive('\n') catch |err| {
+    const line = in.takeDelimiterInclusive('\n') catch |err| blk: {
         switch (err) {
             DelimiterError.EndOfStream => {
-                return try in.takeDelimiterExclusive('\n');
+                if (in.bufferedLen() > 0) {
+                    // terminate with newline
+                    const line = try fmt.allocPrint(
+                        alloc,
+                        "{s}\n",
+                        .{ in.buffered() },
+                    );
+                    in.tossBuffered();
+                    break :blk line;
+                }
+
+                return err;
+            },
+            DelimiterError.StreamTooLong => {
+                // Next newline is further away than the capacity of the
+                // reader's buffer. If the stream is about to end anyway though,
+                // we just treat that the same as the end-of-stream case.
+                const line = try fmt.allocPrint(
+                    alloc,
+                    "{s}\n",
+                    .{ in.buffered() },
+                );
+                in.tossBuffered();
+                _ = in.peekByte() catch |peek_err| {
+                    switch (peek_err) {
+                        Io.Reader.Error.EndOfStream => {
+                            break :blk line;
+                        },
+                        else => return peek_err,
+                    }
+                };
+
+                return DelimiterError.StreamTooLong;
             },
             else => return err,
         }
     };
-
-    std.debug.assert(line.len >= 1);
-    if (line[line.len - 1] != '\n') {
-        return fmt.allocPrint(alloc, "{s}\n", .{line});
-    }
 
     return line;
 }
