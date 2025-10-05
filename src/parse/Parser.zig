@@ -124,7 +124,7 @@ fn parseATXHeading(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
 
         const text = try self.parseText(gpa, arena);
         if (text) |t| {
-            try buf.writer.print("{s}", .{ t.text.value });
+            try buf.writer.print("{s}", .{t.text.value});
             t.deinit(gpa);
         } else {
             break;
@@ -157,11 +157,11 @@ fn parseParagraph(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
 
         var line = Io.Writer.Allocating.init(arena);
 
-        try line.writer.print("{s}", .{ start.?.text.value });
+        try line.writer.print("{s}", .{start.?.text.value});
         start.?.deinit(gpa);
 
         while (try self.parseText(gpa, arena)) |t| {
-            try line.writer.print("{s}", .{ t.text.value });
+            try line.writer.print("{s}", .{t.text.value});
             t.deinit(gpa);
         }
 
@@ -176,7 +176,7 @@ fn parseParagraph(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
     // Join lines by putting a space between them
     var buf = Io.Writer.Allocating.init(arena);
     for (lines.items, 0..) |line, i| {
-        try buf.writer.print("{s}", .{ line });
+        try buf.writer.print("{s}", .{line});
         if (i < lines.items.len - 1) {
             try buf.writer.print(" ", .{});
         }
@@ -210,7 +210,7 @@ fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
         },
         else => {
             return null;
-        }
+        },
     }
 }
 
@@ -235,7 +235,7 @@ fn parseTextStart(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
         },
         else => {
             return null;
-        }
+        },
     }
 }
 

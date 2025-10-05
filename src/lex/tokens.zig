@@ -4,7 +4,7 @@ const Io = std.Io;
 
 pub const TokenType = enum {
     text,
-    pound,         // one or more consecutive '#' symbols, word-bounded
+    pound, // one or more consecutive '#' symbols, word-bounded
     newline,
 };
 
@@ -21,7 +21,7 @@ pub const Token = struct {
         if (self.lexeme) |lexeme| {
             try w.print("{s} \"{s}\"", .{ name, lexeme });
         } else {
-            try w.print("{s}", .{ name });
+            try w.print("{s}", .{name});
         }
     }
 };

@@ -123,16 +123,13 @@ pub fn renderHTML(
 // mode.
 pub const lex =
     if (builtin.mode == .Debug)
-        struct{
+        struct {
             pub const Token = @import("lex/tokens.zig").Token;
             pub const TokenType = @import("lex/tokens.zig").TokenType;
             pub const Tokenizer = @import("lex/Tokenizer.zig");
         }
     else
-        @compileError(
-            "tokenziation is only supported in the debug release mode"
-        )
-    ;
+        @compileError("tokenziation is only supported in the debug release mode");
 
 // ----------------------------------------------------------------------------
 const md =

@@ -15,7 +15,7 @@ pub const Error = error{
     ReadFailed,
 } || Allocator.Error;
 
-const State = enum{
+const State = enum {
     started,
     pound,
     text,
@@ -76,7 +76,7 @@ fn read_line(alloc: Allocator, in: *Io.Reader) ![]const u8 {
 
     std.debug.assert(line.len >= 1);
     if (line[line.len - 1] != '\n') {
-        return fmt.allocPrint(alloc, "{s}\n", .{ line });
+        return fmt.allocPrint(alloc, "{s}\n", .{line});
     }
 
     return line;
@@ -170,7 +170,6 @@ fn evaluate_lexeme(
         },
     }
 }
-
 
 test "can tokenize" {
     const md =
