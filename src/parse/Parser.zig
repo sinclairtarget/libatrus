@@ -177,7 +177,17 @@ fn parseIndentCode(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
             },
             .newline => {
                 _ = try self.consume(arena, .newline);
-                try line.writer.print("\n", .{});
+                try line.writer.print("", .{});
+            },
+            .text => {
+                if (strings.isBlankLine(line_start.lexeme.?)) {
+                    // https://spec.commonmark.org/0.30/#example-111
+                    _ = try self.consume(arena, .text);
+                    try line.writer.print("", .{});
+                    _ = try self.consume(arena, .newline);
+                } else {
+                    break;
+                }
             },
             else => break,
         }
@@ -192,7 +202,7 @@ fn parseIndentCode(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
     // Skip leading and trailing blank lines
     const start_index = blk: {
         for (lines.items, 0..) |line, i| {
-            if (line.len > 0 and !strings.containsOnly(line, '\n')) {
+            if (line.len > 0 and !strings.containsOnly(line, "\n")) {
                 break :blk i;
             }
         }
@@ -203,7 +213,7 @@ fn parseIndentCode(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
         while (i > 0) {
             i -= 1;
             const line = lines.items[i];
-            if (line.len > 0 and !strings.containsOnly(line, '\n')) {
+            if (line.len > 0 and !strings.containsOnly(line, "\n")) {
                 break :blk i + 1;
             }
         }
