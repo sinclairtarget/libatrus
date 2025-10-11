@@ -20,6 +20,7 @@ const Tokenizer = @import("../lex/Tokenizer.zig");
 const tokens = @import("../lex/tokens.zig");
 const Token = tokens.Token;
 const TokenType = tokens.TokenType;
+const strings = @import("../util/strings.zig");
 
 const Error = error{
     UnrecognizedSyntax,
@@ -56,9 +57,16 @@ pub fn parse(self: *Self, gpa: Allocator) !*ast.Node {
     while (try self.peek(arena) != null) {
         const len_start = children.items.len;
 
-        while (try self.parseATXHeading(gpa, arena)) |heading| {
+        if (try self.parseIndentCode(gpa, arena)) |indent_code| {
+            try children.append(gpa, indent_code);
+            try self.clear_line(arena);
+            continue;
+        }
+
+        if (try self.parseATXHeading(gpa, arena)) |heading| {
             try children.append(gpa, heading);
             try self.clear_line(arena);
+            continue;
         }
 
         while (try self.parseParagraph(gpa, arena)) |paragraph| {
@@ -147,6 +155,74 @@ fn parseATXHeading(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
     return node;
 }
 
+fn parseIndentCode(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
+    const token = try self.peek(arena);
+    if (token == null or token.?.token_type != .indent) {
+        return null;
+    }
+
+    var lines: ArrayList([]const u8) = .empty;
+    while (try self.peek(arena)) |current| {
+        var line = Io.Writer.Allocating.init(arena);
+
+        switch (current.token_type) {
+            .indent => {
+                _ = try self.consume(arena, .indent);
+                while (try self.parseText(gpa, arena)) |t| {
+                    try line.writer.print("{s}", .{t.text.value});
+                    t.deinit(gpa);
+                }
+
+                if (try self.consume(arena, .newline) != null) {
+                    try line.writer.print("\n", .{});
+                }
+            },
+            .newline => {
+                _ = try self.consume(arena, .newline);
+                try line.writer.print("\n", .{});
+            },
+            else => break,
+        }
+
+        try lines.append(arena, line.written());
+    }
+
+    if (lines.items.len == 0) {
+        return null;
+    }
+
+    // Skip leading and trailing blank lines
+    const start_index = blk: {
+        for (lines.items, 0..) |line, i| {
+            if (line.len > 0 and !strings.containsOnly(line, '\n')) {
+                break :blk i;
+            }
+        }
+        break :blk lines.items.len;
+    };
+    const end_index = blk: {
+        var i = lines.items.len;
+        while (i > 0) {
+            i -= 1;
+            const line = lines.items[i];
+            if (line.len > 0 and !strings.containsOnly(line, '\n')) {
+                break :blk i + 1;
+            }
+        }
+        break :blk 0;
+    };
+
+    const buf = try std.mem.join(arena, "", lines.items[start_index..end_index]);
+    const node = try gpa.create(ast.Node);
+    node.* = .{
+        .code = .{
+            .value = try gpa.dupe(u8, buf),
+            .lang = "",
+        },
+    };
+    return node;
+}
+
 fn parseParagraph(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
     var lines: ArrayList([]const u8) = .empty;
     while (try self.parseTextStart(gpa, arena)) |start| {
@@ -222,6 +298,11 @@ fn parseTextStart(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
             } else {
                 return null;
             }
+        },
+        .indent => {
+            // If we're already parsing a paragraph, leading indents are okay.
+            // https://spec.commonmark.org/0.30/#example-113
+            continue :fsm .text;
         },
         .text => {
             const value = if (token.?.lexeme) |v| v else "";
