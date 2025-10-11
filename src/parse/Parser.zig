@@ -162,10 +162,10 @@ fn parseIndentCode(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
     }
 
     var lines: ArrayList([]const u8) = .empty;
-    while (try self.peek(arena)) |current| {
+    while (try self.peek(arena)) |line_start| {
         var line = Io.Writer.Allocating.init(arena);
 
-        switch (current.token_type) {
+        switch (line_start.token_type) {
             .indent => {
                 _ = try self.consume(arena, .indent);
                 while (try self.parseText(gpa, arena)) |t| {
@@ -173,9 +173,7 @@ fn parseIndentCode(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
                     t.deinit(gpa);
                 }
 
-                if (try self.consume(arena, .newline) != null) {
-                    try line.writer.print("\n", .{});
-                }
+                _ = try self.consume(arena, .newline);
             },
             .newline => {
                 _ = try self.consume(arena, .newline);
@@ -212,7 +210,11 @@ fn parseIndentCode(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
         break :blk 0;
     };
 
-    const buf = try std.mem.join(arena, "", lines.items[start_index..end_index]);
+    const buf = try std.mem.join(
+        arena,
+        "\n",
+        lines.items[start_index..end_index],
+    );
     const node = try gpa.create(ast.Node);
     node.* = .{
         .code = .{

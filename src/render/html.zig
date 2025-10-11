@@ -44,7 +44,7 @@ fn render_node(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
         .code => |n| {
             // TODO: Lang?
             try out.print("<pre><code>", .{});
-            try out.print("{s}", .{n.value});
+            try out.print("{s}\n", .{n.value});
             try out.print("</code></pre>", .{});
         },
     }

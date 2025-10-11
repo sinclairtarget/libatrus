@@ -55,10 +55,10 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
             try stringify.write(n.value);
         },
         .code => |n| {
-            try stringify.objectField("value");
-            try stringify.write(n.value);
             try stringify.objectField("lang");
             try stringify.write(n.lang);
+            try stringify.objectField("value");
+            try stringify.write(n.value);
         },
     }
 
