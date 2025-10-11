@@ -128,7 +128,11 @@ pub fn main() !void {
 
                 var tokenizer = atrus.lex.Tokenizer.init(reader);
                 while (try tokenizer.next(arena)) |token| {
-                    try stdout.print("{f}\n", .{token});
+                    if (token.token_type == .newline) {
+                        try stdout.print("{f}\n", .{token});
+                    } else {
+                        try stdout.print("{f} ⋅ ", .{token});
+                    }
                     try stdout.flush();
                 }
             }
