@@ -246,16 +246,9 @@ fn parseParagraph(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
         return null;
     }
 
-    // Join lines by putting a space between them
-    var buf = Io.Writer.Allocating.init(arena);
-    for (lines.items, 0..) |line, i| {
-        try buf.writer.print("{s}", .{line});
-        if (i < lines.items.len - 1) {
-            try buf.writer.print(" ", .{});
-        }
-    }
-
-    const text_node = try createTextNode(gpa, buf.written());
+    // Join lines by putting a newline between them
+    const buf = try std.mem.join(arena, "\n", lines.items);
+    const text_node = try createTextNode(gpa, buf);
 
     const node = try gpa.create(ast.Node);
     var children = try gpa.alloc(*ast.Node, 1);
