@@ -10,6 +10,11 @@ pub const TokenType = enum {
     decimal_character_reference,
     hexadecimal_character_reference,
     entity_reference,
+    rule_star,
+    rule_underline,
+    rule_dash_with_whitespace,
+    rule_dash,
+    rule_equals,
 };
 
 pub const Token = struct {

@@ -25,6 +25,7 @@ const State = enum {
     decimal_character_reference,
     hexadecimal_character_reference,
     entity_reference,
+    rule,
 };
 
 in: *Io.Reader,
@@ -150,6 +151,9 @@ fn scan(self: *Self, arena: Allocator) !Token {
                         else => continue :fsm .text,
                     }
                 },
+                '*', '-', '_', '=' => {
+                    continue :fsm .rule;
+                },
                 else => {
                     continue :fsm .text;
                 },
@@ -170,6 +174,7 @@ fn scan(self: *Self, arena: Allocator) !Token {
                     continue :fsm .indent;
                 },
                 '#' => continue :fsm .pound,
+                '*', '-', '_', '=' => continue :fsm .rule,
                 else => continue :fsm .text,
             }
         },
@@ -256,6 +261,51 @@ fn scan(self: *Self, arena: Allocator) !Token {
                 },
             }
         },
+        .rule => {
+            const char = self.line[lookahead_i];
+            var num_chars: u32 = 0;
+            var contains_whitespace = false;
+
+            while (self.line[lookahead_i] != '\n') {
+                if (self.line[lookahead_i] != char) {
+                    if (
+                        self.line[lookahead_i] != ' '
+                        and self.line[lookahead_i] != '\t'
+                    ) {
+                        continue :fsm .text;
+                    }
+
+                    contains_whitespace = true;
+                }
+
+                num_chars += 1;
+                lookahead_i += 1;
+            }
+
+            if (char != '-' and char != '=' and num_chars < 3) {
+                continue :fsm .text;
+            }
+
+            switch (char) {
+                '*' => break :fsm .rule_star,
+                '_' => break :fsm .rule_underline,
+                '-' => {
+                    if (contains_whitespace) {
+                        break :fsm .rule_dash_with_whitespace;
+                    } else {
+                        break :fsm .rule_dash;
+                    }
+                },
+                '=' => {
+                    if (contains_whitespace) {
+                        continue :fsm .text;
+                    } else {
+                        break :fsm .rule_equals;
+                    }
+                },
+                else => unreachable,
+            }
+        },
         .text => {
             switch (self.line[lookahead_i]) {
                 '\n', '&' => {
@@ -304,7 +354,8 @@ fn evaluate_lexeme(
     lookahead_i: usize,
 ) !?[]const u8 {
     switch (token_type) {
-        .newline, .indent => {
+        .newline, .indent, .rule_star, .rule_underline, .rule_equals,
+        .rule_dash, .rule_dash_with_whitespace => {
             return null;
         },
         .pound => {
