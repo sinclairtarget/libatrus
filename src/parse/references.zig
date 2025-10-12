@@ -26,25 +26,25 @@ pub fn resolveEntity(name: []const u8) ?[]const u8 {
     // TODO: Support all named entities
     if (mem.eql(u8, name, "amp")) {
         return "&";
-    } else if (mem.eql(u8, name,"quot")) {
+    } else if (mem.eql(u8, name, "quot")) {
         return "\"";
-    } else if (mem.eql(u8, name,"nbsp")) {
+    } else if (mem.eql(u8, name, "nbsp")) {
         return " ";
-    } else if (mem.eql(u8, name,"copy")) {
+    } else if (mem.eql(u8, name, "copy")) {
         return "©";
-    } else if (mem.eql(u8, name,"AElig")) {
+    } else if (mem.eql(u8, name, "AElig")) {
         return "Æ";
-    } else if (mem.eql(u8, name,"Dcaron")) {
+    } else if (mem.eql(u8, name, "Dcaron")) {
         return "Ď";
-    } else if (mem.eql(u8, name,"frac34")) {
+    } else if (mem.eql(u8, name, "frac34")) {
         return "¾";
-    } else if (mem.eql(u8, name,"HilbertSpace")) {
+    } else if (mem.eql(u8, name, "HilbertSpace")) {
         return "ℋ";
-    } else if (mem.eql(u8, name,"DifferentialD")) {
+    } else if (mem.eql(u8, name, "DifferentialD")) {
         return "ⅆ";
-    } else if (mem.eql(u8, name,"ClockwiseContourIntegral")) {
+    } else if (mem.eql(u8, name, "ClockwiseContourIntegral")) {
         return "∲";
-    } else if (mem.eql(u8, name,"ngE")) {
+    } else if (mem.eql(u8, name, "ngE")) {
         return "≧̸";
     } else {
         return null;
