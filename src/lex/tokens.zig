@@ -7,6 +7,9 @@ pub const TokenType = enum {
     indent, // indent at beginning of line
     pound, // one or more consecutive '#' symbols, word-bounded
     newline,
+    decimal_character_reference,
+    hexadecimal_character_reference,
+    entity_reference,
 };
 
 pub const Token = struct {

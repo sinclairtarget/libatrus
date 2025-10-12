@@ -25,6 +25,7 @@ pub const ParseError = error{
     ReadFailed,
     LineTooLong, // TODO: Remove this?
     UnrecognizedSyntax,
+    UnicodeError,
 } || Allocator.Error || Io.Writer.Error;
 
 pub const ParseOptions = struct {

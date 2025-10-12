@@ -9,10 +9,12 @@ const ArrayList = std.ArrayList;
 
 const Token = @import("tokens.zig").Token;
 const TokenType = @import("tokens.zig").TokenType;
+const references = @import("references.zig");
 
 pub const Error = error{
     LineTooLong,
     ReadFailed,
+    UnicodeError,
 } || Allocator.Error;
 
 const State = enum {
@@ -21,6 +23,9 @@ const State = enum {
     pound,
     text,
     text_whitespace,
+    decimal_character_reference,
+    hexadecimal_character_reference,
+    entity_reference,
 };
 
 in: *Io.Reader,
@@ -114,7 +119,7 @@ fn read_line(arena: Allocator, in: *Io.Reader) ![]const u8 {
 }
 
 // Returns the next token starting at the current index.
-fn scan(self: *Self, arena: Allocator) Allocator.Error!Token {
+fn scan(self: *Self, arena: Allocator) !Token {
     var lookahead_i = self.i;
     const token_type: TokenType = fsm: switch (self.state) {
         .started => {
@@ -132,6 +137,19 @@ fn scan(self: *Self, arena: Allocator) Allocator.Error!Token {
                     }
 
                     continue :fsm .text;
+                },
+                '&' => {
+                    lookahead_i += 1;
+                    switch (self.line[lookahead_i]) {
+                        '#' => {
+                            lookahead_i += 1;
+                            continue :fsm .decimal_character_reference;
+                        },
+                        'a'...'z', 'A'...'Z', '0'...'9' => {
+                            continue :fsm .entity_reference;
+                        },
+                        else => continue :fsm .text,
+                    }
                 },
                 else => {
                     continue :fsm .text;
@@ -170,6 +188,75 @@ fn scan(self: *Self, arena: Allocator) Allocator.Error!Token {
                 },
             }
         },
+        .decimal_character_reference => {
+            var num_digits: u8 = 0;
+            while (num_digits < 8) {
+                switch (self.line[lookahead_i]) {
+                    '0'...'9' => {
+                        lookahead_i += 1;
+                        num_digits += 1;
+                    },
+                    ';' => {
+                        lookahead_i += 1;
+
+                        if (num_digits > 0) {
+                            break :fsm .decimal_character_reference;
+                        } else {
+                            continue :fsm .text;
+                        }
+                    },
+                    'x', 'X' => {
+                        lookahead_i += 1;
+                        continue :fsm .hexadecimal_character_reference;
+                    },
+                    else => {
+                        continue :fsm .text;
+                    },
+                }
+            }
+
+            continue :fsm .text;
+        },
+        .hexadecimal_character_reference => {
+            var num_digits: u8 = 0;
+            while (num_digits < 7) {
+                switch (self.line[lookahead_i]) {
+                    '0'...'9', 'a'...'f', 'A'...'F' => {
+                        lookahead_i += 1;
+                        num_digits += 1;
+                    },
+                    ';' => {
+                        lookahead_i += 1;
+
+                        if (num_digits > 0) {
+                            break :fsm .hexadecimal_character_reference;
+                        } else {
+                            continue :fsm .text;
+                        }
+                    },
+                    else => {
+                        continue :fsm .text;
+                    },
+                }
+            }
+
+            continue :fsm .text;
+        },
+        .entity_reference => {
+            switch (self.line[lookahead_i]) {
+                'a'...'z', 'A'...'Z', '0'...'9' => {
+                    lookahead_i += 1;
+                    continue :fsm .entity_reference;
+                },
+                ';' => {
+                    lookahead_i += 1;
+                    break :fsm .entity_reference;
+                },
+                else => {
+                    continue :fsm .text;
+                },
+            }
+        },
         .text => {
             switch (self.line[lookahead_i]) {
                 '\n' => {
@@ -186,7 +273,7 @@ fn scan(self: *Self, arena: Allocator) Allocator.Error!Token {
         },
         .text_whitespace => {
             switch (self.line[lookahead_i]) {
-                '\n', '#' => {
+                '\n', '#', '&' => {
                     break :fsm .text;
                 },
                 ' ', '\t' => {
@@ -227,6 +314,22 @@ fn evaluate_lexeme(
                 std.mem.trim(u8, self.line[self.i..lookahead_i], " \t"),
             );
             return lexeme;
+        },
+        .decimal_character_reference => {
+            const digits = self.line[self.i + 2..lookahead_i - 1];
+            return try references.resolveCharacter(arena, digits, 10);
+        },
+        .hexadecimal_character_reference => {
+            const digits = self.line[self.i + 3..lookahead_i - 1];
+            return try references.resolveCharacter(arena, digits, 16);
+        },
+        .entity_reference => {
+            const name = self.line[self.i + 1..lookahead_i - 1];
+            if (references.resolveEntity(name)) |chars| {
+                return chars;
+            } else {
+                return try arena.dupe(u8, self.line[self.i..lookahead_i]);
+            }
         },
         else => {
             return try copyWithoutEscapes(arena, self.line[self.i..lookahead_i]);
