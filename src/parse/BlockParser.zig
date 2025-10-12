@@ -1,3 +1,5 @@
+//! Parser for the first parsing stage that handles block-level parsing.
+//!
 //! Parser pulls tokens from the tokenizer as needed. The tokens are stored in
 //! an array list. The array list is cleared as each line is successfully
 //! parsed.

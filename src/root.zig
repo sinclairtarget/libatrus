@@ -10,7 +10,8 @@ const Io = std.Io;
 const ArrayList = std.ArrayList;
 
 const Tokenizer = @import("lex/Tokenizer.zig");
-const Parser = @import("parse/Parser.zig");
+const BlockParser = @import("parse/BlockParser.zig");
+const InlineParser = @import("parse/InlineParser.zig");
 const post = @import("parse/post.zig");
 const json = @import("render/json.zig");
 const html = @import("render/html.zig");
@@ -45,16 +46,23 @@ pub fn parse(
     options: ParseOptions,
 ) ParseError!*ast.Node {
     var reader: Io.Reader = .fixed(in);
-    var tokenizer = Tokenizer.init(&reader);
-    var parser = Parser.init(&tokenizer);
-    const root = try parser.parse(alloc);
+
+    // first stage; parse into blocks
+    var block_tokenizer = Tokenizer.init(&reader);
+    var block_parser = BlockParser.init(&block_tokenizer);
+    var root = try block_parser.parse(alloc);
+
+    // second stage; parse inline elements
+    var inline_parser = InlineParser{};
+    root = try inline_parser.parse(alloc, root);
 
     if (options.parse_level == .pre) {
         return root;
     }
 
-    const postprocessed_root = try post.postProcess(alloc, root);
-    return postprocessed_root;
+    // third stage; MyST-specific transforms
+    root = try post.postProcess(alloc, root);
+    return root;
 }
 
 /// Parses the input string (containing a MyST AST in JSON form) into a MYST
