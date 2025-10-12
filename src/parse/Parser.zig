@@ -170,9 +170,15 @@ fn parseIndentCode(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
         switch (line_start.token_type) {
             .indent => {
                 _ = try self.consume(arena, .indent);
-                while (try self.parseText(gpa, arena)) |t| {
-                    try line.writer.print("{s}", .{t.text.value});
-                    t.deinit(gpa);
+                while (try self.peek(arena)) |t| {
+                    if (t.token_type == .newline) {
+                        break;
+                    }
+
+                    if (t.lexeme) |v| {
+                        self.advance();
+                        try line.writer.print("{s}", .{ v });
+                    }
                 }
 
                 _ = try self.consume(arena, .newline);
@@ -287,9 +293,10 @@ fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
             return createTextNode(gpa, value);
         },
         .decimal_character_reference => {
+            const lexeme = token.?.lexeme.?;
             const value = try references.resolveCharacter(
                 gpa,
-                token.?.lexeme.?,
+                lexeme[2..lexeme.len - 1],
                 10,
             );
             defer gpa.free(value); // TODO: awk.
@@ -297,9 +304,10 @@ fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
             return createTextNode(gpa, value);
         },
         .hexadecimal_character_reference => {
+            const lexeme = token.?.lexeme.?;
             const value = try references.resolveCharacter(
                 gpa,
-                token.?.lexeme.?,
+                lexeme[3..lexeme.len - 1],
                 16,
             );
             defer gpa.free(value); // TODO: awk.
@@ -307,17 +315,13 @@ fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
             return createTextNode(gpa, value);
         },
         .entity_reference => {
-            const value = references.resolveEntity(token.?.lexeme.?);
+            const lexeme = token.?.lexeme.?;
+            const value = references.resolveEntity(lexeme[1..lexeme.len - 1]);
             self.advance();
             if (value) |v| {
                 return createTextNode(gpa, v);
             } else {
-                const v = try fmt.allocPrint(
-                    arena,
-                    "&{s};",
-                    .{ token.?.lexeme.? },
-                );
-                return createTextNode(gpa, v);
+                return createTextNode(gpa, lexeme);
             }
         },
         else => {

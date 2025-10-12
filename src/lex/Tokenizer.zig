@@ -314,17 +314,9 @@ fn evaluate_lexeme(
             );
             return lexeme;
         },
-        .decimal_character_reference => {
-            const digits = self.line[self.i + 2..lookahead_i - 1];
-            return try arena.dupe(u8, digits);
-        },
-        .hexadecimal_character_reference => {
-            const digits = self.line[self.i + 3..lookahead_i - 1];
-            return try arena.dupe(u8, digits);
-        },
+        .decimal_character_reference, .hexadecimal_character_reference,
         .entity_reference => {
-            const name = self.line[self.i + 1..lookahead_i - 1];
-            return try arena.dupe(u8, name);
+            return try arena.dupe(u8, self.line[self.i..lookahead_i]);
         },
         else => {
             return try copyWithoutEscapes(arena, self.line[self.i..lookahead_i]);
