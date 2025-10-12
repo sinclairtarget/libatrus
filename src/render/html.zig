@@ -7,45 +7,59 @@ pub fn render(
     root: *ast.Node,
     out: *Io.Writer,
 ) Io.Writer.Error!void {
-    try render_node(out, root);
+    try renderNode(out, root);
     try out.flush();
 }
 
-fn render_node(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
+fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
     switch (node.*) {
         .root => |n| {
             for (n.children) |child| {
-                try render_node(out, child);
+                try renderNode(out, child);
             }
         },
         .block => |n| {
             for (n.children) |child| {
-                try render_node(out, child);
+                try renderNode(out, child);
                 try out.print("\n", .{});
             }
         },
         .paragraph => |n| {
             try out.print("<p>", .{});
             for (n.children) |child| {
-                try render_node(out, child);
+                try renderNode(out, child);
             }
             try out.print("</p>", .{});
         },
         .heading => |n| {
             try out.print("<h{d}>", .{n.depth});
             for (n.children) |child| {
-                try render_node(out, child);
+                try renderNode(out, child);
             }
             try out.print("</h{d}>", .{n.depth});
         },
         .text => |n| {
-            try out.print("{s}", .{n.value});
+            try printEscaped(out, n.value);
         },
         .code => |n| {
             // TODO: Lang?
             try out.print("<pre><code>", .{});
-            try out.print("{s}\n", .{n.value});
+            try printEscaped(out, n.value);
+            try out.print("\n", .{});
             try out.print("</code></pre>", .{});
         },
+    }
+}
+
+fn printEscaped(out: *Io.Writer, s: []const u8) Io.Writer.Error!void {
+    for (s) |c| {
+        switch (c) {
+            '&' => try out.print("&amp;", .{}),
+            '<' => try out.print("&lt;", .{}),
+            '>' => try out.print("&gt;", .{}),
+            '"' => try out.print("&quot;", .{}),
+            '\'' => try out.print("&#39;", .{}),
+            else => try out.writeByte(c),
+        }
     }
 }
