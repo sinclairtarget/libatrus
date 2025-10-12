@@ -10,6 +10,7 @@
 //! text          => TEXT | BACKSLASH | POUND
 
 const std = @import("std");
+const fmt = std.fmt;
 const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
 const Io = std.Io;
@@ -20,6 +21,7 @@ const Tokenizer = @import("../lex/Tokenizer.zig");
 const tokens = @import("../lex/tokens.zig");
 const Token = tokens.Token;
 const TokenType = tokens.TokenType;
+const references = @import("references.zig");
 const strings = @import("../util/strings.zig");
 
 const Error = error{
@@ -280,9 +282,43 @@ fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
 
     switch (token.?.token_type) {
         .text, .pound => {
-            const value = if (token.?.lexeme) |v| v else "";
+            const value = token.?.lexeme orelse "";
             self.advance();
             return createTextNode(gpa, value);
+        },
+        .decimal_character_reference => {
+            const value = try references.resolveCharacter(
+                gpa,
+                token.?.lexeme.?,
+                10,
+            );
+            defer gpa.free(value); // TODO: awk.
+            self.advance();
+            return createTextNode(gpa, value);
+        },
+        .hexadecimal_character_reference => {
+            const value = try references.resolveCharacter(
+                gpa,
+                token.?.lexeme.?,
+                16,
+            );
+            defer gpa.free(value); // TODO: awk.
+            self.advance();
+            return createTextNode(gpa, value);
+        },
+        .entity_reference => {
+            const value = references.resolveEntity(token.?.lexeme.?);
+            self.advance();
+            if (value) |v| {
+                return createTextNode(gpa, v);
+            } else {
+                const v = try fmt.allocPrint(
+                    arena,
+                    "&{s};",
+                    .{ token.?.lexeme.? },
+                );
+                return createTextNode(gpa, v);
+            }
         },
         else => {
             return null;
@@ -296,10 +332,10 @@ fn parseTextStart(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
         return null;
     }
 
-    fsm: switch (token.?.token_type) {
+    switch (token.?.token_type) {
         .pound => {
             if (token.?.lexeme != null and token.?.lexeme.?.len > 6) {
-                continue :fsm .text;
+                return try self.parseText(gpa, arena);
             } else {
                 return null;
             }
@@ -307,12 +343,12 @@ fn parseTextStart(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
         .indent => {
             // If we're already parsing a paragraph, leading indents are okay.
             // https://spec.commonmark.org/0.30/#example-113
-            continue :fsm .text;
+            _ = try self.consume(arena, .indent);
+            return try self.parseText(gpa, arena);
         },
-        .text => {
-            const value = if (token.?.lexeme) |v| v else "";
-            self.advance();
-            return createTextNode(gpa, value);
+        .text, .decimal_character_reference, .hexadecimal_character_reference,
+        .entity_reference => {
+            return try self.parseText(gpa, arena);
         },
         else => {
             return null;

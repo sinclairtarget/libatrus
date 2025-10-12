@@ -18,7 +18,7 @@ pub fn resolveCharacter(
         };
         return try alloc.dupe(u8, buf[0..bytes_written]);
     } else {
-        return &unicode.replacement_character_utf8;
+        return try alloc.dupe(u8, &unicode.replacement_character_utf8);
     }
 }
 

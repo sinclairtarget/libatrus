@@ -9,7 +9,6 @@ const ArrayList = std.ArrayList;
 
 const Token = @import("tokens.zig").Token;
 const TokenType = @import("tokens.zig").TokenType;
-const references = @import("references.zig");
 
 pub const Error = error{
     LineTooLong,
@@ -317,19 +316,15 @@ fn evaluate_lexeme(
         },
         .decimal_character_reference => {
             const digits = self.line[self.i + 2..lookahead_i - 1];
-            return try references.resolveCharacter(arena, digits, 10);
+            return try arena.dupe(u8, digits);
         },
         .hexadecimal_character_reference => {
             const digits = self.line[self.i + 3..lookahead_i - 1];
-            return try references.resolveCharacter(arena, digits, 16);
+            return try arena.dupe(u8, digits);
         },
         .entity_reference => {
             const name = self.line[self.i + 1..lookahead_i - 1];
-            if (references.resolveEntity(name)) |chars| {
-                return chars;
-            } else {
-                return try arena.dupe(u8, self.line[self.i..lookahead_i]);
-            }
+            return try arena.dupe(u8, name);
         },
         else => {
             return try copyWithoutEscapes(arena, self.line[self.i..lookahead_i]);
