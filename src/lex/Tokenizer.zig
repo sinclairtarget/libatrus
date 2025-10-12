@@ -258,7 +258,7 @@ fn scan(self: *Self, arena: Allocator) !Token {
         },
         .text => {
             switch (self.line[lookahead_i]) {
-                '\n' => {
+                '\n', '&' => {
                     break :fsm .text;
                 },
                 ' ', '\t' => {
