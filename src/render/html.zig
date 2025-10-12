@@ -48,6 +48,9 @@ fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
             try out.print("\n", .{});
             try out.print("</code></pre>", .{});
         },
+        .thematic_break => {
+            try out.print("<hr />", .{});
+        },
     }
 }
 

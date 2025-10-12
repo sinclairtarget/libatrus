@@ -13,6 +13,7 @@ pub const Node = union(enum) {
     paragraph: Container,
     text: Text,
     code: Code,
+    thematic_break: Empty,
 
     const Self = @This();
 
@@ -41,6 +42,7 @@ pub const Node = union(enum) {
                 alloc.free(n.value);
                 alloc.free(n.lang);
             },
+            .thematic_break => {},
         }
 
         alloc.destroy(self);
@@ -69,3 +71,5 @@ pub const Code = struct {
     value: []const u8,
     lang: []const u8,
 };
+
+pub const Empty = struct {};

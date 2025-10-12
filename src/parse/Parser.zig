@@ -71,6 +71,12 @@ pub fn parse(self: *Self, gpa: Allocator) !*ast.Node {
             continue;
         }
 
+        if (try self.parseThematicBreak(gpa, arena)) |thematic_break| {
+            try children.append(gpa, thematic_break);
+            try self.clear_line(arena);
+            continue;
+        }
+
         while (try self.parseParagraph(gpa, arena)) |paragraph| {
             try children.append(gpa, paragraph);
             try self.clear_line(arena);
@@ -154,6 +160,37 @@ fn parseATXHeading(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
             .children = try children.toOwnedSlice(gpa),
         },
     };
+    return node;
+}
+
+fn parseThematicBreak(
+    self: *Self,
+    gpa: Allocator,
+    arena: Allocator,
+) !?*ast.Node {
+    const token = try self.peek(arena);
+    if (token == null) {
+        return null;
+    }
+
+    switch (token.?.token_type) {
+        .rule_star, .rule_underline, .rule_dash_with_whitespace => {
+            self.advance();
+        },
+        .rule_dash => {
+            if (token.?.lexeme.?.len < 3) {
+                return null;
+            }
+
+            self.advance();
+        },
+        else => return null,
+    }
+
+    _ = try self.consume(arena, .newline);
+
+    const node = try gpa.create(ast.Node);
+    node.* = .{ .thematic_break = .{} };
     return node;
 }
 
@@ -287,7 +324,7 @@ fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
     }
 
     switch (token.?.token_type) {
-        .text, .pound => {
+        .text, .pound, .rule_equals, .rule_dash => {
             const value = token.?.lexeme orelse "";
             self.advance();
             return createTextNode(gpa, value);
@@ -351,7 +388,7 @@ fn parseTextStart(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
             return try self.parseText(gpa, arena);
         },
         .text, .decimal_character_reference, .hexadecimal_character_reference,
-        .entity_reference => {
+        .entity_reference, .rule_equals, .rule_dash => {
             return try self.parseText(gpa, arena);
         },
         else => {

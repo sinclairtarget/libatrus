@@ -36,7 +36,11 @@ pub fn render(
 fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
     try stringify.beginObject();
     try stringify.objectField("type");
-    try stringify.write(@tagName(node.*));
+
+    switch (node.*) {
+        .thematic_break => try stringify.write("thematicBreak"),
+        else => try stringify.write(@tagName(node.*)),
+    }
 
     switch (node.*) {
         .root => |n| {
@@ -60,6 +64,7 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
             try stringify.objectField("value");
             try stringify.write(n.value);
         },
+        .thematic_break => {},
     }
 
     try stringify.endObject();
