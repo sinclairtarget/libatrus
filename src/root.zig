@@ -25,7 +25,8 @@ pub const version = config.version;
 pub const ParseError = error{
     ReadFailed,
     LineTooLong, // TODO: Remove this?
-    UnrecognizedSyntax,
+    UnrecognizedBlockToken,
+    UnrecognizedInlineToken,
     UnicodeError,
 } || Allocator.Error || Io.Writer.Error;
 
@@ -51,6 +52,7 @@ pub fn parse(
     var block_tokenizer = BlockTokenizer.init(&reader);
     var block_parser = BlockParser.init(&block_tokenizer);
     var root = try block_parser.parse(alloc);
+    errdefer root.deinit(alloc);
 
     // second stage; parse inline elements
     root = try InlineParser.transform(alloc, root);

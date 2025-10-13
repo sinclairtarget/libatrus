@@ -5,57 +5,231 @@ const ArrayList = std.ArrayList;
 const ast = @import("ast.zig");
 const tokens = @import("../lex/tokens.zig");
 const InlineToken = tokens.InlineToken;
+const InlineTokenType = tokens.InlineTokenType;
+const InlineTokenizer = @import("../lex/InlineTokenizer.zig");
+const references = @import("references.zig");
 
+const Error = error{
+    UnrecognizedInlineToken,
+};
+
+tokenizer: *InlineTokenizer,
 line: ArrayList(InlineToken),
 i: usize,
 
 const Self = @This();
 
-const init = Self{
-    .line = .empty,
-    .i = 0,
-};
+pub fn init(tokenizer: *InlineTokenizer) Self {
+    return .{
+        .tokenizer = tokenizer,
+        .line = .empty,
+        .i = 0,
+    };
+}
 
-fn parse(
-    self: *Self,
-    gpa: Allocator,
-    node: *ast.Node,
-    value: []const u8,
-) !*ast.Node {
-    _ = self;
-    _ = gpa;
-    _ = value;
+fn parse(self: *Self, gpa: Allocator, arena: Allocator) ![]*ast.Node {
+    var nodes: ArrayList(*ast.Node) = .empty;
+    errdefer {
+        for (nodes.items) |node| {
+            node.deinit(gpa);
+        }
+    }
+
+    while (try self.peek(arena) != null) {
+        const len_start = nodes.items.len;
+
+        while (try self.parseText(gpa, arena)) |text| {
+            try nodes.append(arena, text);
+        }
+
+        if (nodes.items.len <= len_start) {
+            // Nothing parsed this loop
+            const t = try self.peek(arena);
+            std.debug.print("unsure how to parse: {f}\n", .{t.?});
+            return error.UnrecognizedInlineToken;
+        }
+    }
+
+    return nodes.toOwnedSlice(arena);
+}
+
+fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
+    var values: ArrayList([]const u8) = .empty;
+
+    while (try self.peek(arena)) |token| {
+        switch (token.token_type) {
+            .text => {
+                const value = token.lexeme orelse "";
+                try values.append(arena, value);
+                self.advance();
+            },
+            .entity_reference => {
+                const lexeme = token.lexeme.?;
+                const value = references.resolveEntity(lexeme[1..lexeme.len - 1]);
+                if (value) |v| {
+                    try values.append(arena, v);
+                } else {
+                    // Unknown entity
+                    try values.append(arena, lexeme);
+                }
+                self.advance();
+            },
+            .newline => {
+                try values.append(arena, "\n");
+                self.advance();
+            },
+        }
+    }
+
+    if (values.items.len == 0) {
+        return null;
+    }
+
+    const node = try gpa.create(ast.Node);
+    node.* = .{
+        .text = .{
+            .value = try std.mem.join(gpa, "", values.items),
+        },
+    };
     return node;
 }
 
-pub fn transform(gpa: Allocator, node: *ast.Node) !*ast.Node {
-    switch (node.*) {
+fn createTextNode(gpa: Allocator, value: []const u8) !*ast.Node {
+    const node = try gpa.create(ast.Node);
+    node.* = .{
+        .text = .{
+            .value = try gpa.dupe(u8, value),
+        },
+    };
+    return node;
+}
+
+fn peek(self: *Self, arena: Allocator) !?InlineToken {
+    if (self.i >= self.line.items.len) {
+        const next = try self.tokenizer.next(arena);
+        if (next == null) {
+            return null; // end of input
+        }
+
+        try self.line.append(arena, next.?);
+    }
+
+    return self.line.items[self.i];
+}
+
+fn consume(
+    self: *Self,
+    arena: Allocator,
+    token_type: InlineTokenType,
+) !?InlineToken {
+    const current = try self.peek(arena);
+
+    if (current == null) {
+        return null;
+    }
+
+    if (current.?.token_type != token_type) {
+        return null;
+    }
+
+    self.advance();
+    return current;
+}
+
+fn advance(self: *Self) void {
+    self.i += 1;
+}
+
+pub fn transform(gpa: Allocator, original_node: *ast.Node) !*ast.Node {
+    switch (original_node.*) {
         .root => |n| {
             for (0..n.children.len) |i| {
                 n.children[i] = try transform(gpa, n.children[i]);
             }
-            return node;
+            return original_node;
         },
-        .block, .paragraph => |n| {
+        .block => |n| {
             for (0..n.children.len) |i| {
                 n.children[i] = try transform(gpa, n.children[i]);
             }
+            return original_node;
+        },
+        .paragraph => |n| {
+            for (0..n.children.len) |i| {
+                n.children[i] = try transform(gpa, n.children[i]);
+            }
+
+            const children = try parseInlineNodes(gpa, n.children);
+            if (children.ptr == n.children.ptr) {
+                return original_node; // nothing was changed
+            }
+            defer original_node.deinit(gpa);
+
+            const node = try gpa.create(ast.Node);
+            node.* = .{
+                .paragraph = .{
+                    .children = children,
+                },
+            };
             return node;
         },
         .heading => |n| {
             for (0..n.children.len) |i| {
                 n.children[i] = try transform(gpa, n.children[i]);
             }
+
+            const children = try parseInlineNodes(gpa, n.children);
+            if (children.ptr == n.children.ptr) {
+                return original_node; // nothing was changed
+            }
+            defer original_node.deinit(gpa);
+
+            const node = try gpa.create(ast.Node);
+            node.* = .{
+                .heading = .{
+                    .children = children,
+                    .depth = n.depth,
+                },
+            };
             return node;
         },
-        .text => |n| {
-            var parser = Self.init;
-            const replacement = try parser.parse(gpa, node, n.value);
-            if (replacement != node) {
-                node.deinit(gpa); // TODO: Make sure same gpa??
-            }
-            return replacement;
-        },
-        .code, .thematic_break => return node,
+        .text, .code, .thematic_break => return original_node,
     }
+}
+
+fn parseInlineNodes(gpa: Allocator, original_nodes: []*ast.Node) ![]*ast.Node {
+    var arena_impl = std.heap.ArenaAllocator.init(gpa);
+    defer arena_impl.deinit();
+    const arena = arena_impl.allocator();
+
+    var nodes: ArrayList(*ast.Node) = .empty;
+
+    var did_replace_something = false;
+    for (original_nodes) |node| {
+        switch (node.*) {
+            .text => |n| {
+                var tokenizer = InlineTokenizer.init(n.value);
+                var parser = Self.init(&tokenizer);
+                const replacement_nodes = try parser.parse(gpa, arena);
+                for (replacement_nodes) |replacement| {
+                    try nodes.append(gpa, replacement);
+                }
+
+                did_replace_something = true;
+            },
+            else => {
+                try nodes.append(gpa, node);
+            },
+        }
+
+        // Clear memory used for scratch and tokenization
+        _ = arena_impl.reset(.retain_capacity);
+    }
+
+    if (!did_replace_something) {
+        nodes.deinit(gpa);
+        return original_nodes;
+    }
+
+    return nodes.toOwnedSlice(gpa);
 }

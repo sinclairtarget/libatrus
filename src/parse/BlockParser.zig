@@ -16,11 +16,10 @@ const BlockTokenizer = @import("../lex/BlockTokenizer.zig");
 const tokens = @import("../lex/tokens.zig");
 const BlockToken = tokens.BlockToken;
 const BlockTokenType = tokens.BlockTokenType;
-const references = @import("references.zig");
 const strings = @import("../util/strings.zig");
 
 const Error = error{
-    UnrecognizedSyntax,
+    UnrecognizedBlockToken,
 };
 
 tokenizer: *BlockTokenizer,
@@ -87,7 +86,7 @@ pub fn parse(self: *Self, gpa: Allocator) !*ast.Node {
             // Nothing parsed this loop
             const t = try self.peek(arena);
             std.debug.print("unsure how to parse: {f}\n", .{t.?});
-            return Error.UnrecognizedSyntax;
+            return Error.UnrecognizedBlockToken;
         }
     }
 

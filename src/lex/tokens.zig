@@ -15,8 +15,10 @@ pub const BlockTokenType = enum {
 };
 
 pub const InlineTokenType = enum {
-    decimal_character_reference,
-    hexadecimal_character_reference,
+    text,
+    newline,
+//     decimal_character_reference,
+//     hexadecimal_character_reference,
     entity_reference,
 };
 
