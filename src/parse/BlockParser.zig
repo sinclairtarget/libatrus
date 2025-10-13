@@ -93,7 +93,7 @@ pub fn parse(self: *Self, gpa: Allocator) !*ast.Node {
         if (children.items.len <= len_start and lines_skipped == 0) {
             // Nothing parsed this loop
             const t = try self.peek(arena);
-            std.debug.print("unsure how to parse: {f}\n", .{ t.? });
+            std.debug.print("unsure how to parse: {f}\n", .{t.?});
             return Error.UnrecognizedSyntax;
         }
     }
@@ -216,7 +216,7 @@ fn parseIndentCode(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
 
                     if (t.lexeme) |v| {
                         self.advance();
-                        try line.writer.print("{s}", .{ v });
+                        try line.writer.print("{s}", .{v});
                     }
                 }
 
@@ -335,7 +335,7 @@ fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
             const lexeme = token.?.lexeme.?;
             const value = try references.resolveCharacter(
                 gpa,
-                lexeme[2..lexeme.len - 1],
+                lexeme[2 .. lexeme.len - 1],
                 10,
             );
             defer gpa.free(value); // TODO: awk.
@@ -346,7 +346,7 @@ fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
             const lexeme = token.?.lexeme.?;
             const value = try references.resolveCharacter(
                 gpa,
-                lexeme[3..lexeme.len - 1],
+                lexeme[3 .. lexeme.len - 1],
                 16,
             );
             defer gpa.free(value); // TODO: awk.
@@ -355,7 +355,7 @@ fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
         },
         .entity_reference => {
             const lexeme = token.?.lexeme.?;
-            const value = references.resolveEntity(lexeme[1..lexeme.len - 1]);
+            const value = references.resolveEntity(lexeme[1 .. lexeme.len - 1]);
             self.advance();
             if (value) |v| {
                 return createTextNode(gpa, v);
@@ -389,8 +389,7 @@ fn parseTextStart(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
             _ = try self.consume(arena, .indent);
             return try self.parseText(gpa, arena);
         },
-        .text, .decimal_character_reference, .hexadecimal_character_reference,
-        .entity_reference, .rule_equals, .rule_dash => {
+        .text, .decimal_character_reference, .hexadecimal_character_reference, .entity_reference, .rule_equals, .rule_dash => {
             return try self.parseText(gpa, arena);
         },
         else => {

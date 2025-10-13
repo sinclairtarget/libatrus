@@ -53,8 +53,7 @@ pub fn parse(
     var root = try block_parser.parse(alloc);
 
     // second stage; parse inline elements
-    var inline_parser = InlineParser{};
-    root = try inline_parser.parse(alloc, root);
+    root = try InlineParser.transform(alloc, root);
 
     if (options.parse_level == .pre) {
         return root;

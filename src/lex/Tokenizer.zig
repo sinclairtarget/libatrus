@@ -82,7 +82,7 @@ fn read_line(arena: Allocator, in: *Io.Reader) ![]const u8 {
                     const line = try fmt.allocPrint(
                         arena,
                         "{s}\n",
-                        .{ in.buffered() },
+                        .{in.buffered()},
                     );
                     in.tossBuffered();
                     break :blk line;
@@ -97,7 +97,7 @@ fn read_line(arena: Allocator, in: *Io.Reader) ![]const u8 {
                 const line = try fmt.allocPrint(
                     arena,
                     "{s}\n",
-                    .{ in.buffered() },
+                    .{in.buffered()},
                 );
                 in.tossBuffered();
                 _ = in.peekByte() catch |peek_err| {
@@ -272,10 +272,7 @@ fn scan(self: *Self, arena: Allocator) !Token {
 
             while (self.line[lookahead_i] != '\n') {
                 if (self.line[lookahead_i] != char) {
-                    if (
-                        self.line[lookahead_i] != ' '
-                        and self.line[lookahead_i] != '\t'
-                    ) {
+                    if (self.line[lookahead_i] != ' ' and self.line[lookahead_i] != '\t') {
                         continue :fsm .text;
                     }
 
@@ -358,8 +355,7 @@ fn evaluate_lexeme(
     lookahead_i: usize,
 ) !?[]const u8 {
     switch (token_type) {
-        .newline, .indent, .rule_star, .rule_underline,
-        .rule_dash_with_whitespace => {
+        .newline, .indent, .rule_star, .rule_underline, .rule_dash_with_whitespace => {
             return null;
         },
         .pound => {
@@ -369,8 +365,7 @@ fn evaluate_lexeme(
             );
             return lexeme;
         },
-        .decimal_character_reference, .hexadecimal_character_reference,
-        .entity_reference, .rule_equals, .rule_dash => {
+        .decimal_character_reference, .hexadecimal_character_reference, .entity_reference, .rule_equals, .rule_dash => {
             return try arena.dupe(u8, self.line[self.i..lookahead_i]);
         },
         else => {
@@ -397,7 +392,7 @@ fn copyWithoutEscapes(alloc: Allocator, s: []const u8) ![]const u8 {
                         copy[dest_index] = s[source_index];
                         source_index += 1;
                         dest_index += 1;
-                    }
+                    },
                 }
             },
             .escape => {
@@ -408,7 +403,7 @@ fn copyWithoutEscapes(alloc: Allocator, s: []const u8) ![]const u8 {
                         source_index += 1;
                         dest_index += 1;
                     },
-                    else => {}
+                    else => {},
                 }
                 state = .normal;
             },

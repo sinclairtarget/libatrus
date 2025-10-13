@@ -50,17 +50,17 @@ pub const Node = union(enum) {
 };
 
 pub const Root = struct {
-    children: []const *Node,
+    children: []*Node,
     is_post_processed: bool = false,
 };
 
 pub const Container = struct {
-    children: []const *Node,
+    children: []*Node,
 };
 
 pub const Heading = struct {
     depth: u8,
-    children: []const *Node,
+    children: []*Node,
 };
 
 pub const Text = struct {
