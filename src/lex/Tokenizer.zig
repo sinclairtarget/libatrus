@@ -1,4 +1,5 @@
 //! Takes an input reader and tokenizes line by line.
+
 const std = @import("std");
 const ascii = std.ascii;
 const fmt = std.fmt;
@@ -22,9 +23,6 @@ const State = enum {
     pound,
     text,
     text_whitespace,
-    decimal_character_reference,
-    hexadecimal_character_reference,
-    entity_reference,
     rule,
 };
 
@@ -138,19 +136,6 @@ fn scan(self: *Self, arena: Allocator) !Token {
 
                     continue :fsm .text;
                 },
-                '&' => {
-                    lookahead_i += 1;
-                    switch (self.line[lookahead_i]) {
-                        '#' => {
-                            lookahead_i += 1;
-                            continue :fsm .decimal_character_reference;
-                        },
-                        'a'...'z', 'A'...'Z', '0'...'9' => {
-                            continue :fsm .entity_reference;
-                        },
-                        else => continue :fsm .text,
-                    }
-                },
                 '*', '-', '_', '=' => {
                     if (lookahead_i == 0) {
                         continue :fsm .rule;
@@ -190,75 +175,6 @@ fn scan(self: *Self, arena: Allocator) !Token {
                 },
                 ' ', '\t', '\n' => {
                     break :fsm .pound;
-                },
-                else => {
-                    continue :fsm .text;
-                },
-            }
-        },
-        .decimal_character_reference => {
-            var num_digits: u8 = 0;
-            while (num_digits < 8) {
-                switch (self.line[lookahead_i]) {
-                    '0'...'9' => {
-                        lookahead_i += 1;
-                        num_digits += 1;
-                    },
-                    ';' => {
-                        lookahead_i += 1;
-
-                        if (num_digits > 0) {
-                            break :fsm .decimal_character_reference;
-                        } else {
-                            continue :fsm .text;
-                        }
-                    },
-                    'x', 'X' => {
-                        lookahead_i += 1;
-                        continue :fsm .hexadecimal_character_reference;
-                    },
-                    else => {
-                        continue :fsm .text;
-                    },
-                }
-            }
-
-            continue :fsm .text;
-        },
-        .hexadecimal_character_reference => {
-            var num_digits: u8 = 0;
-            while (num_digits < 7) {
-                switch (self.line[lookahead_i]) {
-                    '0'...'9', 'a'...'f', 'A'...'F' => {
-                        lookahead_i += 1;
-                        num_digits += 1;
-                    },
-                    ';' => {
-                        lookahead_i += 1;
-
-                        if (num_digits > 0) {
-                            break :fsm .hexadecimal_character_reference;
-                        } else {
-                            continue :fsm .text;
-                        }
-                    },
-                    else => {
-                        continue :fsm .text;
-                    },
-                }
-            }
-
-            continue :fsm .text;
-        },
-        .entity_reference => {
-            switch (self.line[lookahead_i]) {
-                'a'...'z', 'A'...'Z', '0'...'9' => {
-                    lookahead_i += 1;
-                    continue :fsm .entity_reference;
-                },
-                ';' => {
-                    lookahead_i += 1;
-                    break :fsm .entity_reference;
                 },
                 else => {
                     continue :fsm .text;
@@ -309,7 +225,7 @@ fn scan(self: *Self, arena: Allocator) !Token {
         },
         .text => {
             switch (self.line[lookahead_i]) {
-                '\n', '&' => {
+                '\n' => {
                     break :fsm .text;
                 },
                 ' ', '\t' => {
@@ -323,7 +239,7 @@ fn scan(self: *Self, arena: Allocator) !Token {
         },
         .text_whitespace => {
             switch (self.line[lookahead_i]) {
-                '\n', '#', '&' => {
+                '\n', '#' => {
                     break :fsm .text;
                 },
                 ' ', '\t' => {
@@ -365,7 +281,7 @@ fn evaluate_lexeme(
             );
             return lexeme;
         },
-        .decimal_character_reference, .hexadecimal_character_reference, .entity_reference, .rule_equals, .rule_dash => {
+        .rule_equals, .rule_dash => {
             return try arena.dupe(u8, self.line[self.i..lookahead_i]);
         },
         else => {

@@ -331,38 +331,6 @@ fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
             self.advance();
             return createTextNode(gpa, value);
         },
-        .decimal_character_reference => {
-            const lexeme = token.?.lexeme.?;
-            const value = try references.resolveCharacter(
-                gpa,
-                lexeme[2 .. lexeme.len - 1],
-                10,
-            );
-            defer gpa.free(value); // TODO: awk.
-            self.advance();
-            return createTextNode(gpa, value);
-        },
-        .hexadecimal_character_reference => {
-            const lexeme = token.?.lexeme.?;
-            const value = try references.resolveCharacter(
-                gpa,
-                lexeme[3 .. lexeme.len - 1],
-                16,
-            );
-            defer gpa.free(value); // TODO: awk.
-            self.advance();
-            return createTextNode(gpa, value);
-        },
-        .entity_reference => {
-            const lexeme = token.?.lexeme.?;
-            const value = references.resolveEntity(lexeme[1 .. lexeme.len - 1]);
-            self.advance();
-            if (value) |v| {
-                return createTextNode(gpa, v);
-            } else {
-                return createTextNode(gpa, lexeme);
-            }
-        },
         else => {
             return null;
         },
@@ -389,7 +357,7 @@ fn parseTextStart(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
             _ = try self.consume(arena, .indent);
             return try self.parseText(gpa, arena);
         },
-        .text, .decimal_character_reference, .hexadecimal_character_reference, .entity_reference, .rule_equals, .rule_dash => {
+        .text, .rule_equals, .rule_dash => {
             return try self.parseText(gpa, arena);
         },
         else => {
