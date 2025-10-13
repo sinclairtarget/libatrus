@@ -63,6 +63,26 @@ fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
                 try values.append(arena, value);
                 self.advance();
             },
+            .decimal_character_reference => {
+                const lexeme = token.lexeme.?;
+                const value = try references.resolveCharacter(
+                    arena,
+                    lexeme[2..lexeme.len - 1],
+                    10, // base
+                );
+                try values.append(arena, value);
+                self.advance();
+            },
+            .hexadecimal_character_reference => {
+                const lexeme = token.lexeme.?;
+                const value = try references.resolveCharacter(
+                    arena,
+                    lexeme[3..lexeme.len - 1],
+                    16, // base
+                );
+                try values.append(arena, value);
+                self.advance();
+            },
             .entity_reference => {
                 const lexeme = token.lexeme.?;
                 const value = references.resolveEntity(lexeme[1..lexeme.len - 1]);

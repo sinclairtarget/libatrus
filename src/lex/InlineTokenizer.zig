@@ -9,6 +9,8 @@ const State = enum {
     started,
     text,
     entity_reference,
+    decimal_character_reference,
+    hexadecimal_character_reference,
     done,
 };
 
@@ -45,7 +47,15 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                 },
                 '&' => {
                     lookahead_i += 1;
+                    if (lookahead_i >= self.in.len) {
+                        break :fsm .text;
+                    }
+
                     switch (self.in[lookahead_i]) {
+                        '#' => {
+                            lookahead_i += 1;
+                            continue :fsm .decimal_character_reference;
+                        },
                         'a'...'z', 'A'...'Z', '0'...'9' => {
                             continue :fsm .entity_reference;
                         },
@@ -56,6 +66,60 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                     continue :fsm .text;
                 },
             }
+        },
+        .decimal_character_reference => {
+            var num_digits: u8 = 0;
+            while (num_digits < 8 and lookahead_i < self.in.len) {
+                switch (self.in[lookahead_i]) {
+                    '0'...'9' => {
+                        lookahead_i += 1;
+                        num_digits += 1;
+                    },
+                    ';' => {
+                        lookahead_i += 1;
+
+                        if (num_digits > 0) {
+                            break :fsm .decimal_character_reference;
+                        } else {
+                            continue :fsm .text;
+                        }
+                    },
+                    'x', 'X' => {
+                        lookahead_i += 1;
+                        continue :fsm .hexadecimal_character_reference;
+                    },
+                    else => {
+                        continue :fsm .text;
+                    },
+                }
+            }
+
+            continue :fsm .text;
+        },
+        .hexadecimal_character_reference => {
+            var num_digits: u8 = 0;
+            while (num_digits < 7 and lookahead_i < self.in.len) {
+                switch (self.in[lookahead_i]) {
+                    '0'...'9', 'a'...'f', 'A'...'F' => {
+                        lookahead_i += 1;
+                        num_digits += 1;
+                    },
+                    ';' => {
+                        lookahead_i += 1;
+
+                        if (num_digits > 0) {
+                            break :fsm .hexadecimal_character_reference;
+                        } else {
+                            continue :fsm .text;
+                        }
+                    },
+                    else => {
+                        continue :fsm .text;
+                    },
+                }
+            }
+
+            continue :fsm .text;
         },
         .entity_reference => {
             if (lookahead_i >= self.in.len) {
