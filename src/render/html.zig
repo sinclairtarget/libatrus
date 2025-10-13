@@ -41,6 +41,13 @@ fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
         .text => |n| {
             try printEscaped(out, n.value);
         },
+        .emphasis => |n| {
+            try out.print("<em>", .{});
+            for (n.children) |child| {
+                try renderNode(out, child);
+            }
+            try out.print("</em>", .{});
+        },
         .code => |n| {
             // TODO: Lang?
             try out.print("<pre><code>", .{});

@@ -137,9 +137,8 @@ pub fn renderHTML(
 pub const lex =
     if (builtin.mode == .Debug)
         struct {
-            pub const BlockToken = @import("lex/tokens.zig").BlockToken;
-            pub const BlockTokenType = @import("lex/tokens.zig").BlockTokenType;
             pub const BlockTokenizer = @import("lex/BlockTokenizer.zig");
+            pub const InlineTokenizer = @import("lex/InlineTokenizer.zig");
         }
     else
         @compileError("tokenziation is only supported in the debug release mode");

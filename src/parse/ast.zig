@@ -14,6 +14,7 @@ pub const Node = union(enum) {
     text: Text,
     code: Code,
     thematic_break: Empty,
+    emphasis: Container,
 
     const Self = @This();
 
@@ -25,7 +26,7 @@ pub const Node = union(enum) {
                 }
                 alloc.free(n.children);
             },
-            .paragraph, .block => |n| {
+            .paragraph, .block, .emphasis => |n| {
                 for (n.children) |child| {
                     child.deinit(alloc);
                 }

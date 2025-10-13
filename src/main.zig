@@ -51,13 +51,6 @@ pub fn main() !void {
                     const unrecognized = diagnostic.argname.?;
                     die("unrecognized argument \"{s}\"\n", .{unrecognized});
                 },
-                ArgsError.MissingRequiredArg => {
-                    try cli.printUsage(stdout);
-                    try stdout.print("\n", .{});
-                    try stdout.flush();
-                    const required = diagnostic.argname.?;
-                    die("missing required argument: <{s}>\n", .{required});
-                },
                 ArgsError.IncompatibleArgs => {
                     try cli.printUsage(stdout);
                     try stdout.print("\n", .{});
@@ -69,8 +62,7 @@ pub fn main() !void {
         };
     };
 
-    // Dispatch
-    switch (action) {
+    dispatch: switch (action) {
         .print_version => {
             try printVersion(stdout);
         },
@@ -82,10 +74,10 @@ pub fn main() !void {
                 logger.debug("Parsing with options: {f}", .{options});
             }
 
-            const myst = slurp(arena, options.filepath) catch |err| {
+            const myst = slurp(arena, options.filepath_or_input) catch |err| {
                 switch (err) {
                     error.FileNotFound => {
-                        const path = options.filepath.?;
+                        const path = options.filepath_or_input.?;
                         die("file did not exist: \"{s}\"\n", .{path});
                     },
                     else => return err,
@@ -114,27 +106,33 @@ pub fn main() !void {
             }
         },
         .tokenize => {
-            std.debug.assert(builtin.mode == .Debug);
             if (builtin.mode == .Debug) {
-                var file = if (options.filepath) |filepath|
-                    try std.fs.cwd().openFile(filepath, .{})
-                else
-                    std.fs.File.stdin();
+                if (options.filepath_or_input == null) {
+                    var buffer: [max_line_len]u8 = undefined;
+                    var reader_impl = std.fs.File.stdin().reader(&buffer);
+                    try blockTokenize(arena, stdout, &reader_impl.interface);
+                    break :dispatch;
+                }
+
+                const filepath_or_input = options.filepath_or_input.?;
+                const cwd = std.fs.cwd();
+                var file = cwd.openFile(filepath_or_input, .{}) catch |err| {
+                    switch (err) {
+                        error.FileNotFound => {
+                            try inlineTokenize(arena, stdout, filepath_or_input);
+                            break :dispatch;
+                        },
+                        else => return err,
+                    }
+                };
                 defer file.close();
 
                 var buffer: [max_line_len]u8 = undefined;
                 var reader_impl = file.reader(&buffer);
-                const reader = &reader_impl.interface;
-
-                var tokenizer = atrus.lex.BlockTokenizer.init(reader);
-                while (try tokenizer.next(arena)) |token| {
-                    if (token.token_type == .newline) {
-                        try stdout.print("{f}\n", .{token});
-                    } else {
-                        try stdout.print("{f} ⋅ ", .{token});
-                    }
-                    try stdout.flush();
-                }
+                try blockTokenize(arena, stdout, &reader_impl.interface);
+            } else {
+                // Runtime error if we get here somehow in non-debug build
+                std.debug.assert(builtin.mode == .Debug);
             }
         },
     }
@@ -168,4 +166,31 @@ pub fn die(comptime fmt: []const u8, args: anytype) noreturn {
 
 fn printVersion(out: *Io.Writer) !void {
     try out.print("{s}\n", .{atrus.version});
+}
+
+fn blockTokenize(arena: Allocator, out: *Io.Writer, reader: *Io.Reader) !void {
+    var tokenizer = atrus.lex.BlockTokenizer.init(reader);
+    while (try tokenizer.next(arena)) |token| {
+        if (token.token_type == .newline) {
+            try out.print("{f}\n", .{token});
+        } else {
+            try out.print("{f} ⋅ ", .{token});
+        }
+        try out.flush();
+    }
+}
+
+fn inlineTokenize(arena: Allocator, out: *Io.Writer, in: []const u8) !void {
+    var tokenizer = atrus.lex.InlineTokenizer.init(in);
+
+    if (try tokenizer.next(arena)) |first| {
+        try out.print("{f}", .{first});
+    }
+
+    while (try tokenizer.next(arena)) |token| {
+        try out.print(" ⋅ {f}", .{token});
+    }
+
+    try out.print("\n", .{});
+    try out.flush();
 }

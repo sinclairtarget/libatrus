@@ -46,7 +46,7 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
         .root => |n| {
             try render_children(stringify, n);
         },
-        .paragraph, .block => |n| {
+        .paragraph, .block, .emphasis => |n| {
             try render_children(stringify, n);
         },
         .heading => |n| {

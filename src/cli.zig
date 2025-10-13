@@ -10,7 +10,7 @@ pub const OutputChoice = enum {
 };
 
 pub const Options = struct {
-    filepath: ?[]const u8 = null,
+    filepath_or_input: ?[]const u8 = null,
     output_choice: OutputChoice = .json,
     pre_only: bool = false,
 
@@ -19,22 +19,24 @@ pub const Options = struct {
     pub fn format(self: Self, w: *Io.Writer) Io.Writer.Error!void {
         try w.print(
             ".{{ .filepath = '{?s}', .output_choice = {any}, .pre_only = {any} }}",
-            .{ self.filepath, self.output_choice, self.pre_only },
+            .{ self.filepath_or_input, self.output_choice, self.pre_only },
         );
     }
 };
 
 pub fn printUsage(out: *Io.Writer) !void {
     const usage =
-        \\Usage: atrus [OPTIONS...] <filepath>
+        \\Usage: atrus [--pre|--html] [FILEPATH]
         \\       atrus --version
         \\       atrus -h|--help
         \\
-        \\If "-" is given as the filepath, input is read from STDIN.
+        \\If no filepath is given, input is read from STDIN.
         \\
-        \\Options:
-        \\  --html    Output HTML.
-        \\  --pre     Skip post-process/resolution phase.
+        \\Flags:
+        \\  -h|--help  Ouptut this help text.
+        \\  --html     Output HTML.
+        \\  --pre      Skip post-process/resolution phase.
+        \\  --version  Print version number.
         \\
     ;
 
@@ -42,7 +44,13 @@ pub fn printUsage(out: *Io.Writer) !void {
         if (builtin.mode == .Debug) {
             const debug_usage =
                 \\
-                \\Debug Options:
+                \\Debug Usage:
+                \\       atrus --tokens [FILEPATH | INPUT]
+                \\
+                \\If a filepath is given, then block tokens are output. If an
+                \\input string is given, then inline tokens are output.
+                \\
+                \\Debug Flags:
                 \\  --tokens  Output the token stream.
                 \\
             ;
@@ -65,7 +73,6 @@ pub const Action = enum {
 pub const ArgsError = error{
     NotEnoughArgs,
     UnrecognizedArg,
-    MissingRequiredArg,
     IncompatibleArgs,
 };
 
@@ -98,8 +105,9 @@ pub fn parseArgs(
     var action = Action.parse;
     var output_choice = OutputChoice.json;
     var pre_only = false;
-    var filepath: ?[]const u8 = null;
-    for (args[1 .. args.len - 1]) |arg| {
+    var filepath_or_input: ?[]const u8 = null;
+    var args_processed: u32 = 1;
+    for (args[1..args.len]) |arg| {
         if (std.mem.eql(u8, arg, "--html")) {
             output_choice = .html;
         } else if (std.mem.eql(u8, arg, "--pre")) {
@@ -107,17 +115,18 @@ pub fn parseArgs(
         } else if (builtin.mode == .Debug and std.mem.eql(u8, arg, "--tokens")) {
             action = .tokenize;
         } else {
-            diagnostic.argname = arg;
-            return ArgsError.UnrecognizedArg;
+            filepath_or_input = try arena.dupe(u8, arg);
+        }
+
+        args_processed += 1;
+        if (filepath_or_input != null) {
+            break;
         }
     }
 
-    const final = args[args.len - 1];
-    if (std.mem.startsWith(u8, final, "-") and !std.mem.eql(u8, final, "-")) {
-        diagnostic.argname = "filepath";
-        return ArgsError.MissingRequiredArg;
-    } else {
-        filepath = try arena.dupe(u8, final);
+    if (args_processed < args.len) {
+        diagnostic.argname = try arena.dupe(u8, args[args_processed]);
+        return ArgsError.UnrecognizedArg;
     }
 
     if (pre_only and output_choice == .html) {
@@ -127,7 +136,7 @@ pub fn parseArgs(
     return .{
         action,
         Options{
-            .filepath = filepath,
+            .filepath_or_input = filepath_or_input,
             .output_choice = output_choice,
             .pre_only = pre_only,
         },

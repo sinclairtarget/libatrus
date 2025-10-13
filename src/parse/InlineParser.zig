@@ -38,7 +38,11 @@ fn parse(self: *Self, gpa: Allocator, arena: Allocator) ![]*ast.Node {
     while (try self.peek(arena) != null) {
         const len_start = nodes.items.len;
 
-        while (try self.parseText(gpa, arena)) |text| {
+        if (try self.parseEmphasis(gpa, arena)) |emphasis| {
+            try nodes.append(arena, emphasis);
+        }
+
+        if (try self.parseText(gpa, arena)) |text| {
             try nodes.append(arena, text);
         }
 
@@ -46,6 +50,9 @@ fn parse(self: *Self, gpa: Allocator, arena: Allocator) ![]*ast.Node {
             // Nothing parsed this loop
             const t = try self.peek(arena);
             std.debug.print("unsure how to parse: {f}\n", .{t.?});
+            for (self.line.items) |prev_t| {
+                std.debug.print("{f}\n", .{prev_t});
+            }
             return error.UnrecognizedInlineToken;
         }
     }
@@ -53,10 +60,51 @@ fn parse(self: *Self, gpa: Allocator, arena: Allocator) ![]*ast.Node {
     return nodes.toOwnedSlice(arena);
 }
 
+fn parseEmphasis(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
+    const begin = try self.peek(arena);
+    if (begin == null) {
+        return null;
+    }
+
+    switch (begin.?.token_type) {
+        .l_delim_star => {
+            self.advance();
+        },
+        else => return null,
+    }
+
+    var children: ArrayList(*ast.Node) = .empty;
+    while (try self.parseText(gpa, arena)) |text| {
+        try children.append(gpa, text);
+    }
+
+    const end = try self.peek(arena);
+    if (end == null) {
+        return null;
+    }
+
+    switch (end.?.token_type) {
+        .r_delim_star => {
+            self.advance();
+        },
+        else => {
+            return null;
+        },
+    }
+
+    const node = try gpa.create(ast.Node);
+    node.* = .{
+        .emphasis = .{
+            .children = try children.toOwnedSlice(gpa),
+        },
+    };
+    return node;
+}
+
 fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
     var values: ArrayList([]const u8) = .empty;
 
-    while (try self.peek(arena)) |token| {
+    loop: while (try self.peek(arena)) |token| {
         switch (token.token_type) {
             .text => {
                 const value = token.lexeme orelse "";
@@ -98,6 +146,7 @@ fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
                 try values.append(arena, "\n");
                 self.advance();
             },
+            else => break :loop,
         }
     }
 
@@ -213,7 +262,7 @@ pub fn transform(gpa: Allocator, original_node: *ast.Node) !*ast.Node {
             };
             return node;
         },
-        .text, .code, .thematic_break => return original_node,
+        .text, .code, .thematic_break, .emphasis => return original_node,
     }
 }
 
