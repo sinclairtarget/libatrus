@@ -2,7 +2,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Io = std.Io;
 
-pub const TokenType = enum {
+pub const BlockTokenType = enum {
     text,
     indent, // indent at beginning of line
     pound, // one or more consecutive '#' symbols, word-bounded
@@ -20,12 +20,12 @@ pub const InlineTokenType = enum {
     entity_reference,
 };
 
-pub const Token = MakeToken(TokenType);
-pub const InlineToken = MakeToken(InlineTokenType);
+pub const BlockToken = Token(BlockTokenType);
+pub const InlineToken = Token(InlineTokenType);
 
-fn MakeToken(comptime T: type) type {
+fn Token(comptime TokenType: type) type {
     return struct {
-        token_type: T,
+        token_type: TokenType,
         lexeme: ?[]const u8 = null,
 
         const Self = @This();

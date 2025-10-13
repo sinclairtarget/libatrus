@@ -126,7 +126,7 @@ pub fn main() !void {
                 var reader_impl = file.reader(&buffer);
                 const reader = &reader_impl.interface;
 
-                var tokenizer = atrus.lex.Tokenizer.init(reader);
+                var tokenizer = atrus.lex.BlockTokenizer.init(reader);
                 while (try tokenizer.next(arena)) |token| {
                     if (token.token_type == .newline) {
                         try stdout.print("{f}\n", .{token});

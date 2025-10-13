@@ -9,7 +9,7 @@ const Allocator = std.mem.Allocator;
 const Io = std.Io;
 const ArrayList = std.ArrayList;
 
-const Tokenizer = @import("lex/Tokenizer.zig");
+const BlockTokenizer = @import("lex/BlockTokenizer.zig");
 const BlockParser = @import("parse/BlockParser.zig");
 const InlineParser = @import("parse/InlineParser.zig");
 const post = @import("parse/post.zig");
@@ -48,7 +48,7 @@ pub fn parse(
     var reader: Io.Reader = .fixed(in);
 
     // first stage; parse into blocks
-    var block_tokenizer = Tokenizer.init(&reader);
+    var block_tokenizer = BlockTokenizer.init(&reader);
     var block_parser = BlockParser.init(&block_tokenizer);
     var root = try block_parser.parse(alloc);
 
@@ -135,9 +135,9 @@ pub fn renderHTML(
 pub const lex =
     if (builtin.mode == .Debug)
         struct {
-            pub const Token = @import("lex/tokens.zig").Token;
-            pub const TokenType = @import("lex/tokens.zig").TokenType;
-            pub const Tokenizer = @import("lex/Tokenizer.zig");
+            pub const BlockToken = @import("lex/tokens.zig").BlockToken;
+            pub const BlockTokenType = @import("lex/tokens.zig").BlockTokenType;
+            pub const BlockTokenizer = @import("lex/BlockTokenizer.zig");
         }
     else
         @compileError("tokenziation is only supported in the debug release mode");

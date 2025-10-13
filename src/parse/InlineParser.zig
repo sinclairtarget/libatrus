@@ -4,9 +4,9 @@ const ArrayList = std.ArrayList;
 
 const ast = @import("ast.zig");
 const tokens = @import("../lex/tokens.zig");
-const Token = tokens.Token;
+const InlineToken = tokens.InlineToken;
 
-line: ArrayList(Token),
+line: ArrayList(InlineToken),
 i: usize,
 
 const Self = @This();

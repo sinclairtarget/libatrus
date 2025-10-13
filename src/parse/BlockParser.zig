@@ -3,13 +3,6 @@
 //! Parser pulls tokens from the tokenizer as needed. The tokens are stored in
 //! an array list. The array list is cleared as each line is successfully
 //! parsed.
-//!
-//! intended grammar:
-//! root          => (atx-heading | paragraph | blank)*
-//! atx-heading   => POUND text* (POUND? NEWLINE)?
-//! paragraph     => (text-start text* NEWLINE)+
-//! text-start    => TEXT | BACKSLASH | POUND(>6)
-//! text          => TEXT | BACKSLASH | POUND
 
 const std = @import("std");
 const fmt = std.fmt;
@@ -19,10 +12,10 @@ const Io = std.Io;
 const ArrayList = std.ArrayList;
 
 const ast = @import("ast.zig");
-const Tokenizer = @import("../lex/Tokenizer.zig");
+const BlockTokenizer = @import("../lex/BlockTokenizer.zig");
 const tokens = @import("../lex/tokens.zig");
-const Token = tokens.Token;
-const TokenType = tokens.TokenType;
+const BlockToken = tokens.BlockToken;
+const BlockTokenType = tokens.BlockTokenType;
 const references = @import("references.zig");
 const strings = @import("../util/strings.zig");
 
@@ -30,13 +23,13 @@ const Error = error{
     UnrecognizedSyntax,
 };
 
-tokenizer: *Tokenizer,
-line: ArrayList(Token),
+tokenizer: *BlockTokenizer,
+line: ArrayList(BlockToken),
 i: usize,
 
 const Self = @This();
 
-pub fn init(tokenizer: *Tokenizer) Self {
+pub fn init(tokenizer: *BlockTokenizer) Self {
     return .{
         .tokenizer = tokenizer,
         .line = .empty,
@@ -376,7 +369,7 @@ fn createTextNode(gpa: Allocator, value: []const u8) !*ast.Node {
     return node;
 }
 
-fn peek(self: *Self, arena: Allocator) !?Token {
+fn peek(self: *Self, arena: Allocator) !?BlockToken {
     if (self.i >= self.line.items.len) {
         const next = try self.tokenizer.next(arena);
         if (next == null) {
@@ -389,7 +382,11 @@ fn peek(self: *Self, arena: Allocator) !?Token {
     return self.line.items[self.i];
 }
 
-fn consume(self: *Self, arena: Allocator, token_type: TokenType) !?Token {
+fn consume(
+    self: *Self,
+    arena: Allocator,
+    token_type: BlockTokenType,
+) !?BlockToken {
     const current = try self.peek(arena);
 
     if (current == null) {

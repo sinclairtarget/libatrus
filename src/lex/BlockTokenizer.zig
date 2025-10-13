@@ -1,3 +1,5 @@
+//! Tokenizer that recognizes block-defining tokens.
+//!
 //! Takes an input reader and tokenizes line by line.
 
 const std = @import("std");
@@ -8,8 +10,8 @@ const Io = std.Io;
 const DelimiterError = Io.Reader.DelimiterError;
 const ArrayList = std.ArrayList;
 
-const Token = @import("tokens.zig").Token;
-const TokenType = @import("tokens.zig").TokenType;
+const BlockToken = @import("tokens.zig").BlockToken;
+const BlockTokenType = @import("tokens.zig").BlockTokenType;
 
 pub const Error = error{
     LineTooLong,
@@ -45,7 +47,7 @@ pub fn init(in: *Io.Reader) Self {
 // Get next token from the stream.
 //
 // Caller responsible for freeing memory associated with each returned token.
-pub fn next(self: *Self, arena: Allocator) Error!?Token {
+pub fn next(self: *Self, arena: Allocator) Error!?BlockToken {
     // Load new input line when needed
     while (self.i >= self.line.len) {
         self.line = read_line(arena, self.in) catch |err| {
@@ -117,9 +119,9 @@ fn read_line(arena: Allocator, in: *Io.Reader) ![]const u8 {
 }
 
 // Returns the next token starting at the current index.
-fn scan(self: *Self, arena: Allocator) !Token {
+fn scan(self: *Self, arena: Allocator) !BlockToken {
     var lookahead_i = self.i;
-    const token_type: TokenType = fsm: switch (self.state) {
+    const token_type: BlockTokenType = fsm: switch (self.state) {
         .started => {
             switch (self.line[lookahead_i]) {
                 '#' => {
@@ -255,7 +257,7 @@ fn scan(self: *Self, arena: Allocator) !Token {
     };
 
     const lexeme = try evaluate_lexeme(self, arena, token_type, lookahead_i);
-    const token = Token{
+    const token = BlockToken{
         .token_type = token_type,
         .lexeme = lexeme,
     };
@@ -267,7 +269,7 @@ fn scan(self: *Self, arena: Allocator) !Token {
 fn evaluate_lexeme(
     self: *Self,
     arena: Allocator,
-    token_type: TokenType,
+    token_type: BlockTokenType,
     lookahead_i: usize,
 ) !?[]const u8 {
     switch (token_type) {
@@ -344,13 +346,13 @@ test "can tokenize" {
     defer arena_impl.deinit();
     const arena = arena_impl.allocator();
 
-    var tokens: ArrayList(Token) = .empty;
+    var tokens: ArrayList(BlockToken) = .empty;
     errdefer tokens.deinit(arena);
 
     var reader: Io.Reader = .fixed(md);
     var tokenizer = Self.init(&reader);
 
-    const expected = [_]TokenType{
+    const expected = [_]BlockTokenType{
         .pound,
         .text,
         .newline,
