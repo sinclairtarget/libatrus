@@ -1,3 +1,5 @@
+//! Tokenizer for inline MyST syntax.
+
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
@@ -10,11 +12,13 @@ const State = enum {
     text,
     text_escaped,
     text_whitespace,
+    text_punct,
     entity_reference,
     decimal_character_reference,
     hexadecimal_character_reference,
     l_delim_star,
     r_delim_star,
+    r_delim_star_punct, // preceded by punctuation
     done,
 };
 
@@ -63,7 +67,7 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                         'a'...'z', 'A'...'Z', '0'...'9' => {
                             continue :fsm .entity_reference;
                         },
-                        else => continue :fsm .text,
+                        else => continue :fsm .text_punct,
                     }
                 },
                 '*' => {
@@ -92,7 +96,7 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                                 .started,
                             };
                         } else {
-                            continue :fsm .text;
+                            continue :fsm .text_punct;
                         }
                     },
                     'x', 'X' => {
@@ -124,7 +128,7 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                                 .started,
                             };
                         } else {
-                            continue :fsm .text;
+                            continue :fsm .text_punct;
                         }
                     },
                     else => {
@@ -182,11 +186,34 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                     lookahead_i += 1;
                     continue :fsm .r_delim_star;
                 },
-                ' ', '\t', '\n' => {
+                ' ', '\t', '\n', '!'...'%', '\''...')', '+'...'/', ':'...'@',
+                '[', ']'...'`', '}'...'~' => {
                     break :fsm .{ .r_delim_star, .started };
                 },
                 else => {
                     break :fsm .{ .lr_delim_star, .started };
+                }
+            }
+        },
+        .r_delim_star_punct => {
+            if (lookahead_i >= self.in.len) {
+                break :fsm .{ .r_delim_star, .started };
+            }
+
+            switch (self.in[lookahead_i]) {
+                '*' => {
+                    lookahead_i += 1;
+                    continue :fsm .r_delim_star_punct;
+                },
+                ' ', '\t', '\n' => {
+                    break :fsm .{ .r_delim_star, .started };
+                },
+                '!'...'%', '\''...')', '+'...'/', ':'...'@', '[', ']'...'`',
+                '}'...'~' => {
+                    break :fsm .{ .lr_delim_star, .started };
+                },
+                else => {
+                    break :fsm .{ .l_delim_star, .started };
                 }
             }
         },
@@ -208,6 +235,11 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                 },
                 ' ', '\t' => {
                     continue :fsm .text_whitespace;
+                },
+                '!'...'%', '\''...')', '+'...'/', ':'...'@', '[', ']'...'`',
+                '}'...'~' => {
+                    lookahead_i += 1;
+                    continue :fsm .text_punct;
                 },
                 else => {
                     lookahead_i += 1;
@@ -236,6 +268,31 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
         .text_escaped => {
             lookahead_i += 1;
             continue :fsm .text;
+        },
+        .text_punct => {
+            if (lookahead_i >= self.in.len) {
+                break :fsm .{ .text, .started };
+            }
+
+            switch (self.in[lookahead_i]) {
+                '\n', '&' => {
+                    break :fsm .{ .text, .started };
+                },
+                '*' => {
+                    break :fsm .{ .text, .r_delim_star_punct };
+                },
+                '\\' => {
+                    lookahead_i += 1;
+                    continue :fsm .text_escaped;
+                },
+                ' ', '\t' => {
+                    continue :fsm .text_whitespace;
+                },
+                else => {
+                    lookahead_i += 1;
+                    continue :fsm .text;
+                },
+            }
         },
         .done => unreachable,
     };
