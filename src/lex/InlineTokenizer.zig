@@ -266,7 +266,10 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
             }
         },
         .text_escaped => {
-            lookahead_i += 1;
+            if (lookahead_i < self.in.len) {
+                lookahead_i += 1;
+            }
+
             continue :fsm .text;
         },
         .text_punct => {
