@@ -15,7 +15,7 @@ const Error = error{
 
 tokenizer: *InlineTokenizer,
 line: ArrayList(InlineToken),
-i: usize,
+token_index: usize,
 
 const Self = @This();
 
@@ -23,7 +23,7 @@ pub fn init(tokenizer: *InlineTokenizer) Self {
     return .{
         .tokenizer = tokenizer,
         .line = .empty,
-        .i = 0,
+        .token_index = 0,
     };
 }
 
@@ -36,17 +36,13 @@ fn parse(self: *Self, gpa: Allocator, arena: Allocator) ![]*ast.Node {
     }
 
     while (try self.peek(arena) != null) {
-        const len_start = nodes.items.len;
-
         if (try self.parseEmphasis(gpa, arena)) |emphasis| {
             try nodes.append(arena, emphasis);
-        }
-
-        if (try self.parseText(gpa, arena)) |text| {
+        } else if (try self.parseText(gpa, arena)) |text| {
             try nodes.append(arena, text);
-        }
-
-        if (nodes.items.len <= len_start) {
+        } else if (try self.parseFallbackText(gpa, arena)) |text| {
+            try nodes.append(arena, text);
+        } else {
             // Nothing parsed this loop
             const t = try self.peek(arena);
             std.debug.print("unsure how to parse: {f}\n", .{t.?});
@@ -60,22 +56,44 @@ fn parse(self: *Self, gpa: Allocator, arena: Allocator) ![]*ast.Node {
     return nodes.toOwnedSlice(arena);
 }
 
-fn parseEmphasis(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
+fn parseEmphasis(
+    self: *Self,
+    gpa: Allocator,
+    arena: Allocator,
+) !?*ast.Node {
     const begin = try self.peek(arena);
     if (begin == null) {
         return null;
     }
 
+    var emphasis_node: ?*ast.Node = null;
+    const checkpoint_index = self.checkpoint();
+    defer {
+        if (emphasis_node == null) {
+            self.backtrack(checkpoint_index);
+        }
+    }
+
     switch (begin.?.token_type) {
         .l_delim_star => {
-            self.advance();
+            _ = try self.consume(arena, .l_delim_star);
         },
         else => return null,
     }
 
     var children: ArrayList(*ast.Node) = .empty;
-    while (try self.parseText(gpa, arena)) |text| {
-        try children.append(gpa, text);
+    while (true) {
+        if (try self.parseEmphasis(gpa, arena)) |emphasis| {
+            try children.append(gpa, emphasis);
+            continue;
+        }
+
+        if (try self.parseText(gpa, arena)) |text| {
+            try children.append(gpa, text);
+            continue;
+        }
+
+        break;
     }
 
     const end = try self.peek(arena);
@@ -85,20 +103,20 @@ fn parseEmphasis(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
 
     switch (end.?.token_type) {
         .r_delim_star => {
-            self.advance();
+            _ = try self.consume(arena, .r_delim_star);
         },
         else => {
             return null;
         },
     }
 
-    const node = try gpa.create(ast.Node);
-    node.* = .{
+    emphasis_node = try gpa.create(ast.Node);
+    emphasis_node.?.* = .{
         .emphasis = .{
             .children = try children.toOwnedSlice(gpa),
         },
     };
-    return node;
+    return emphasis_node;
 }
 
 fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
@@ -106,11 +124,6 @@ fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
 
     loop: while (try self.peek(arena)) |token| {
         switch (token.token_type) {
-            .text => {
-                const value = token.lexeme orelse "";
-                try values.append(arena, value);
-                self.advance();
-            },
             .decimal_character_reference => {
                 const lexeme = token.lexeme.?;
                 const value = try references.resolveCharacter(
@@ -119,7 +132,7 @@ fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
                     10, // base
                 );
                 try values.append(arena, value);
-                self.advance();
+                _ = try self.consume(arena, .decimal_character_reference);
             },
             .hexadecimal_character_reference => {
                 const lexeme = token.lexeme.?;
@@ -129,7 +142,7 @@ fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
                     16, // base
                 );
                 try values.append(arena, value);
-                self.advance();
+                _ = try self.consume(arena, .hexadecimal_character_reference);
             },
             .entity_reference => {
                 const lexeme = token.lexeme.?;
@@ -140,11 +153,12 @@ fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
                     // Unknown entity
                     try values.append(arena, lexeme);
                 }
-                self.advance();
+                _ = try self.consume(arena, .entity_reference);
             },
-            .newline => {
-                try values.append(arena, "\n");
-                self.advance();
+            .text => {
+                const value = token.lexeme orelse "";
+                try values.append(arena, value);
+                _ = try self.consume(arena, .text);
             },
             else => break :loop,
         }
@@ -154,27 +168,78 @@ fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
         return null;
     }
 
-    const node = try gpa.create(ast.Node);
-    node.* = .{
-        .text = .{
-            .value = try std.mem.join(gpa, "", values.items),
-        },
-    };
-    return node;
+    return try createTextNode(gpa, values.items);
 }
 
-fn createTextNode(gpa: Allocator, value: []const u8) !*ast.Node {
+fn parseFallbackText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
+    var values: ArrayList([]const u8) = .empty;
+
+    while (try self.peek(arena)) |token| {
+        switch (token.token_type) {
+            .decimal_character_reference => {
+                const lexeme = token.lexeme.?;
+                const value = try references.resolveCharacter(
+                    arena,
+                    lexeme[2..lexeme.len - 1],
+                    10, // base
+                );
+                try values.append(arena, value);
+                _ = try self.consume(arena, .decimal_character_reference);
+            },
+            .hexadecimal_character_reference => {
+                const lexeme = token.lexeme.?;
+                const value = try references.resolveCharacter(
+                    arena,
+                    lexeme[3..lexeme.len - 1],
+                    16, // base
+                );
+                try values.append(arena, value);
+                _ = try self.consume(arena, .hexadecimal_character_reference);
+            },
+            .entity_reference => {
+                const lexeme = token.lexeme.?;
+                const value = references.resolveEntity(lexeme[1..lexeme.len - 1]);
+                if (value) |v| {
+                    try values.append(arena, v);
+                } else {
+                    // Unknown entity
+                    try values.append(arena, lexeme);
+                }
+                _ = try self.consume(arena, .entity_reference);
+            },
+            .newline => {
+                try values.append(arena, "\n");
+                _ = try self.consume(arena, .newline);
+            },
+            .text, .l_delim_star, .r_delim_star, .lr_delim_star => |t| {
+                const value = token.lexeme orelse "";
+                try values.append(arena, value);
+                _ = try self.consume(arena, t);
+            },
+        }
+    }
+
+    if (values.items.len == 0) {
+        return null;
+    }
+
+    return try createTextNode(gpa, values.items);
+}
+
+fn createTextNode(gpa: Allocator, values: [][]const u8) !*ast.Node {
+    std.debug.assert(values.len > 0);
+
     const node = try gpa.create(ast.Node);
     node.* = .{
         .text = .{
-            .value = try gpa.dupe(u8, value),
+            .value = try std.mem.join(gpa, "", values),
         },
     };
     return node;
 }
 
 fn peek(self: *Self, arena: Allocator) !?InlineToken {
-    if (self.i >= self.line.items.len) {
+    if (self.token_index >= self.line.items.len) {
         const next = try self.tokenizer.next(arena);
         if (next == null) {
             return null; // end of input
@@ -183,7 +248,7 @@ fn peek(self: *Self, arena: Allocator) !?InlineToken {
         try self.line.append(arena, next.?);
     }
 
-    return self.line.items[self.i];
+    return self.line.items[self.token_index];
 }
 
 fn consume(
@@ -201,12 +266,16 @@ fn consume(
         return null;
     }
 
-    self.advance();
+    self.token_index += 1;
     return current;
 }
 
-fn advance(self: *Self) void {
-    self.i += 1;
+fn checkpoint(self: *Self) usize {
+    return self.token_index;
+}
+
+fn backtrack(self: *Self, checkpoint_index: usize) void {
+    self.token_index = checkpoint_index;
 }
 
 pub fn transform(gpa: Allocator, original_node: *ast.Node) !*ast.Node {
