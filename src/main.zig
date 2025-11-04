@@ -84,13 +84,13 @@ pub fn main() !void {
                 }
             };
 
-            const ast = try atrus.parse(
-                gpa,
-                myst,
-                .{
-                    .parse_level = if (options.pre_only) .pre else .post,
-                },
-            );
+            const ast = try atrus.parse(gpa, myst, .{
+                .parse_level = switch (options.parse_level) {
+                    .block => .block,
+                    .pre => .pre,
+                    .final => .post,
+                }
+            });
             defer ast.deinit(gpa);
 
             logger.debug("Rendering...", .{});

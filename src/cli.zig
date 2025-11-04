@@ -9,24 +9,30 @@ pub const OutputChoice = enum {
     html,
 };
 
+pub const ParseLevel = enum {
+    block,
+    pre,
+    final,
+};
+
 pub const Options = struct {
     filepath_or_input: ?[]const u8 = null,
     output_choice: OutputChoice = .json,
-    pre_only: bool = false,
+    parse_level: ParseLevel = .final,
 
     const Self = @This();
 
     pub fn format(self: Self, w: *Io.Writer) Io.Writer.Error!void {
         try w.print(
-            ".{{ .filepath = '{?s}', .output_choice = {any}, .pre_only = {any} }}",
-            .{ self.filepath_or_input, self.output_choice, self.pre_only },
+            ".{{ .filepath = '{?s}', .output_choice = {any}, .parse_level = {any} }}",
+            .{ self.filepath_or_input, self.output_choice, self.parse_level },
         );
     }
 };
 
 pub fn printUsage(out: *Io.Writer) !void {
     const usage =
-        \\Usage: atrus [--pre|--html] [FILEPATH]
+        \\Usage: atrus [--block|--pre|--html] [FILEPATH]
         \\       atrus --version
         \\       atrus -h|--help
         \\
@@ -34,8 +40,9 @@ pub fn printUsage(out: *Io.Writer) !void {
         \\
         \\Flags:
         \\  -h|--help  Ouptut this help text.
+        \\  --block    Ouptut AST before inline parsing.
+        \\  --pre      Output AST before post-process/resolution phase.
         \\  --html     Output HTML.
-        \\  --pre      Skip post-process/resolution phase.
         \\  --version  Print version number.
         \\
     ;
@@ -104,14 +111,16 @@ pub fn parseArgs(
 
     var action = Action.parse;
     var output_choice = OutputChoice.json;
-    var pre_only = false;
+    var parse_level = ParseLevel.final;
     var filepath_or_input: ?[]const u8 = null;
     var args_processed: u32 = 1;
     for (args[1..args.len]) |arg| {
         if (std.mem.eql(u8, arg, "--html")) {
             output_choice = .html;
+        } else if (std.mem.eql(u8, arg, "--block")) {
+            parse_level = .block;
         } else if (std.mem.eql(u8, arg, "--pre")) {
-            pre_only = true;
+            parse_level = .pre;
         } else if (builtin.mode == .Debug and std.mem.eql(u8, arg, "--tokens")) {
             action = .tokenize;
         } else {
@@ -129,7 +138,7 @@ pub fn parseArgs(
         return ArgsError.UnrecognizedArg;
     }
 
-    if (pre_only and output_choice == .html) {
+    if (output_choice == .html and parse_level != .final) {
         return ArgsError.IncompatibleArgs;
     }
 
@@ -138,7 +147,7 @@ pub fn parseArgs(
         Options{
             .filepath_or_input = filepath_or_input,
             .output_choice = output_choice,
-            .pre_only = pre_only,
+            .parse_level = parse_level,
         },
     };
 }

@@ -32,6 +32,7 @@ pub const ParseError = error{
 
 pub const ParseOptions = struct {
     parse_level: enum {
+        block,
         pre,
         post,
     } = .post,
@@ -52,6 +53,11 @@ pub fn parse(
     var block_tokenizer = BlockTokenizer.init(&reader);
     var block_parser = BlockParser.init(&block_tokenizer);
     var root = try block_parser.parse(alloc);
+
+    if (options.parse_level == .block) {
+        return root;
+    }
+
     errdefer root.deinit(alloc);
 
     // second stage; parse inline elements
