@@ -155,6 +155,10 @@ fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
                 }
                 _ = try self.consume(arena, .entity_reference);
             },
+            .newline => {
+                try values.append(arena, "\n");
+                _ = try self.consume(arena, .newline);
+            },
             .text => {
                 const value = token.lexeme orelse "";
                 try values.append(arena, value);
