@@ -10,10 +10,10 @@ pub fn build(b: *std.Build) void {
         "version",
         "Application version string",
     ) orelse "0.1.0";
-    const spec_test_case_filter = b.option(
+    const test_case_filter = b.option(
         []const u8,
-        "case-filter",
-        "Filter for MyST spec test cases",
+        "test-filter",
+        "Filter for test cases",
     );
 
     // atrus lib
@@ -52,7 +52,7 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
 
     const lib = addCLibraries(b, atrus, target, optimize);
-    addTests(b, atrus, exe, lib, spec_test_case_filter);
+    addTests(b, atrus, exe, lib, test_case_filter);
     addBenchmarks(b, exe, optimize);
 }
 
@@ -134,6 +134,10 @@ fn addTests(
     const unit_tests = b.addTest(.{
         .name = "unit",
         .root_module = atrus,
+        .filters = if (filter) |f|
+            &[_][]const u8 { f }
+        else
+            &.{},
     });
     const run_unit_tests = b.addRunArtifact(unit_tests);
     const unit_test_step = b.step("test-unit", "Run unit tests");
