@@ -27,7 +27,7 @@ pub fn init(tokenizer: *InlineTokenizer) Self {
     };
 }
 
-fn parse(self: *Self, gpa: Allocator, arena: Allocator) ![]*ast.Node {
+pub fn parse(self: *Self, gpa: Allocator, arena: Allocator) ![]*ast.Node {
     var nodes: ArrayList(*ast.Node) = .empty;
     errdefer {
         for (nodes.items) |node| {
@@ -67,10 +67,16 @@ fn parseEmphasis(
     }
 
     var emphasis_node: ?*ast.Node = null;
+    var children: ArrayList(*ast.Node) = .empty;
     const checkpoint_index = self.checkpoint();
     defer {
         if (emphasis_node == null) {
             self.backtrack(checkpoint_index);
+
+            for (children.items) |child| {
+                child.deinit(gpa);
+            }
+            children.deinit(gpa);
         }
     }
 
@@ -81,7 +87,6 @@ fn parseEmphasis(
         else => return null,
     }
 
-    var children: ArrayList(*ast.Node) = .empty;
     while (true) {
         if (try self.parseEmphasis(gpa, arena)) |emphasis| {
             try children.append(gpa, emphasis);
@@ -374,4 +379,24 @@ fn parseInlineNodes(gpa: Allocator, original_nodes: []*ast.Node) ![]*ast.Node {
     }
 
     return nodes.toOwnedSlice(gpa);
+}
+
+test "inline unmatched open emphasis" {
+    var arena_impl = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_impl.deinit();
+    const arena = arena_impl.allocator();
+
+    const value = "This *is unmatched.";
+
+    var tokenizer = InlineTokenizer.init(value);
+    var parser = Self.init(&tokenizer);
+    const nodes = try parser.parse(std.testing.allocator, arena);
+    defer {
+        for (nodes) |n| {
+            n.deinit(std.testing.allocator);
+        }
+    }
+
+    try std.testing.expectEqual(1, nodes.len);
+    try std.testing.expectEqualStrings(value, nodes[0].text.value);
 }
