@@ -36,6 +36,10 @@ pub fn init(tokenizer: *BlockTokenizer) Self {
     };
 }
 
+/// Parse block tokens from the token stream.
+///
+/// Returns the root node of the resulting AST. The AST may contain blocks of
+/// unparsed inline text.
 pub fn parse(self: *Self, gpa: Allocator) !*ast.Node {
     // Arena used for tokenization
     var arena_impl = std.heap.ArenaAllocator.init(gpa);

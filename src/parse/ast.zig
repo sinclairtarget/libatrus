@@ -6,7 +6,18 @@ const std = @import("std");
 const ArrayList = std.ArrayList;
 const Allocator = std.mem.Allocator;
 
-pub const Node = union(enum) {
+pub const NodeType = enum {
+    root,
+    block,
+    heading,
+    paragraph,
+    text,
+    code,
+    thematic_break,
+    emphasis,
+};
+
+pub const Node = union(NodeType) {
     root: Root,
     block: Container,
     heading: Heading,
