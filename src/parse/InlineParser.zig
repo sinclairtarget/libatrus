@@ -41,7 +41,7 @@ pub fn parse(self: *Self, gpa: Allocator, arena: Allocator) ![]*ast.Node {
     }
 
     while (try self.peek(arena) != null) {
-        if (try self.parseEmphasis(gpa, arena)) |emphasis| {
+        if (try self.parseStarEmphasis(gpa, arena)) |emphasis| {
             try nodes.append(gpa, emphasis);
         } else if (try self.parseText(gpa, arena)) |text| {
             try nodes.append(gpa, text);
@@ -60,7 +60,9 @@ pub fn parse(self: *Self, gpa: Allocator, arena: Allocator) ![]*ast.Node {
     return joined_nodes;
 }
 
-fn parseEmphasis(
+// inner => text | star_emph
+// star_emph => *l inner *r
+fn parseStarEmphasis(
     self: *Self,
     gpa: Allocator,
     arena: Allocator,
@@ -91,18 +93,10 @@ fn parseEmphasis(
         else => return null,
     }
 
-    while (true) {
-        if (try self.parseEmphasis(gpa, arena)) |emphasis| {
-            try children.append(gpa, emphasis);
-            continue;
-        }
-
-        if (try self.parseText(gpa, arena)) |text| {
-            try children.append(gpa, text);
-            continue;
-        }
-
-        break;
+    if (try self.parseStarEmphasis(gpa, arena)) |emphasis| {
+        try children.append(gpa, emphasis);
+    } else if (try self.parseText(gpa, arena)) |text| {
+        try children.append(gpa, text);
     }
 
     const end = try self.peek(arena);
@@ -164,7 +158,7 @@ fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
         switch (token.token_type) {
             .decimal_character_reference, .hexadecimal_character_reference,
             .entity_reference => |t| {
-                const value = try resolveReference(arena, head_token);
+                const value = try resolveReference(arena, token);
                 try values.append(arena, value);
                 _ = try self.consume(arena, t);
             },
@@ -315,6 +309,7 @@ fn createTextNode(gpa: Allocator, values: [][]const u8) !*ast.Node {
     return node;
 }
 
+/// Recursively transform AST nodes by parsing inline content.
 pub fn transform(gpa: Allocator, original_node: *ast.Node) !*ast.Node {
     switch (original_node.*) {
         .root => |n| {
@@ -372,6 +367,10 @@ pub fn transform(gpa: Allocator, original_node: *ast.Node) !*ast.Node {
     }
 }
 
+/// Replaces the input nodes with inline-parsed nodes.
+///
+/// May return more nodes than there were originally, since a given node might
+/// be parsed into multiple nodes.
 fn parseInlineNodes(gpa: Allocator, original_nodes: []*ast.Node) ![]*ast.Node {
     var arena_impl = std.heap.ArenaAllocator.init(gpa);
     defer arena_impl.deinit();
@@ -410,22 +409,61 @@ fn parseInlineNodes(gpa: Allocator, original_nodes: []*ast.Node) ![]*ast.Node {
     return nodes.toOwnedSlice(gpa);
 }
 
-test "unmatched open emphasis" {
+// ----------------------------------------------------------------------------
+fn testParse(value: []const u8) ![]*ast.Node {
     var arena_impl = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_impl.deinit();
     const arena = arena_impl.allocator();
 
-    const value = "This *is unmatched.";
-
     var tokenizer = InlineTokenizer.init(value);
     var parser = Self.init(&tokenizer);
-    const nodes = try parser.parse(std.testing.allocator, arena);
-    defer {
-        for (nodes) |n| {
-            n.deinit(std.testing.allocator);
-        }
-        std.testing.allocator.free(nodes);
+    return try parser.parse(std.testing.allocator, arena);
+}
+
+fn freeNodes(nodes: []*ast.Node) void {
+    for (nodes) |n| {
+        n.deinit(std.testing.allocator);
     }
+    std.testing.allocator.free(nodes);
+}
+
+test "star emphasis" {
+    const value = "This *is emphasized.*";
+    const nodes = try testParse(value);
+    defer freeNodes(nodes);
+
+    try std.testing.expectEqual(2, nodes.len);
+    try std.testing.expectEqual(
+        ast.NodeType.text,
+        @as(ast.NodeType, nodes[0].*),
+    );
+    try std.testing.expectEqual(
+        ast.NodeType.emphasis,
+        @as(ast.NodeType, nodes[1].*),
+    );
+    try std.testing.expectEqualStrings(
+        "is emphasized.",
+        nodes[1].emphasis.children[0].text.value,
+    );
+}
+
+test "unmatched open star emphasis" {
+    const value = "This *is unmatched.";
+    const nodes = try testParse(value);
+    defer freeNodes(nodes);
+
+    try std.testing.expectEqual(1, nodes.len);
+    try std.testing.expectEqual(
+        ast.NodeType.text,
+        @as(ast.NodeType, nodes[0].*),
+    );
+    try std.testing.expectEqualStrings(value, nodes[0].text.value);
+}
+
+test "unmatched close star emphasis" {
+    const value = "This is unmatched.*";
+    const nodes = try testParse(value);
+    defer freeNodes(nodes);
 
     try std.testing.expectEqual(1, nodes.len);
     try std.testing.expectEqual(

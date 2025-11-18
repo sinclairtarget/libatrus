@@ -1,4 +1,5 @@
 //! Handle entity and numeric character references.
+
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const fmt = std.fmt;
