@@ -410,7 +410,7 @@ fn parseInlineNodes(gpa: Allocator, original_nodes: []*ast.Node) ![]*ast.Node {
     return nodes.toOwnedSlice(gpa);
 }
 
-test "inline unmatched open emphasis" {
+test "unmatched open emphasis" {
     var arena_impl = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_impl.deinit();
     const arena = arena_impl.allocator();
