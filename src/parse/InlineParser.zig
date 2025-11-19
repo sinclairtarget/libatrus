@@ -93,6 +93,8 @@ fn parseStarEmphasis(
         else => return null,
     }
 
+    const begin_is_strong = begin.?.lexeme.?.len % 2 == 0;
+
     if (try self.parseStarEmphasis(gpa, arena)) |emphasis| {
         try children.append(gpa, emphasis);
     } else if (try self.parseText(gpa, arena)) |text| {
@@ -113,12 +115,25 @@ fn parseStarEmphasis(
         },
     }
 
+    const end_is_strong = end.?.lexeme.?.len % 2 == 0;
+    if (begin_is_strong and !end_is_strong) {
+        return null;
+    }
+
     emphasis_node = try gpa.create(ast.Node);
-    emphasis_node.?.* = .{
-        .emphasis = .{
-            .children = try children.toOwnedSlice(gpa),
-        },
-    };
+    if (begin_is_strong) {
+        emphasis_node.?.* = .{
+            .strong = .{
+                .children = try children.toOwnedSlice(gpa),
+            },
+        };
+    } else {
+        emphasis_node.?.* = .{
+            .emphasis = .{
+                .children = try children.toOwnedSlice(gpa),
+            },
+        };
+    }
     return emphasis_node;
 }
 
@@ -363,7 +378,9 @@ pub fn transform(gpa: Allocator, original_node: *ast.Node) !*ast.Node {
             };
             return node;
         },
-        .text, .code, .thematic_break, .emphasis => return original_node,
+        .text, .code, .thematic_break, .emphasis, .strong => {
+            return original_node;
+        },
     }
 }
 
@@ -462,6 +479,39 @@ test "unmatched open star emphasis" {
 
 test "unmatched close star emphasis" {
     const value = "This is unmatched.*";
+    const nodes = try testParse(value);
+    defer freeNodes(nodes);
+
+    try std.testing.expectEqual(1, nodes.len);
+    try std.testing.expectEqual(
+        ast.NodeType.text,
+        @as(ast.NodeType, nodes[0].*),
+    );
+    try std.testing.expectEqualStrings(value, nodes[0].text.value);
+}
+
+test "star strong emphasis" {
+    const value = "This is **strongly emphasized.**";
+    const nodes = try testParse(value);
+    defer freeNodes(nodes);
+
+    try std.testing.expectEqual(2, nodes.len);
+    try std.testing.expectEqual(
+        ast.NodeType.text,
+        @as(ast.NodeType, nodes[0].*),
+    );
+    try std.testing.expectEqual(
+        ast.NodeType.strong,
+        @as(ast.NodeType, nodes[1].*),
+    );
+    try std.testing.expectEqualStrings(
+        "strongly emphasized.",
+        nodes[1].strong.children[0].text.value,
+    );
+}
+
+test "star strong emphasis unmatched" {
+    const value = "This is **not anything.*";
     const nodes = try testParse(value);
     defer freeNodes(nodes);
 
