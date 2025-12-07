@@ -107,7 +107,7 @@ fn addCLibraries(
         break :pc b.addInstallFileWithDir(
             file.getDirectory().path(b, "libatrus.pc"),
             .prefix,
-            "share/pkconfig/libatrus.pc",
+            "share/pkgconfig/libatrus.pc",
         );
     };
 
