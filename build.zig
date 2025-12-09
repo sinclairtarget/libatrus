@@ -16,7 +16,7 @@ pub fn build(b: *std.Build) void {
         "Filter for test cases",
     );
 
-    // atrus lib
+    // atrus module
     const atrus = b.addModule("atrus", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
@@ -51,12 +51,12 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run Atrus CLI");
     run_step.dependOn(&run_cmd.step);
 
-    const lib = addCLibraries(b, atrus, target, optimize);
+    const lib = addLibraries(b, atrus, target, optimize);
     addTests(b, atrus, exe, lib, test_case_filter);
     addBenchmarks(b, exe, optimize);
 }
 
-fn addCLibraries(
+fn addLibraries(
     b: *std.Build,
     atrus: *std.Build.Module,
     target: std.Build.ResolvedTarget,
@@ -71,12 +71,18 @@ fn addCLibraries(
         },
     });
 
-    const lib = b.addLibrary(.{
+    const static_lib = b.addLibrary(.{
         .linkage = .static,
         .name = "atrus",
         .root_module = c_api_module,
     });
-    lib.linkLibC();
+    static_lib.linkLibC();
+
+    const dynamic_lib = b.addLibrary(.{
+        .linkage = .dynamic,
+        .name = "atrus",
+        .root_module = c_api_module,
+    });
 
     const c_header = b.addInstallFileWithDir(
         b.path("include/atrus.h"),
@@ -111,11 +117,12 @@ fn addCLibraries(
         );
     };
 
-    b.installArtifact(lib);
+    b.installArtifact(static_lib);
+    b.installArtifact(dynamic_lib);
     b.getInstallStep().dependOn(&c_header.step);
     b.getInstallStep().dependOn(&pc.step);
 
-    return lib;
+    return static_lib;
 }
 
 // We have multiple groups of tests:
