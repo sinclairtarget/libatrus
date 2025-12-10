@@ -427,6 +427,8 @@ fn parseInlineNodes(gpa: Allocator, original_nodes: []*ast.Node) ![]*ast.Node {
 }
 
 // ----------------------------------------------------------------------------
+// Unit Tests
+// ----------------------------------------------------------------------------
 fn testParse(value: []const u8) ![]*ast.Node {
     var arena_impl = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_impl.deinit();

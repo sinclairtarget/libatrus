@@ -150,8 +150,11 @@ pub const lex =
         @compileError("tokenziation is only supported in the debug release mode");
 
 // ----------------------------------------------------------------------------
-// Ensures all unit tests are reachable even when filtering for specific tests.
+// Unit Tests
+// ----------------------------------------------------------------------------
 test {
+    // Ensures all unit tests are reachable even when filtering only for tests
+    // in imported structs/namespaces and not in this file.
     _ = @import("parse/InlineParser.zig");
     _ = @import("lex/BlockTokenizer.zig");
 }
