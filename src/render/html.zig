@@ -48,13 +48,6 @@ fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
             }
             try out.print("</em>", .{});
         },
-        .strong => |n| {
-            try out.print("<strong>", .{});
-            for (n.children) |child| {
-                try renderNode(out, child);
-            }
-            try out.print("</strong>", .{});
-        },
         .code => |n| {
             // TODO: Lang?
             try out.print("<pre><code>", .{});
