@@ -161,7 +161,8 @@ test {
 
 const md =
     \\# I am a heading
-    \\I am a paragraph.
+    \\I am a paragraph containing *emphasis*.
+    \\
 ;
 
 test renderHTML {
@@ -172,8 +173,11 @@ test renderHTML {
     const root = try parse(arena, md, .{});
     const result = try renderHTML(arena, root);
 
-    try std.testing.expectEqualStrings(
-        "<h1>I am a heading</h1>\n<p>I am a paragraph.</p>\n",
-        result,
-    );
+    const expected =
+        \\<h1>I am a heading</h1>
+        \\<p>I am a paragraph containing <em>emphasis</em>.</p>
+        \\
+    ;
+
+    try std.testing.expectEqualStrings(expected, result);
 }
