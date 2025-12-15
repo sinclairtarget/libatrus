@@ -146,7 +146,11 @@ fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
             try values.append(arena, "\n");
             _ = try self.consume(arena, .newline);
         },
-        .text, .l_delim_star, .lr_delim_star, .r_delim_star => |t| {
+        .l_delim_star, .lr_delim_star, .r_delim_star => |t| {
+            try values.append(arena, "*");
+            _ = try self.consume(arena, t);
+        },
+        .text => |t| {
             const value = head_token.lexeme orelse "";
             try values.append(arena, value);
             _ = try self.consume(arena, t);
