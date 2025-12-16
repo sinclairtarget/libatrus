@@ -4,13 +4,9 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-const ast = @import("ast.zig");
+const ast = @import("../parse/ast.zig");
 
-pub fn postProcess(gpa: Allocator, root: *ast.Node) !*ast.Node {
-    return try processRoot(gpa, root);
-}
-
-fn processRoot(gpa: Allocator, node: *ast.Node) !*ast.Node {
+pub fn transform(gpa: Allocator, node: *ast.Node) !*ast.Node {
     const block = try gpa.create(ast.Node);
     block.* = .{
         .block = .{

@@ -1,6 +1,6 @@
 //! libatrus parses MyST-flavored markdown into the MyST AST.
 //!
-//! It can also render the AST to JSON and HTML.
+//! It can also "render" the AST to JSON or HTML.
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -11,8 +11,7 @@ const ArrayList = std.ArrayList;
 
 const BlockTokenizer = @import("lex/BlockTokenizer.zig");
 const BlockParser = @import("parse/BlockParser.zig");
-const InlineParser = @import("parse/InlineParser.zig");
-const post = @import("parse/post.zig");
+const transform = @import("transform/transform.zig");
 const json = @import("render/json.zig");
 const html = @import("render/html.zig");
 
@@ -61,14 +60,14 @@ pub fn parse(
     errdefer root.deinit(alloc);
 
     // second stage; parse inline elements
-    root = try InlineParser.transform(alloc, root);
+    root = try transform.parseInline(alloc, root);
 
     if (options.parse_level == .pre) {
         return root;
     }
 
     // third stage; MyST-specific transforms
-    root = try post.postProcess(alloc, root);
+    root = try transform.postProcess(alloc, root);
     return root;
 }
 
