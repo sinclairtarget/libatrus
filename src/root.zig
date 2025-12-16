@@ -85,28 +85,29 @@ pub const JSONOptions = json.Options;
 
 pub const RenderJSONError = error{
     WriteFailed,
+    OutOfMemory,
 };
 
-/// Takes the root node of a MyST AST. Returns the rendered JSON as a
-/// null-terminated string.
+/// Renders the AST as JSON, writing to a string.
 ///
 /// The caller is responsible for freeing the returned string.
-pub fn renderJSON(
+pub fn renderJSONString(
     alloc: Allocator,
     root: *ast.Node,
     options: JSONOptions,
-) RenderJSONError![:0]const u8 {
+) RenderJSONError![]const u8 {
     var buf = Io.Writer.Allocating.init(alloc);
+    try renderJSON(&buf.writer, root, options);
+    return buf.toOwnedSlice();
+}
 
-    try json.render(
-        root,
-        &buf.writer,
-        options,
-    );
-
-    try buf.writer.writeByte(0); // zero terminate
-    const written = buf.written();
-    return written[0 .. written.len - 1 :0];
+/// Renders the AST as JSON, writing to the given writer.
+pub fn renderJSON(
+    writer: *Io.Writer,
+    root: *ast.Node,
+    options: JSONOptions,
+) RenderJSONError!void {
+    try json.render(writer, root, options);
 }
 
 pub const RenderHTMLError = error{
@@ -115,26 +116,28 @@ pub const RenderHTMLError = error{
     NotPostProcessed,
 };
 
-/// Takes the root node of a MyST AST. Returns the rendered HTML as a string.
+/// Renders the AST as HTML, writing to a string.
 ///
 /// The caller is responsible for freeing the returned string.
-pub fn renderHTML(
+pub fn renderHTMLString(
     alloc: Allocator,
     root: *ast.Node,
-) RenderHTMLError![:0]const u8 {
+) RenderHTMLError![]const u8 {
+    var buf = Io.Writer.Allocating.init(alloc);
+    try renderHTML(&buf.writer, root);
+    return buf.toOwnedSlice();
+}
+
+/// Renders the AST as HTML, writing to the given writer.
+pub fn renderHTML(
+    writer: *Io.Writer,
+    root: *ast.Node,
+) RenderHTMLError!void {
     if (!root.root.is_post_processed) {
         return RenderHTMLError.NotPostProcessed;
     }
 
-    var buf = Io.Writer.Allocating.init(alloc);
-    try html.render(
-        root,
-        &buf.writer,
-    );
-
-    try buf.writer.writeByte(0); // zero terminate
-    const written = buf.written();
-    return written[0 .. written.len - 1 :0];
+    try html.render(root, writer);
 }
 
 // Tokenization is part of the public interface of the library only in debug
@@ -158,25 +161,42 @@ test {
     _ = @import("lex/BlockTokenizer.zig");
 }
 
-const md =
-    \\# I am a heading
-    \\I am a paragraph containing *emphasis*.
-    \\
-;
-
-test renderHTML {
-    var arena_impl = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena_impl.deinit();
-    const arena = arena_impl.allocator();
-
-    const root = try parse(arena, md, .{});
-    const result = try renderHTML(arena, root);
-
+test renderHTMLString {
+    const md =
+        \\# I am a heading
+        \\I am a paragraph containing *emphasis*.
+        \\
+    ;
     const expected =
         \\<h1>I am a heading</h1>
         \\<p>I am a paragraph containing <em>emphasis</em>.</p>
         \\
     ;
+
+    const root = try parse(std.testing.allocator, md, .{});
+    defer root.deinit(std.testing.allocator);
+
+    const result = try renderHTMLString(std.testing.allocator, root);
+    defer std.testing.allocator.free(result);
+
+    try std.testing.expectEqualStrings(expected, result);
+}
+
+test "emphasis" {
+    const md =
+        \\I am a paragraph containing *emphasis*.
+        \\
+    ;
+    const expected =
+        \\<p>I am a paragraph containing <em>emphasis</em>.</p>
+        \\
+    ;
+
+    const root = try parse(std.testing.allocator, md, .{});
+    defer root.deinit(std.testing.allocator);
+
+    const result = try renderHTMLString(std.testing.allocator, root);
+    defer std.testing.allocator.free(result);
 
     try std.testing.expectEqualStrings(expected, result);
 }

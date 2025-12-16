@@ -3,6 +3,8 @@
 //! See include/atrus.h for C API documentation.
 
 const std = @import("std");
+const Allocator = std.mem.Allocator;
+const Io = std.Io;
 
 const atrus = @import("atrus");
 const ParseError = atrus.ParseError;
@@ -26,9 +28,17 @@ export fn atrus_ast_free(root: *atrus.ast.Node) void {
 }
 
 export fn atrus_render_json(root: *atrus.ast.Node, out: *[*:0]const u8) c_int {
-    const s = atrus.renderJSON(alloc, root, .{}) catch |err| {
+    var buf = Io.Writer.Allocating.init(alloc);
+    atrus.renderJSON(&buf.writer, root, .{}) catch |err| {
         switch (err) {
             RenderJSONError.WriteFailed => return -1,
+            RenderJSONError.OutOfMemory => return -1,
+        }
+    };
+
+    const s: [:0]const u8 = buf.toOwnedSliceSentinel(0) catch |err| {
+        switch (err) {
+            Allocator.Error.OutOfMemory => return -1,
         }
     };
     out.* = s.ptr;
@@ -36,11 +46,18 @@ export fn atrus_render_json(root: *atrus.ast.Node, out: *[*:0]const u8) c_int {
 }
 
 export fn atrus_render_html(root: *atrus.ast.Node, out: *[*:0]const u8) c_int {
-    const s = atrus.renderHTML(alloc, root) catch |err| {
+    var buf = Io.Writer.Allocating.init(alloc);
+    atrus.renderHTML(&buf.writer, root) catch |err| {
         switch (err) {
             RenderHTMLError.WriteFailed => return -1,
             RenderHTMLError.OutOfMemory => return -1,
             RenderHTMLError.NotPostProcessed => return -1, // TODO: Communicate!
+        }
+    };
+
+    const s: [:0]const u8 = buf.toOwnedSliceSentinel(0) catch |err| {
+        switch (err) {
+            Allocator.Error.OutOfMemory => return -1,
         }
     };
     out.* = s.ptr;

@@ -316,7 +316,7 @@ fn createTextNode(gpa: Allocator, values: [][]const u8) !*ast.Node {
 // ----------------------------------------------------------------------------
 // Unit Tests
 // ----------------------------------------------------------------------------
-fn testParse(value: []const u8) ![]*ast.Node {
+fn parseNodes(value: []const u8) ![]*ast.Node {
     var arena_impl = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_impl.deinit();
     const arena = arena_impl.allocator();
@@ -335,7 +335,7 @@ fn freeNodes(nodes: []*ast.Node) void {
 
 test "star emphasis" {
     const value = "This *is emphasized.*";
-    const nodes = try testParse(value);
+    const nodes = try parseNodes(value);
     defer freeNodes(nodes);
 
     try std.testing.expectEqual(2, nodes.len);
@@ -355,7 +355,7 @@ test "star emphasis" {
 
 test "unmatched open star emphasis" {
     const value = "This *is unmatched.";
-    const nodes = try testParse(value);
+    const nodes = try parseNodes(value);
     defer freeNodes(nodes);
 
     try std.testing.expectEqual(1, nodes.len);
@@ -368,7 +368,7 @@ test "unmatched open star emphasis" {
 
 test "unmatched close star emphasis" {
     const value = "This is unmatched.*";
-    const nodes = try testParse(value);
+    const nodes = try parseNodes(value);
     defer freeNodes(nodes);
 
     try std.testing.expectEqual(1, nodes.len);

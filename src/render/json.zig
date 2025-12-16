@@ -15,8 +15,8 @@ pub const Options = struct {
 };
 
 pub fn render(
-    root: *ast.Node,
     out: *Io.Writer,
+    root: *ast.Node,
     options: Options,
 ) Io.Writer.Error!void {
     const stringify_options: Stringify.Options = .{

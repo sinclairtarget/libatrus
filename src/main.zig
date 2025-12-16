@@ -95,15 +95,10 @@ pub fn main() !void {
 
             logger.debug("Rendering...", .{});
             switch (options.output_choice) {
-                .json => {
-                    const s = try atrus.renderJSON(arena, ast, .{});
-                    try stdout.print("{s}\n", .{s});
-                },
-                .html => {
-                    const s = try atrus.renderHTML(arena, ast);
-                    try stdout.print("{s}", .{s});
-                },
+                .json => try atrus.renderJSON(stdout, ast, .{}),
+                .html => try atrus.renderHTML(stdout, ast),
             }
+            try stdout.print("\n", .{});
         },
         .tokenize => {
             if (builtin.mode == .Debug) {

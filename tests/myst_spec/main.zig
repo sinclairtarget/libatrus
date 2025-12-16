@@ -48,7 +48,7 @@ const Test = struct {
             self.case.myst,
             .{ .parse_level = .pre },
         );
-        const actual = try atrus.renderJSON(
+        const actual = try atrus.renderJSONString(
             alloc,
             ast,
             .{ .whitespace = .indent_2 },
@@ -69,7 +69,7 @@ const Test = struct {
             .{ .parse_level = .post },
         );
         if (self.case.html) |expected_html| {
-            const actual_html = try atrus.renderHTML(alloc, post_ast);
+            const actual_html = try atrus.renderHTMLString(alloc, post_ast);
             if (!std.mem.eql(u8, expected_html, actual_html)) {
                 if (options.verbose) {
                     std.debug.print("expected html:\n{s}\n", .{expected_html});
