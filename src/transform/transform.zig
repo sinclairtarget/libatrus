@@ -5,12 +5,12 @@ const Allocator = std.mem.Allocator;
 
 const ast = @import("../parse/ast.zig");
 const post = @import("post.zig");
-const inline_ = @import("inline.zig");
+const @"inline" = @import("inline.zig");
 
 pub fn postProcess(gpa: Allocator, root: *ast.Node) !*ast.Node {
     return try post.transform(gpa, root);
 }
 
 pub fn parseInline(gpa: Allocator, root: *ast.Node) !*ast.Node {
-    return try inline_.transform(gpa, root);
+    return try @"inline".transform(gpa, root);
 }
