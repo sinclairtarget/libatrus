@@ -25,7 +25,7 @@ const Error = error{
 
 tokenizer: *BlockTokenizer,
 line: ArrayList(BlockToken),
-i: usize,
+token_index: usize,
 
 const Self = @This();
 
@@ -33,7 +33,7 @@ pub fn init(tokenizer: *BlockTokenizer) Self {
     return .{
         .tokenizer = tokenizer,
         .line = .empty,
-        .i = 0,
+        .token_index = 0,
     };
 }
 
@@ -363,7 +363,7 @@ fn createTextNode(gpa: Allocator, value: []const u8) !*ast.Node {
 }
 
 fn peek(self: *Self, arena: Allocator) !?BlockToken {
-    if (self.i >= self.line.items.len) {
+    if (self.token_index >= self.line.items.len) {
         const next = try self.tokenizer.next(arena);
         if (next == null) {
             return null; // end of input
@@ -372,7 +372,7 @@ fn peek(self: *Self, arena: Allocator) !?BlockToken {
         try self.line.append(arena, next.?);
     }
 
-    return self.line.items[self.i];
+    return self.line.items[self.token_index];
 }
 
 fn consume(
@@ -385,23 +385,23 @@ fn consume(
         return null;
     }
 
-    self.i += 1;
+    self.token_index += 1;
     return current;
 }
 
 fn checkpoint(self: *Self) usize {
-    return self.i;
+    return self.token_index;
 }
 
 fn backtrack(self: *Self, checkpoint_index: usize) void {
-    self.i = checkpoint_index;
+    self.token_index = checkpoint_index;
 }
 
 fn clear_line(self: *Self, arena: Allocator) !void {
     std.debug.assert(self.line.items.len > 0);
 
     const current = try self.peek(arena);
-    self.i = 0;
+    self.token_index = 0;
     self.line.clearRetainingCapacity();
 
     if (current) |c| {
