@@ -1,13 +1,12 @@
 const std = @import("std");
 const builtin = @import("builtin");
-
-const atrus = @import("atrus");
-const cli = @import("cli.zig");
-
 const Allocator = std.mem.Allocator;
 const Io = std.Io;
 const ArgsError = cli.ArgsError;
 const log = std.log;
+
+const atrus = @import("atrus");
+const cli = @import("cli.zig");
 
 const logger = log.scoped(.main);
 

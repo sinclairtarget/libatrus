@@ -15,6 +15,8 @@ const transform = @import("transform/transform.zig");
 const json = @import("render/json.zig");
 const html = @import("render/html.zig");
 
+const logger = @import("logging.zig").logger;
+
 // The below `pub` variable and function declarations define the public
 // interface of libatrus.
 
@@ -49,6 +51,7 @@ pub fn parse(
     var reader: Io.Reader = .fixed(in);
 
     // first stage; parse into blocks
+    logger.debug("Beginning block parsing...", .{});
     var block_tokenizer = BlockTokenizer.init(&reader);
     var block_parser = BlockParser.init(&block_tokenizer);
     var root = try block_parser.parse(alloc);
@@ -59,12 +62,14 @@ pub fn parse(
     errdefer root.deinit(alloc);
 
     // second stage; parse inline elements
+    logger.debug("Beginning inline parsing...", .{});
     root = try transform.parseInline(alloc, root);
     if (options.parse_level == .pre) {
         return root;
     }
 
     // third stage; MyST-specific transforms
+    logger.debug("Beginning post-processing...", .{});
     root = try transform.postProcess(alloc, root);
     return root;
 }
