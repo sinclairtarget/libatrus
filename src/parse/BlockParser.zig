@@ -16,6 +16,7 @@ const BlockTokenizer = @import("../lex/BlockTokenizer.zig");
 const tokens = @import("../lex/tokens.zig");
 const BlockToken = tokens.BlockToken;
 const BlockTokenType = tokens.BlockTokenType;
+const safety = @import("../util/safety.zig");
 const strings = @import("../util/strings.zig");
 
 const Error = error{
@@ -54,45 +55,41 @@ pub fn parse(self: *Self, gpa: Allocator) !*ast.Node {
         children.deinit(gpa);
     }
 
-    while (try self.peek(arena) != null) {
-        const len_start = children.items.len;
+    for (0..safety.loop_bound) |_| { // could hit if we forget to consume tokens
+        _ = try self.peek(arena) orelse break;
 
-        if (try self.parseIndentCode(gpa, arena)) |indent_code| {
-            try children.append(gpa, indent_code);
+        const maybe_next = blk: {
+            if (try self.parseIndentedCode(gpa, arena)) |indent_code| {
+                break :blk indent_code;
+            }
+
+            if (try self.parseATXHeading(gpa, arena)) |heading| {
+                break :blk heading;
+            }
+
+            if (try self.parseThematicBreak(gpa, arena)) |thematic_break| {
+                break :blk thematic_break;
+            }
+
+            if (try self.parseParagraph(gpa, arena)) |paragraph| {
+                break :blk paragraph;
+            }
+
+            break :blk null;
+        };
+        if (maybe_next) |next| {
+            try children.append(gpa, next);
             try self.clear_line(arena);
             continue;
-        }
-
-        if (try self.parseATXHeading(gpa, arena)) |heading| {
-            try children.append(gpa, heading);
-            try self.clear_line(arena);
-            continue;
-        }
-
-        if (try self.parseThematicBreak(gpa, arena)) |thematic_break| {
-            try children.append(gpa, thematic_break);
-            try self.clear_line(arena);
-            continue;
-        }
-
-        while (try self.parseParagraph(gpa, arena)) |paragraph| {
-            try children.append(gpa, paragraph);
-            try self.clear_line(arena);
         }
 
         // blank lines
-        var lines_skipped: u32 = 0;
-        while (try self.consume(arena, .newline) != null) {
-            lines_skipped += 1;
+        if (try self.consume(arena, .newline) != null) {
+            continue;
         }
 
-        if (children.items.len <= len_start and lines_skipped == 0) {
-            // Nothing parsed this loop
-            const t = try self.peek(arena);
-            std.debug.print("unsure how to parse: {f}\n", .{t.?});
-            return Error.UnrecognizedBlockToken;
-        }
-    }
+        @panic("unable to parse block token");
+    } else @panic(safety.loop_bound_panic_msg);
 
     const node = try gpa.create(ast.Node);
     node.* = .{
@@ -104,26 +101,26 @@ pub fn parse(self: *Self, gpa: Allocator) !*ast.Node {
 }
 
 fn parseATXHeading(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
-    const token = try self.peek(arena);
-    if (token == null or token.?.token_type != .pound) {
+    const start_token = try self.peek(arena) orelse return null;
+    if (start_token.token_type != .pound) {
         return null;
     }
 
-    const depth = token.?.lexeme.?.len;
+    const depth = start_token.lexeme.?.len;
     if (depth > 6) { // https://spec.commonmark.org/0.31.2/#example-63
         return null;
     }
 
-    self.advance();
-
-    var children: ArrayList(*ast.Node) = .empty;
+    _ = try self.consume(arena, .pound);
 
     var buf = Io.Writer.Allocating.init(arena);
-    while (try self.peek(arena)) |current| {
+    for (0..safety.loop_bound) |_| {
+        const current = try self.peek(arena) orelse break;
         if (current.token_type == .pound) {
             // Look ahead for a newline. If there is one, this is a closing
             // sequence of #.
-            self.advance();
+            const checkpoint_index = self.checkpoint();
+            _ = try self.consume(arena, .pound);
             if (try self.peek(arena)) |t| {
                 if (t.token_type == .newline) {
                     break;
@@ -131,31 +128,28 @@ fn parseATXHeading(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
             }
 
             // Okay, not a closing sequence.
-            self.backtrack();
+            self.backtrack(checkpoint_index);
         }
 
-        const text = try self.parseText(gpa, arena);
-        if (text) |t| {
-            try buf.writer.print("{s}", .{t.text.value});
-            t.deinit(gpa);
-        } else {
-            break;
-        }
-    }
+        const node = try self.parseText(gpa, arena) orelse break;
+        try buf.writer.print("{s}", .{node.text.value});
+        node.deinit(gpa);
+    } else @panic(safety.loop_bound_panic_msg);
 
     _ = try self.consume(arena, .newline);
 
+    var children: []const *ast.Node = &.{};
     const inner_value = std.mem.trim(u8, buf.written(), " \t");
     if (inner_value.len > 0) {
         const text_node = try createTextNode(gpa, inner_value);
-        try children.append(gpa, text_node);
+        children = &.{ text_node };
     }
 
     const node = try gpa.create(ast.Node);
     node.* = .{
         .heading = .{
-            .depth = @truncate(token.?.lexeme.?.len),
-            .children = try children.toOwnedSlice(gpa),
+            .depth = @truncate(depth),
+            .children = try gpa.dupe(*ast.Node, children),
         },
     };
     return node;
@@ -166,21 +160,17 @@ fn parseThematicBreak(
     gpa: Allocator,
     arena: Allocator,
 ) !?*ast.Node {
-    const token = try self.peek(arena);
-    if (token == null) {
-        return null;
-    }
-
-    switch (token.?.token_type) {
-        .rule_star, .rule_underline, .rule_dash_with_whitespace => {
-            self.advance();
+    const token = try self.peek(arena) orelse return null;
+    switch (token.token_type) {
+        .rule_star, .rule_underline, .rule_dash_with_whitespace => |t| {
+            _ = try self.consume(arena, t);
         },
-        .rule_dash => {
-            if (token.?.lexeme.?.len < 3) {
+        .rule_dash => |t| {
+            if (token.lexeme.?.len < 3) {
                 return null;
             }
 
-            self.advance();
+            _ = try self.consume(arena, t);
         },
         else => return null,
     }
@@ -192,37 +182,45 @@ fn parseThematicBreak(
     return node;
 }
 
-fn parseIndentCode(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
-    const token = try self.peek(arena);
-    if (token == null or token.?.token_type != .indent) {
+fn parseIndentedCode(
+    self: *Self,
+    gpa: Allocator,
+    arena: Allocator,
+) !?*ast.Node {
+    // Has to start with an indent
+    const initial = try self.peek(arena) orelse return null;
+    if (initial.token_type != .indent) {
         return null;
     }
 
+    // Parse one or more indented lines
     var lines: ArrayList([]const u8) = .empty;
-    while (try self.peek(arena)) |line_start| {
-        var line = Io.Writer.Allocating.init(arena);
+    for (0..safety.loop_bound) |_| {
+        const line_start = try self.peek(arena) orelse break;
 
+        var line = Io.Writer.Allocating.init(arena);
         switch (line_start.token_type) {
             .indent => {
+                // Parse a single indented line
                 _ = try self.consume(arena, .indent);
-                while (try self.peek(arena)) |t| {
-                    if (t.token_type == .newline) {
+                while (try self.peek(arena)) |next| {
+                    if (next.token_type == .newline) {
                         break;
                     }
 
-                    if (t.lexeme) |v| {
-                        self.advance();
+                    _ = try self.consume(arena, next.token_type);
+                    if (next.lexeme) |v| {
                         try line.writer.print("{s}", .{v});
                     }
-                }
+                } else @panic(safety.loop_bound_panic_msg);
 
                 _ = try self.consume(arena, .newline);
             },
-            .newline => {
+            .newline => { // newline doesn't end indented block
                 _ = try self.consume(arena, .newline);
                 try line.writer.print("", .{});
             },
-            .text => {
+            .text => { // blank line doesn't end indented block
                 if (strings.isBlankLine(line_start.lexeme.?)) {
                     // https://spec.commonmark.org/0.30/#example-111
                     _ = try self.consume(arena, .text);
@@ -236,7 +234,7 @@ fn parseIndentCode(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
         }
 
         try lines.append(arena, line.written());
-    }
+    } else @panic(safety.loop_bound_panic_msg);
 
     if (lines.items.len == 0) {
         return null;
@@ -280,20 +278,25 @@ fn parseIndentCode(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
 
 fn parseParagraph(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
     var lines: ArrayList([]const u8) = .empty;
-    while (try self.parseTextStart(gpa, arena)) |start| {
+
+    for (0..safety.loop_bound) |_| {
         var line = Io.Writer.Allocating.init(arena);
 
-        try line.writer.print("{s}", .{start.text.value});
-        start.deinit(gpa);
-
-        while (try self.parseText(gpa, arena)) |t| {
-            try line.writer.print("{s}", .{t.text.value});
-            t.deinit(gpa);
+        {
+            const start = try self.parseTextStart(gpa, arena) orelse break;
+            defer start.deinit(gpa);
+            try line.writer.print("{s}", .{start.text.value});
         }
+
+        for (0..safety.loop_bound) |_| {
+            const next = try self.parseText(gpa, arena) orelse break;
+            defer next.deinit(gpa);
+            try line.writer.print("{s}", .{next.text.value});
+        } else @panic(safety.loop_bound_panic_msg);
 
         try lines.append(arena, line.written());
         _ = try self.consume(arena, .newline);
-    }
+    } else @panic(safety.loop_bound_panic_msg);
 
     if (lines.items.len == 0) {
         return null;
@@ -304,44 +307,33 @@ fn parseParagraph(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
     const text_node = try createTextNode(gpa, buf);
 
     const node = try gpa.create(ast.Node);
-    var children = try gpa.alloc(*ast.Node, 1);
-    children[0] = text_node;
-
     node.* = .{
         .paragraph = .{
-            .children = children,
+            .children = try gpa.dupe(*ast.Node, &.{ text_node }),
         },
     };
     return node;
 }
 
+/// Parse text potentially starting later in a line.
 fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
-    const token = try self.peek(arena);
-    if (token == null) {
-        return null;
-    }
-
-    switch (token.?.token_type) {
-        .text, .pound, .rule_equals, .rule_dash => {
-            const value = token.?.lexeme orelse "";
-            self.advance();
+    const token = try self.peek(arena) orelse return null;
+    switch (token.token_type) {
+        .text, .pound, .rule_equals, .rule_dash => |t| {
+            const value = token.lexeme orelse "";
+            _ = try self.consume(arena, t);
             return createTextNode(gpa, value);
         },
-        else => {
-            return null;
-        },
+        else => return null,
     }
 }
 
+/// Parse text starting from the beginning of a line.
 fn parseTextStart(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
-    const token = try self.peek(arena);
-    if (token == null) {
-        return null;
-    }
-
-    switch (token.?.token_type) {
+    const token = try self.peek(arena) orelse return null;
+    switch (token.token_type) {
         .pound => {
-            if (token.?.lexeme != null and token.?.lexeme.?.len > 6) {
+            if (token.lexeme != null and token.lexeme.?.len > 6) {
                 return try self.parseText(gpa, arena);
             } else {
                 return null;
@@ -356,9 +348,7 @@ fn parseTextStart(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
         .text, .rule_equals, .rule_dash => {
             return try self.parseText(gpa, arena);
         },
-        else => {
-            return null;
-        },
+        else => return null,
     }
 }
 
@@ -390,26 +380,21 @@ fn consume(
     arena: Allocator,
     token_type: BlockTokenType,
 ) !?BlockToken {
-    const current = try self.peek(arena);
-
-    if (current == null) {
+    const current = try self.peek(arena) orelse return null;
+    if (current.token_type != token_type) {
         return null;
     }
 
-    if (current.?.token_type != token_type) {
-        return null;
-    }
-
-    self.advance();
+    self.i += 1;
     return current;
 }
 
-fn advance(self: *Self) void {
-    self.i += 1;
+fn checkpoint(self: *Self) usize {
+    return self.i;
 }
 
-fn backtrack(self: *Self) void {
-    self.i -= 1;
+fn backtrack(self: *Self, checkpoint_index: usize) void {
+    self.i = checkpoint_index;
 }
 
 fn clear_line(self: *Self, arena: Allocator) !void {
