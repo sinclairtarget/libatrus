@@ -19,7 +19,7 @@ const BlockTokenType = tokens.BlockTokenType;
 const strings = @import("../util/strings.zig");
 
 const Error = error{
-    UnrecognizedBlockToken,
+    UnrecognizedBlockToken, // TODO: Remove
 };
 
 tokenizer: *BlockTokenizer,
@@ -422,4 +422,43 @@ fn clear_line(self: *Self, arena: Allocator) !void {
     if (current) |c| {
         try self.line.append(arena, c);
     }
+}
+
+// ----------------------------------------------------------------------------
+// Unit Tests
+// ----------------------------------------------------------------------------
+test "ATX heading and paragraphs" {
+    const md =
+        \\# This is a heading
+        \\This is paragraph one. It goes on for
+        \\multiple lines.
+        \\
+        \\This is paragraph two.
+        \\
+        \\
+        \\This is paragraph three.
+        \\
+    ;
+
+    var reader: Io.Reader = .fixed(md);
+    var tokenizer = BlockTokenizer.init(&reader);
+    var parser = Self.init(&tokenizer);
+
+    const root = try parser.parse(std.testing.allocator);
+    defer root.deinit(std.testing.allocator);
+
+    try std.testing.expectEqual(.root, @as(ast.NodeType, root.*));
+    try std.testing.expectEqual(4, root.root.children.len);
+
+    const heading = root.root.children[0];
+    try std.testing.expectEqual(.heading, @as(ast.NodeType, heading.*));
+
+    const p1 = root.root.children[1];
+    try std.testing.expectEqual(.paragraph, @as(ast.NodeType, p1.*));
+
+    const p2 = root.root.children[2];
+    try std.testing.expectEqual(.paragraph, @as(ast.NodeType, p2.*));
+
+    const p3 = root.root.children[3];
+    try std.testing.expectEqual(.paragraph, @as(ast.NodeType, p3.*));
 }

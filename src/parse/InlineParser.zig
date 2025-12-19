@@ -1,3 +1,5 @@
+//! Parser for the second parsing stage that handles inline elements.
+
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
