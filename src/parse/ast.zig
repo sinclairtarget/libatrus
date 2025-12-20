@@ -31,30 +31,8 @@ pub const Node = union(NodeType) {
 
     pub fn deinit(self: *Self, alloc: Allocator) void {
         switch (self.*) {
-            .root => |n| {
-                for (n.children) |child| {
-                    child.deinit(alloc);
-                }
-                alloc.free(n.children);
-            },
-            .paragraph, .block, .emphasis => |n| {
-                for (n.children) |child| {
-                    child.deinit(alloc);
-                }
-                alloc.free(n.children);
-            },
-            .heading => |n| {
-                for (n.children) |child| {
-                    child.deinit(alloc);
-                }
-                alloc.free(n.children);
-            },
-            .text => |n| alloc.free(n.value),
-            .code => |n| {
-                alloc.free(n.value);
-                alloc.free(n.lang);
-            },
             .thematic_break => {},
+            inline else => |*payload| payload.deinit(alloc),
         }
 
         alloc.destroy(self);
@@ -64,24 +42,64 @@ pub const Node = union(NodeType) {
 pub const Root = struct {
     children: []*Node,
     is_post_processed: bool = false,
+
+    const Self = @This();
+
+    pub fn deinit(self: *Self, alloc: Allocator) void {
+        for (self.children) |child| {
+            child.deinit(alloc);
+        }
+        alloc.free(self.children);
+    }
 };
 
 pub const Container = struct {
     children: []*Node,
+
+    const Self = @This();
+
+    pub fn deinit(self: *Self, alloc: Allocator) void {
+        for (self.children) |child| {
+            child.deinit(alloc);
+        }
+        alloc.free(self.children);
+    }
 };
 
 pub const Heading = struct {
     depth: u8,
     children: []*Node,
+
+    const Self = @This();
+
+    pub fn deinit(self: *Self, alloc: Allocator) void {
+        for (self.children) |child| {
+            child.deinit(alloc);
+        }
+        alloc.free(self.children);
+    }
 };
 
 pub const Text = struct {
     value: []const u8,
+
+    const Self = @This();
+
+    pub fn deinit(self: *Self, alloc: Allocator) void {
+        alloc.free(self.value);
+    }
 };
 
 pub const Code = struct {
     value: []const u8,
     lang: []const u8,
+
+    const Self = @This();
+
+    pub fn deinit(self: *Self, alloc: Allocator) void {
+        alloc.free(self.value);
+        alloc.free(self.lang);
+    }
 };
 
 pub const Empty = struct {};
