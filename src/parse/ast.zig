@@ -15,6 +15,7 @@ pub const NodeType = enum {
     code,
     thematic_break,
     emphasis,
+    strong,
 };
 
 pub const Node = union(NodeType) {
@@ -26,6 +27,7 @@ pub const Node = union(NodeType) {
     code: Code,
     thematic_break: Empty,
     emphasis: Container,
+    strong: Container,
 
     const Self = @This();
 

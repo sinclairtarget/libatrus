@@ -6,11 +6,15 @@ const fmt = std.fmt;
 const mem = std.mem;
 const unicode = std.unicode;
 
+pub const CharacterReferenceError = error{
+    UnicodeError,
+} || Allocator.Error;
+
 pub fn resolveCharacter(
     alloc: Allocator,
     digits: []const u8,
     base: u8,
-) ![]const u8 {
+) CharacterReferenceError![]const u8 {
     const value = fmt.parseInt(u21, digits, base) catch 0;
     if (value > 0) {
         var buf: [4]u8 = undefined;

@@ -12,9 +12,9 @@ const InlineTokenizer = @import("../lex/InlineTokenizer.zig");
 const references = @import("references.zig");
 const safety = @import("../util/safety.zig");
 
-const Error = error{
-    UnrecognizedInlineToken, // TODO: Remove
-};
+pub const Error = (
+    references.CharacterReferenceError || Allocator.Error
+);
 
 tokenizer: *InlineTokenizer,
 line: ArrayList(InlineToken),
@@ -33,7 +33,7 @@ pub fn init(tokenizer: *InlineTokenizer) Self {
 /// Parse inline tokens from the token stream.
 ///
 /// Returns a slice of AST nodes that the caller is responsible for freeing.
-pub fn parse(self: *Self, gpa: Allocator, arena: Allocator) ![]*ast.Node {
+pub fn parse(self: *Self, gpa: Allocator, arena: Allocator) Error![]*ast.Node {
     var nodes: ArrayList(*ast.Node) = .empty;
     defer nodes.deinit(gpa);
     errdefer {
@@ -47,6 +47,11 @@ pub fn parse(self: *Self, gpa: Allocator, arena: Allocator) ![]*ast.Node {
 
         if (try self.parseStarEmphasis(gpa, arena)) |emphasis| {
             try nodes.append(gpa, emphasis);
+            continue;
+        }
+
+        if (try self.parseStarStrong(gpa, arena)) |strong| {
+            try nodes.append(gpa, strong);
             continue;
         }
 
@@ -67,22 +72,21 @@ pub fn parse(self: *Self, gpa: Allocator, arena: Allocator) ![]*ast.Node {
     return joined_nodes;
 }
 
-// @     => open inner close
-// open  => *l
-// close => *r
-// inner => text
-fn parseStarEmphasis(
+// strong => open inner close
+// open   => l_star l_star | lr_star lr_star
+// close  => r_star r_star | lr_star lr_star
+// inner  => (emph | strong | text)+
+fn parseStarStrong(
     self: *Self,
     gpa: Allocator,
     arena: Allocator,
-) !?*ast.Node {
-    var emphasis_node: ?*ast.Node = null;
+) Error!?*ast.Node {
+    var strong_node: ?*ast.Node = null;
     var children: ArrayList(*ast.Node) = .empty;
     const checkpoint_index = self.checkpoint();
     defer {
-        if (emphasis_node == null) {
+        if (strong_node == null) {
             self.backtrack(checkpoint_index);
-
             for (children.items) |child| {
                 child.deinit(gpa);
             }
@@ -92,11 +96,24 @@ fn parseStarEmphasis(
 
     const open_token = try self.peek(arena) orelse return null;
     switch (open_token.token_type) {
-        .l_delim_star => _ = try self.consume(arena, .l_delim_star),
+        .l_delim_star, .lr_delim_star => |t| {
+            _ = try self.consume(arena, t) orelse return null;
+            _ = try self.consume(arena, t) orelse return null;
+        },
         else => return null,
     }
 
     for (0..safety.loop_bound) |_| {
+        if (try self.parseStarEmphasis(gpa, arena)) |emph| {
+            try children.append(gpa, emph);
+            continue;
+        }
+
+        if (try self.parseStarStrong(gpa, arena)) |strong| {
+            try children.append(gpa, strong);
+            continue;
+        }
+
         if (try self.parseText(gpa, arena)) |text| {
             try children.append(gpa, text);
             continue;
@@ -105,9 +122,101 @@ fn parseStarEmphasis(
         break;
     } else @panic(safety.loop_bound_panic_msg);
 
+    if (children.items.len == 0) {
+        return null;
+    }
+
     const close_token = try self.peek(arena) orelse return null;
     switch (close_token.token_type) {
-        .r_delim_star => _ = try self.consume(arena, .r_delim_star),
+        .r_delim_star, .lr_delim_star => |t| {
+            _ = try self.consume(arena, t) orelse return null;
+            _ = try self.consume(arena, t) orelse return null;
+        },
+        else => return null,
+    }
+
+    strong_node = try gpa.create(ast.Node);
+    strong_node.?.* = .{
+        .strong = .{
+            .children = try children.toOwnedSlice(gpa),
+        },
+    };
+    return strong_node;
+}
+
+// emph  => open inner close
+// open  => l_star | lr_star
+// close => r_star | lr_star
+// inner => (strong (text | emph)? | emph? (strong | text) emph?)+
+fn parseStarEmphasis(
+    self: *Self,
+    gpa: Allocator,
+    arena: Allocator,
+) Error!?*ast.Node {
+    var emphasis_node: ?*ast.Node = null;
+    var children: ArrayList(*ast.Node) = .empty;
+    const checkpoint_index = self.checkpoint();
+    defer {
+        if (emphasis_node == null) {
+            self.backtrack(checkpoint_index);
+            for (children.items) |child| {
+                child.deinit(gpa);
+            }
+            children.deinit(gpa);
+        }
+    }
+
+    const open_token = try self.peek(arena) orelse return null;
+    switch (open_token.token_type) {
+        .l_delim_star, .lr_delim_star => |t| _ = try self.consume(arena, t),
+        else => return null,
+    }
+
+    for (0..safety.loop_bound) |_| {
+        if (try self.parseStarStrong(gpa, arena)) |strong| {
+            try children.append(gpa, strong);
+
+            if (try self.parseStarEmphasis(gpa, arena)) |emph| {
+                try children.append(gpa, emph);
+            } else if (try self.parseText(gpa, arena)) |text| {
+                try children.append(gpa, text);
+            }
+
+            continue;
+        }
+
+        const maybe_leading_emph = try self.parseStarEmphasis(gpa, arena);
+
+        if (try self.parseStarStrong(gpa, arena)) |strong| {
+            if (maybe_leading_emph) |emph| {
+                try children.append(gpa, emph);
+            }
+            try children.append(gpa, strong);
+        } else if (try self.parseText(gpa, arena)) |text| {
+            if (maybe_leading_emph) |emph| {
+                try children.append(gpa, emph);
+            }
+            try children.append(gpa, text);
+        } else {
+            // Inner nodes did not successfully parse
+            if (maybe_leading_emph) |emph| {
+                emph.deinit(gpa);
+            }
+            break;
+        }
+
+        if (try self.parseStarEmphasis(gpa, arena)) |emph| {
+            try children.append(gpa, emph);
+        }
+    } else @panic(safety.loop_bound_panic_msg);
+
+    if (children.items.len == 0) {
+        return null;
+    }
+
+    const close_token = try self.peek(arena) orelse return null;
+    switch (close_token.token_type) {
+        .r_delim_star, .lr_delim_star => |t| _ = try self.consume(arena, t),
         else => return null,
     }
 
@@ -122,7 +231,7 @@ fn parseStarEmphasis(
 
 // @       => allowed*
 // allowed => ref10 | ref16 | ref& | \n | text
-fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
+fn parseText(self: *Self, gpa: Allocator, arena: Allocator) Error!?*ast.Node {
     var values: ArrayList([]const u8) = .empty;
 
     const allowed = .{
@@ -153,7 +262,7 @@ fn parseTextFallback(
     self: *Self,
     gpa: Allocator,
     arena: Allocator,
-) !?*ast.Node {
+) Error!?*ast.Node {
     const token = try self.peek(arena) orelse return null;
     _ = try self.consume(arena, token.token_type);
 
@@ -299,65 +408,236 @@ fn createTextNode(gpa: Allocator, values: []const []const u8) !*ast.Node {
 // ----------------------------------------------------------------------------
 // Unit Tests
 // ----------------------------------------------------------------------------
-fn parseNodes(value: []const u8) ![]*ast.Node {
-    var arena_impl = std.heap.ArenaAllocator.init(std.testing.allocator);
+const testing = std.testing;
+
+fn parseIntoNodes(value: []const u8) ![]*ast.Node {
+    var arena_impl = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena_impl.deinit();
     const arena = arena_impl.allocator();
 
     var tokenizer = InlineTokenizer.init(value);
     var parser = Self.init(&tokenizer);
-    return try parser.parse(std.testing.allocator, arena);
+    return try parser.parse(testing.allocator, arena);
 }
 
 fn freeNodes(nodes: []*ast.Node) void {
     for (nodes) |n| {
-        n.deinit(std.testing.allocator);
+        n.deinit(testing.allocator);
     }
-    std.testing.allocator.free(nodes);
+    testing.allocator.free(nodes);
 }
 
 test "star emphasis" {
     const value = "This *is emphasized.*";
-    const nodes = try parseNodes(value);
+    const nodes = try parseIntoNodes(value);
     defer freeNodes(nodes);
 
-    try std.testing.expectEqual(2, nodes.len);
-    try std.testing.expectEqual(
-        ast.NodeType.text,
-        @as(ast.NodeType, nodes[0].*),
-    );
-    try std.testing.expectEqual(
+    try testing.expectEqual(2, nodes.len);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqual(
         ast.NodeType.emphasis,
         @as(ast.NodeType, nodes[1].*),
     );
-    try std.testing.expectEqualStrings(
+    try testing.expectEqualStrings(
         "is emphasized.",
         nodes[1].emphasis.children[0].text.value,
     );
 }
 
-test "unmatched open star emphasis" {
-    const value = "This *is unmatched.";
-    const nodes = try parseNodes(value);
+test "intraword star emphasis" {
+    const value = "em*pha*sis";
+    const nodes = try parseIntoNodes(value);
     defer freeNodes(nodes);
 
-    try std.testing.expectEqual(1, nodes.len);
-    try std.testing.expectEqual(
-        ast.NodeType.text,
-        @as(ast.NodeType, nodes[0].*),
+    try testing.expectEqual(3, nodes.len);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqual(
+        ast.NodeType.emphasis,
+        @as(ast.NodeType, nodes[1].*),
     );
-    try std.testing.expectEqualStrings(value, nodes[0].text.value);
+    try testing.expectEqualStrings(
+        "pha",
+        nodes[1].emphasis.children[0].text.value,
+    );
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
+}
+
+test "nested star emphasis" {
+    const value = "This **is* emphasized.*";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(2, nodes.len);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
+
+    try testing.expectEqual(
+        ast.NodeType.emphasis,
+        @as(ast.NodeType, nodes[1].*),
+    );
+    try testing.expectEqual(2, nodes[1].emphasis.children.len);
+
+    const nested_emph = nodes[1].emphasis.children[0];
+    try testing.expectEqual(
+        ast.NodeType.emphasis,
+        @as(ast.NodeType, nested_emph.*),
+    );
+    try testing.expectEqualStrings(
+        "is",
+        nested_emph.emphasis.children[0].text.value,
+    );
+    try testing.expectEqualStrings(
+        " emphasized.",
+        nodes[1].emphasis.children[1].text.value,
+    );
+}
+
+test "unmatched open star emphasis" {
+    const value = "This *is unmatched.";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqualStrings(value, nodes[0].text.value);
 }
 
 test "unmatched close star emphasis" {
     const value = "This is unmatched.*";
-    const nodes = try parseNodes(value);
+    const nodes = try parseIntoNodes(value);
     defer freeNodes(nodes);
 
-    try std.testing.expectEqual(1, nodes.len);
-    try std.testing.expectEqual(
-        ast.NodeType.text,
-        @as(ast.NodeType, nodes[0].*),
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqualStrings(value, nodes[0].text.value);
+}
+
+test "same delimiter run star emphasis" {
+    const value = "This is not ** emphasis.";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqualStrings(value, nodes[0].text.value);
+}
+
+test "same delimiter run star strong" {
+    const value = "This is not **** strong.";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqualStrings(value, nodes[0].text.value);
+}
+
+test "star strong" {
+    const value = "This is **strongly emphasized**.";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(3, nodes.len);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
+
+    try testing.expectEqual(ast.NodeType.strong, @as(ast.NodeType, nodes[1].*));
+    try testing.expectEqualStrings(
+        "strongly emphasized",
+        nodes[1].strong.children[0].text.value,
     );
-    try std.testing.expectEqualStrings(value, nodes[0].text.value);
+
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
+}
+
+test "triple star strong nested" {
+    const value = "This is ***a strong in an emphasis***.";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(3, nodes.len);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqualStrings("This is ", nodes[0].text.value);
+
+    try testing.expectEqual(
+        ast.NodeType.emphasis,
+        @as(ast.NodeType, nodes[1].*),
+    );
+    try testing.expectEqual(
+        ast.NodeType.strong,
+        @as(ast.NodeType, nodes[1].emphasis.children[0].*),
+    );
+    try testing.expectEqualStrings(
+        "a strong in an emphasis",
+        nodes[1].emphasis.children[0].strong.children[0].text.value,
+    );
+
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
+    try testing.expectEqualStrings(".", nodes[2].text.value);
+}
+
+test "star strong nested inside star emphasis" {
+    const value = "This ***is strong** that is also emphasized*.";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(3, nodes.len);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
+
+    const emphasis_node = nodes[1];
+    try testing.expectEqual(
+        ast.NodeType.emphasis,
+        @as(ast.NodeType, emphasis_node.*),
+    );
+    try testing.expectEqual(2, emphasis_node.emphasis.children.len);
+    try testing.expectEqual(
+        ast.NodeType.strong,
+        @as(ast.NodeType, emphasis_node.emphasis.children[0].*),
+    );
+    try testing.expectEqualStrings(
+        "is strong",
+        emphasis_node.emphasis.children[0].strong.children[0].text.value,
+    );
+    try testing.expectEqual(
+        ast.NodeType.text,
+        @as(ast.NodeType, emphasis_node.emphasis.children[1].*),
+    );
+    try testing.expectEqualStrings(
+        " that is also emphasized",
+        emphasis_node.emphasis.children[1].text.value,
+    );
+
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
+}
+
+test "star emphasis nested inside star strong" {
+    const value = "This ***is emphasis* that is also strong**.";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(3, nodes.len);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
+
+    const strong_node = nodes[1];
+    try testing.expectEqual(
+        ast.NodeType.strong,
+        @as(ast.NodeType, strong_node.*),
+    );
+    try testing.expectEqual(2, strong_node.strong.children.len);
+    try testing.expectEqual(
+        ast.NodeType.emphasis,
+        @as(ast.NodeType, strong_node.strong.children[0].*),
+    );
+    try testing.expectEqualStrings(
+        "is emphasis",
+        strong_node.strong.children[0].emphasis.children[0].text.value,
+    );
+    try testing.expectEqual(
+        ast.NodeType.text,
+        @as(ast.NodeType, strong_node.strong.children[1].*),
+    );
+    try testing.expectEqualStrings(
+        " that is also strong",
+        strong_node.strong.children[1].text.value,
+    );
+
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
 }

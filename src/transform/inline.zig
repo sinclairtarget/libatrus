@@ -60,7 +60,7 @@ pub fn transform(gpa: Allocator, original_node: *ast.Node) !*ast.Node {
             };
             return node;
         },
-        .text, .code, .thematic_break, .emphasis => {
+        .text, .code, .thematic_break, .emphasis, .strong => {
             return original_node;
         },
     }

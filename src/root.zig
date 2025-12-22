@@ -11,6 +11,7 @@ const ArrayList = std.ArrayList;
 
 const BlockTokenizer = @import("lex/BlockTokenizer.zig");
 const BlockParser = @import("parse/BlockParser.zig");
+const InlineParser = @import("parse/InlineParser.zig");
 const transform = @import("transform/transform.zig");
 const json = @import("render/json.zig");
 const html = @import("render/html.zig");
@@ -27,9 +28,7 @@ pub const ParseError = error{
     ReadFailed,
     LineTooLong, // TODO: Remove this?
     UnrecognizedBlockToken,
-    UnrecognizedInlineToken,
-    UnicodeError,
-} || Allocator.Error || Io.Writer.Error;
+} || InlineParser.Error || Allocator.Error || Io.Writer.Error;
 
 pub const ParseOptions = struct {
     parse_level: enum {
