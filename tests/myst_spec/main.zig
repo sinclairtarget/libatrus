@@ -102,6 +102,10 @@ fn gatherTests(
     return tests.toOwnedSlice(alloc);
 }
 
+pub const std_options: std.Options = .{
+    .log_level = .info,
+};
+
 pub fn main() !void {
     var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
     defer {
