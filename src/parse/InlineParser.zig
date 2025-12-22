@@ -11,6 +11,7 @@ const InlineTokenType = tokens.InlineTokenType;
 const InlineTokenizer = @import("../lex/InlineTokenizer.zig");
 const references = @import("references.zig");
 const safety = @import("../util/safety.zig");
+const strings = @import("../util/strings.zig");
 
 pub const Error = (
     references.CharacterReferenceError || Allocator.Error
@@ -52,6 +53,11 @@ pub fn parse(self: *Self, gpa: Allocator, arena: Allocator) Error![]*ast.Node {
 
         if (try self.parseStarStrong(gpa, arena)) |strong| {
             try nodes.append(gpa, strong);
+            continue;
+        }
+
+        if (try self.parseUnderscoreEmphasis(gpa, arena)) |emphasis| {
+            try nodes.append(gpa, emphasis);
             continue;
         }
 
@@ -229,6 +235,84 @@ fn parseStarEmphasis(
     return emphasis_node;
 }
 
+fn parseUnderscoreStrong(
+) Error!?*ast.Node {
+}
+
+// emph  => open inner close
+// open  => l_underscore | lr_underscore
+// close => r_underscore | lr_underscore
+// inner => (strong (text | emph)? | emph? (strong | text) emph?)+
+fn parseUnderscoreEmphasis(
+    self: *Self,
+    gpa: Allocator,
+    arena: Allocator,
+) Error!?*ast.Node {
+    var emphasis_node: ?*ast.Node = null;
+    var children: ArrayList(*ast.Node) = .empty;
+    const checkpoint_index = self.checkpoint();
+    defer {
+        if (emphasis_node == null) {
+            self.backtrack(checkpoint_index);
+            for (children.items) |child| {
+                child.deinit(gpa);
+            }
+            children.deinit(gpa);
+        }
+    }
+
+    const open_token = try self.peek(arena) orelse return null;
+    switch (open_token.token_type) {
+        .l_delim_underscore => _ = try self.consume(arena, .l_delim_underscore),
+        .lr_delim_underscore => {
+            // Can only open emphasis if it follows a punctuation character
+            const prev = self.peekPrevious() orelse return null;
+            if (prev.lexeme.len == 0) {
+                return null;
+            }
+
+            // TODO: Unicode character handling, can't assume all chars are one
+            // single byte.
+            const last_char = prev.lexeme[prev.lexeme.len - 1..prev.lexeme.len];
+            if (!strings.isPunctuation(last_char)) {
+                return null;
+            }
+
+            _ = try self.consume(arena, .lr_delim_underscore);
+        },
+        else => return null,
+    }
+
+    for (0..safety.loop_bound) |_| {
+        if (try self.parseText(gpa, arena)) |text| {
+            try children.append(gpa, text);
+            continue;
+        }
+
+        break;
+    } else @panic(safety.loop_bound_panic_msg);
+
+    if (children.items.len == 0) {
+        return null;
+    }
+
+    const close_token = try self.peek(arena) orelse return null;
+    switch (close_token.token_type) {
+        .r_delim_underscore, .lr_delim_underscore => |t| {
+            _ = try self.consume(arena, t);
+        },
+        else => return null,
+    }
+
+    emphasis_node = try gpa.create(ast.Node);
+    emphasis_node.?.* = .{
+        .emphasis = .{
+            .children = try children.toOwnedSlice(gpa),
+        },
+    };
+    return emphasis_node;
+}
+
 // @       => allowed*
 // allowed => ref10 | ref16 | ref& | \n | text
 fn parseText(self: *Self, gpa: Allocator, arena: Allocator) Error!?*ast.Node {
@@ -281,6 +365,14 @@ fn peek(self: *Self, arena: Allocator) !?InlineToken {
     }
 
     return self.line.items[self.token_index];
+}
+
+fn peekPrevious(self: *Self) ?InlineToken {
+    if (self.token_index == 0) {
+        return null;
+    }
+
+    return self.line.items[self.token_index - 1];
 }
 
 fn consume(
@@ -636,6 +728,72 @@ test "star emphasis nested inside star strong" {
     try testing.expectEqualStrings(
         " that is also strong",
         strong_node.strong.children[1].text.value,
+    );
+
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
+}
+
+test "underscore emphasis" {
+    const value = "This _is emphasized._";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(2, nodes.len);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqual(
+        ast.NodeType.emphasis,
+        @as(ast.NodeType, nodes[1].*),
+    );
+    try testing.expectEqualStrings(
+        "is emphasized.",
+        nodes[1].emphasis.children[0].text.value,
+    );
+}
+
+test "underscore right-delimiter emphasis" {
+    const value = "This is _hyper_emphasized.";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(3, nodes.len);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqual(
+        ast.NodeType.emphasis,
+        @as(ast.NodeType, nodes[1].*),
+    );
+    try testing.expectEqualStrings(
+        "hyper",
+        nodes[1].emphasis.children[0].text.value,
+    );
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
+}
+
+// Unlike with star emphasis, this isn't valid
+test "intraword underscore emphasis" {
+    const value = "snake_case_baby";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqualStrings("snake_case_baby", nodes[0].text.value);
+}
+
+test "underscore emphasis after punctuation" {
+    const value = "(_\"emphasis\"_)";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(3, nodes.len);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
+
+    try testing.expectEqual(
+        ast.NodeType.emphasis,
+        @as(ast.NodeType, nodes[1].*),
+    );
+    try testing.expectEqualStrings(
+        "\"emphasis\"",
+        nodes[1].emphasis.children[0].text.value,
     );
 
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
