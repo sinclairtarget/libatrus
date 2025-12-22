@@ -31,7 +31,7 @@ pub const InlineToken = Token(InlineTokenType);
 fn Token(comptime TokenType: type) type {
     return struct {
         token_type: TokenType,
-        lexeme: ?[]const u8 = null,
+        lexeme: []const u8 = "",
 
         const Self = @This();
 
@@ -39,8 +39,8 @@ fn Token(comptime TokenType: type) type {
             var buf: [128]u8 = undefined;
             const name = std.ascii.upperString(&buf, @tagName(self.token_type));
 
-            if (self.lexeme) |lexeme| {
-                try w.print("{s} \"{s}\"", .{ name, lexeme });
+            if (self.lexeme.len > 0) {
+                try w.print("{s} \"{s}\"", .{ name, self.lexeme });
             } else {
                 try w.print("{s}", .{name});
             }

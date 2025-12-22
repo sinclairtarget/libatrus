@@ -69,9 +69,7 @@ pub fn main() !void {
             try cli.printUsage(stdout);
         },
         .parse => {
-            if (log.logEnabled(.debug, .main)) {
-                logger.debug("Parsing with options: {f}", .{options});
-            }
+            logger.debug("Parsing with options: {f}", .{options});
 
             const myst = slurp(arena, options.filepath_or_input) catch |err| {
                 switch (err) {

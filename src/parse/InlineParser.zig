@@ -312,7 +312,7 @@ fn inlineTextValue(arena: Allocator, token: InlineToken) ![]const u8 {
             break :blk try resolveCharacterEntityRef(arena, token);
         },
         .newline => "\n",
-        .text => token.lexeme orelse "",
+        .text => token.lexeme,
         .l_delim_star, .r_delim_star, .lr_delim_star => "*",
     };
     return value;
@@ -321,25 +321,23 @@ fn inlineTextValue(arena: Allocator, token: InlineToken) ![]const u8 {
 fn resolveCharacterEntityRef(arena: Allocator, token: InlineToken) ![]const u8 {
     switch (token.token_type) {
         .decimal_character_reference => {
-            const lexeme = token.lexeme.?;
             const value = try references.resolveCharacter(
                 arena,
-                lexeme[2..lexeme.len - 1],
+                token.lexeme[2..token.lexeme.len - 1],
                 10, // base
             );
             return value;
         },
         .hexadecimal_character_reference => {
-            const lexeme = token.lexeme.?;
             const value = try references.resolveCharacter(
                 arena,
-                lexeme[3..lexeme.len - 1],
+                token.lexeme[3..token.lexeme.len - 1],
                 16, // base
             );
             return value;
         },
         .entity_reference => {
-            const lexeme = token.lexeme.?;
+            const lexeme = token.lexeme;
             const value = references.resolveEntity(lexeme[1..lexeme.len - 1]);
             return value orelse lexeme;
         },

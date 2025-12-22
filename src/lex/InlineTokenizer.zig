@@ -337,7 +337,6 @@ fn evaluate_tokens(
         .newline => {
             try tokens.append(arena, InlineToken{
                 .token_type = .newline,
-                .lexeme = null,
             });
         },
         .text => {
@@ -354,7 +353,6 @@ fn evaluate_tokens(
             for (self.i..lookahead_i + 1) |_| {
                 try tokens.append(arena, InlineToken{
                     .token_type = token_type,
-                    .lexeme = null,
                 });
             }
         },

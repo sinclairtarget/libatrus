@@ -106,7 +106,7 @@ fn parseATXHeading(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
         return null;
     }
 
-    const depth = start_token.lexeme.?.len;
+    const depth = start_token.lexeme.len;
     if (depth > 6) { // https://spec.commonmark.org/0.31.2/#example-63
         return null;
     }
@@ -166,7 +166,7 @@ fn parseThematicBreak(
             _ = try self.consume(arena, t);
         },
         .rule_dash => |t| {
-            if (token.lexeme.?.len < 3) {
+            if (token.lexeme.len < 3) {
                 return null;
             }
 
@@ -209,9 +209,7 @@ fn parseIndentedCode(
                     }
 
                     _ = try self.consume(arena, next.token_type);
-                    if (next.lexeme) |v| {
-                        try line.writer.print("{s}", .{v});
-                    }
+                    try line.writer.print("{s}", .{next.lexeme});
                 } else @panic(safety.loop_bound_panic_msg);
 
                 _ = try self.consume(arena, .newline);
@@ -221,7 +219,7 @@ fn parseIndentedCode(
                 try line.writer.print("", .{});
             },
             .text => { // blank line doesn't end indented block
-                if (strings.isBlankLine(line_start.lexeme.?)) {
+                if (strings.isBlankLine(line_start.lexeme)) {
                     // https://spec.commonmark.org/0.30/#example-111
                     _ = try self.consume(arena, .text);
                     try line.writer.print("", .{});
@@ -320,9 +318,8 @@ fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
     const token = try self.peek(arena) orelse return null;
     switch (token.token_type) {
         .text, .pound, .rule_equals, .rule_dash => |t| {
-            const value = token.lexeme orelse "";
             _ = try self.consume(arena, t);
-            return createTextNode(gpa, value);
+            return createTextNode(gpa, token.lexeme);
         },
         else => return null,
     }
@@ -333,7 +330,7 @@ fn parseTextStart(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
     const token = try self.peek(arena) orelse return null;
     switch (token.token_type) {
         .pound => {
-            if (token.lexeme != null and token.lexeme.?.len > 6) {
+            if (token.lexeme.len > 6) {
                 return try self.parseText(gpa, arena);
             } else {
                 return null;

@@ -271,11 +271,11 @@ fn evaluate_lexeme(
     arena: Allocator,
     token_type: BlockTokenType,
     lookahead_i: usize,
-) !?[]const u8 {
+) ![]const u8 {
     switch (token_type) {
         .newline, .indent, .rule_star, .rule_underline,
         .rule_dash_with_whitespace => {
-            return null;
+            return "";
         },
         .pound => {
             const lexeme = try arena.dupe(
