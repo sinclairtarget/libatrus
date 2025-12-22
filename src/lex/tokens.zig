@@ -23,6 +23,9 @@ pub const InlineTokenType = enum {
     l_delim_star,
     r_delim_star,
     lr_delim_star,
+    l_delim_underscore,
+    r_delim_underscore,
+    lr_delim_underscore,
 };
 
 pub const BlockToken = Token(BlockTokenType);

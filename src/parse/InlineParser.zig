@@ -314,6 +314,7 @@ fn inlineTextValue(arena: Allocator, token: InlineToken) ![]const u8 {
         .newline => "\n",
         .text => token.lexeme,
         .l_delim_star, .r_delim_star, .lr_delim_star => "*",
+        .l_delim_underscore, .r_delim_underscore, .lr_delim_underscore => "_",
     };
     return value;
 }

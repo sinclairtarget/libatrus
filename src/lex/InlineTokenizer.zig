@@ -19,6 +19,9 @@ const State = enum {
     l_delim_star_run,
     r_delim_star_run,
     r_delim_star_punct_run, // preceded by punctuation
+    l_delim_underscore_run,
+    r_delim_underscore_run,
+    r_delim_underscore_punct_run, // preceded by punctuation
     done,
 };
 
@@ -79,6 +82,10 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                 '*' => {
                     lookahead_i += 1;
                     continue :fsm .l_delim_star_run;
+                },
+                '_' => {
+                    lookahead_i += 1;
+                    continue :fsm .l_delim_underscore_run;
                 },
                 else => {
                     continue :fsm .text;
@@ -223,6 +230,65 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                 }
             }
         },
+        .l_delim_underscore_run => {
+            if (lookahead_i >= self.in.len) {
+                break :fsm .{ .text, .started };
+            }
+
+            switch (self.in[lookahead_i]) {
+                '_' => {
+                    lookahead_i += 1;
+                    continue :fsm .l_delim_underscore_run;
+                },
+                ' ', '\t', '\n' => {
+                    continue :fsm .text;
+                },
+                else => {
+                    break :fsm .{ .l_delim_underscore, .started };
+                }
+            }
+        },
+        .r_delim_underscore_run => {
+            if (lookahead_i >= self.in.len) {
+                break :fsm .{ .r_delim_underscore, .started };
+            }
+
+            switch (self.in[lookahead_i]) {
+                '_' => {
+                    lookahead_i += 1;
+                    continue :fsm .r_delim_underscore_run;
+                },
+                ' ', '\t', '\n', '!'...'%', '\''...')', '+'...'/', ':'...'@',
+                '[', ']', '^', '`', '}'...'~' => {
+                    break :fsm .{ .r_delim_underscore, .started };
+                },
+                else => {
+                    break :fsm .{ .lr_delim_underscore, .started };
+                }
+            }
+        },
+        .r_delim_underscore_punct_run => {
+            if (lookahead_i >= self.in.len) {
+                break :fsm .{ .r_delim_underscore, .started };
+            }
+
+            switch (self.in[lookahead_i]) {
+                '_' => {
+                    lookahead_i += 1;
+                    continue :fsm .r_delim_underscore_punct_run;
+                },
+                ' ', '\t', '\n' => {
+                    break :fsm .{ .r_delim_underscore, .started };
+                },
+                '!'...'%', '\''...')', '+'...'/', ':'...'@', '[', ']', '^', '`',
+                '}'...'~' => {
+                    break :fsm .{ .lr_delim_underscore, .started };
+                },
+                else => {
+                    break :fsm .{ .l_delim_underscore, .started };
+                }
+            }
+        },
         .text => {
             if (lookahead_i >= self.in.len) {
                 break :fsm .{ .text, .started };
@@ -235,6 +301,9 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                 '*' => {
                     break :fsm .{ .text, .r_delim_star_run };
                 },
+                '_' => {
+                    break :fsm .{ .text, .r_delim_underscore_run };
+                },
                 '\\' => {
                     lookahead_i += 1;
                     continue :fsm .text_escaped;
@@ -242,7 +311,7 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                 ' ', '\t' => {
                     continue :fsm .text_whitespace;
                 },
-                '!'...'%', '\''...')', '+'...'/', ':'...'@', '[', ']'...'`',
+                '!'...'%', '\''...')', '+'...'/', ':'...'@', '[', ']', '^', '`',
                 '}'...'~' => {
                     lookahead_i += 1;
                     continue :fsm .text_punct;
@@ -261,6 +330,9 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
             switch (self.in[lookahead_i]) {
                 '*' => {
                     break :fsm .{ .text, .l_delim_star_run };
+                },
+                '_' => {
+                    break :fsm .{ .text, .l_delim_underscore_run };
                 },
                 ' ', '\t' => {
                     lookahead_i += 1;
@@ -289,6 +361,9 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                 },
                 '*' => {
                     break :fsm .{ .text, .r_delim_star_punct_run };
+                },
+                '_' => {
+                    break :fsm .{ .text, .r_delim_underscore_punct_run };
                 },
                 '\\' => {
                     lookahead_i += 1;
