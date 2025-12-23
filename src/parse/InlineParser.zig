@@ -61,6 +61,11 @@ pub fn parse(self: *Self, gpa: Allocator, arena: Allocator) Error![]*ast.Node {
             continue;
         }
 
+        if (try self.parseUnderscoreStrong(gpa, arena)) |strong| {
+            try nodes.append(gpa, strong);
+            continue;
+        }
+
         if (try self.parseText(gpa, arena)) |text| {
             try nodes.append(gpa, text);
             continue;
@@ -235,8 +240,83 @@ fn parseStarEmphasis(
     return emphasis_node;
 }
 
+// strong => open inner close
+// open   => l_star l_star | lr_star lr_star
+// close  => r_star r_star | lr_star lr_star
+// inner  => (emph | strong | text)+
 fn parseUnderscoreStrong(
+    self: *Self,
+    gpa: Allocator,
+    arena: Allocator,
 ) Error!?*ast.Node {
+    var strong_node: ?*ast.Node = null;
+    var children: ArrayList(*ast.Node) = .empty;
+    const checkpoint_index = self.checkpoint();
+    defer {
+        if (strong_node == null) {
+            self.backtrack(checkpoint_index);
+            for (children.items) |child| {
+                child.deinit(gpa);
+            }
+            children.deinit(gpa);
+        }
+    }
+
+    const open_token = try self.peek(arena) orelse return null;
+    switch (open_token.token_type) {
+        .l_delim_underscore => |t| {
+            _ = try self.consume(arena, t) orelse return null;
+            _ = try self.consume(arena, t) orelse return null;
+        },
+        .lr_delim_underscore => |t| {
+            // Can only open emphasis if it follows a punctuation character
+            const prev = self.peekPrevious() orelse return null;
+            if (prev.lexeme.len == 0) {
+                return null;
+            }
+
+            // TODO: Unicode character handling, can't assume all chars are one
+            // single byte.
+            const last_char = prev.lexeme[prev.lexeme.len - 1..prev.lexeme.len];
+            if (!strings.isPunctuation(last_char)) {
+                return null;
+            }
+
+            _ = try self.consume(arena, t) orelse return null;
+            _ = try self.consume(arena, t) orelse return null;
+        },
+        else => return null,
+    }
+
+    for (0..safety.loop_bound) |_| {
+        if (try self.parseText(gpa, arena)) |text| {
+            try children.append(gpa, text);
+            continue;
+        }
+
+        break;
+    } else @panic(safety.loop_bound_panic_msg);
+
+    if (children.items.len == 0) {
+        return null;
+    }
+
+    const close_token = try self.peek(arena) orelse return null;
+    switch (close_token.token_type) {
+        .r_delim_underscore, .lr_delim_underscore => |t| {
+            _ = try self.consume(arena, t) orelse return null;
+            _ = try self.consume(arena, t) orelse return null;
+        },
+        else => return null,
+    }
+
+    strong_node = try gpa.create(ast.Node);
+    strong_node.?.* = .{
+        .strong = .{
+            .children = try children.toOwnedSlice(gpa),
+        },
+    };
+    return strong_node;
 }
 
 // emph  => open inner close
@@ -794,6 +874,23 @@ test "underscore emphasis after punctuation" {
     try testing.expectEqualStrings(
         "\"emphasis\"",
         nodes[1].emphasis.children[0].text.value,
+    );
+
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
+}
+
+test "underscore strong" {
+    const value = "This is __strongly emphasized__.";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(3, nodes.len);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
+
+    try testing.expectEqual(ast.NodeType.strong, @as(ast.NodeType, nodes[1].*));
+    try testing.expectEqualStrings(
+        "strongly emphasized",
+        nodes[1].strong.children[0].text.value,
     );
 
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));

@@ -424,7 +424,8 @@ fn evaluate_tokens(
                 .lexeme = lexeme,
             });
         },
-        .l_delim_star, .r_delim_star, .lr_delim_star => {
+        .l_delim_star, .r_delim_star, .lr_delim_star, .l_delim_underscore,
+        .r_delim_underscore, .lr_delim_underscore => {
             for (self.i..lookahead_i + 1) |_| {
                 try tokens.append(arena, InlineToken{
                     .token_type = token_type,
