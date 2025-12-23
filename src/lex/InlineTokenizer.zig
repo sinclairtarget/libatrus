@@ -181,6 +181,9 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                     lookahead_i += 1;
                     continue :fsm .l_delim_star_run;
                 },
+                '_' => {
+                    break :fsm .{ .l_delim_star, .r_delim_underscore_punct_run };
+                },
                 ' ', '\t', '\n' => {
                     continue :fsm .text;
                 },
@@ -199,8 +202,11 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                     lookahead_i += 1;
                     continue :fsm .r_delim_star_run;
                 },
+                '_' => {
+                    break :fsm .{ .r_delim_star, .r_delim_underscore_punct_run };
+                },
                 ' ', '\t', '\n', '!'...'%', '\''...')', '+'...'/', ':'...'@',
-                '[', ']'...'`', '}'...'~' => {
+                '[', ']', '^', '`', '}'...'~' => {
                     break :fsm .{ .r_delim_star, .started };
                 },
                 else => {
@@ -221,7 +227,10 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                 ' ', '\t', '\n' => {
                     break :fsm .{ .r_delim_star, .started };
                 },
-                '!'...'%', '\''...')', '+'...'/', ':'...'@', '[', ']'...'`',
+                '_' => {
+                    break :fsm .{ .lr_delim_star, .r_delim_underscore_punct_run };
+                },
+                '!'...'%', '\''...')', '+'...'/', ':'...'@', '[', ']', '^', '`',
                 '}'...'~' => {
                     break :fsm .{ .lr_delim_star, .started };
                 },
@@ -240,6 +249,9 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                     lookahead_i += 1;
                     continue :fsm .l_delim_underscore_run;
                 },
+                '*' => {
+                    break :fsm .{ .l_delim_underscore, .r_delim_star_punct_run };
+                },
                 ' ', '\t', '\n' => {
                     continue :fsm .text;
                 },
@@ -257,6 +269,9 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                 '_' => {
                     lookahead_i += 1;
                     continue :fsm .r_delim_underscore_run;
+                },
+                '*' => {
+                    break :fsm .{ .r_delim_underscore, .r_delim_star_punct_run };
                 },
                 ' ', '\t', '\n', '!'...'%', '\''...')', '+'...'/', ':'...'@',
                 '[', ']', '^', '`', '}'...'~' => {
@@ -279,6 +294,9 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                 },
                 ' ', '\t', '\n' => {
                     break :fsm .{ .r_delim_underscore, .started };
+                },
+                '*' => {
+                    break :fsm .{ .lr_delim_underscore, .r_delim_star_punct_run };
                 },
                 '!'...'%', '\''...')', '+'...'/', ':'...'@', '[', ']', '^', '`',
                 '}'...'~' => {
@@ -501,4 +519,39 @@ fn copyWithoutEscapes(alloc: Allocator, s: []const u8) ![]const u8 {
     }
 
     return copy[0..dest_index];
+}
+
+// ----------------------------------------------------------------------------
+// Unit Tests
+// ----------------------------------------------------------------------------
+const testing = std.testing;
+
+test "tokenize mixed delimiter runs" {
+    const line = "*_foo_*_*bar*_";
+
+    const expected = [_]InlineTokenType{
+        .l_delim_star,
+        .l_delim_underscore,
+        .text,
+        .r_delim_underscore,
+        .lr_delim_star,
+        .lr_delim_underscore,
+        .l_delim_star,
+        .text,
+        .r_delim_star,
+        .r_delim_underscore,
+    };
+
+    var tokenizer = Self.init(line);
+
+    var arena_impl = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_impl.deinit();
+    const arena = arena_impl.allocator();
+
+    for (expected) |exp| {
+        const token = try tokenizer.next(arena);
+        try testing.expectEqual(exp, token.?.token_type);
+    }
+
+    try testing.expectEqual(null, try tokenizer.next(arena));
 }

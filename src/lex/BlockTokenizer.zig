@@ -308,9 +308,6 @@ test "can tokenize" {
     defer arena_impl.deinit();
     const arena = arena_impl.allocator();
 
-    var tokens: ArrayList(BlockToken) = .empty;
-    errdefer tokens.deinit(arena);
-
     var reader: Io.Reader = .fixed(md);
     var tokenizer = Self.init(&reader);
 
