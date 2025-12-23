@@ -46,22 +46,12 @@ pub fn parse(self: *Self, gpa: Allocator, arena: Allocator) Error![]*ast.Node {
     for (0..safety.loop_bound) |_| { // could hit if we forget to consume tokens
         _ = try self.peek(arena) orelse break;
 
-        if (try self.parseStarEmphasis(gpa, arena)) |emphasis| {
-            try nodes.append(gpa, emphasis);
+        if (try self.parseAnyEmphasis(gpa, arena)) |emph| {
+            try nodes.append(gpa, emph);
             continue;
         }
 
-        if (try self.parseStarStrong(gpa, arena)) |strong| {
-            try nodes.append(gpa, strong);
-            continue;
-        }
-
-        if (try self.parseUnderscoreEmphasis(gpa, arena)) |emphasis| {
-            try nodes.append(gpa, emphasis);
-            continue;
-        }
-
-        if (try self.parseUnderscoreStrong(gpa, arena)) |strong| {
+        if (try self.parseAnyStrong(gpa, arena)) |strong| {
             try nodes.append(gpa, strong);
             continue;
         }
@@ -155,10 +145,10 @@ fn parseStarStrong(
     return strong_node;
 }
 
-// emph  => open inner close
+// star_emph  => open inner close
 // open  => l_star | lr_star
 // close => r_star | lr_star
-// inner => (emph? (strong | text) emph?)+
+// inner => (star_emph? (under_emph | strong | text) star_emph?)+
 fn parseStarEmphasis(
     self: *Self,
     gpa: Allocator,
@@ -184,27 +174,28 @@ fn parseStarEmphasis(
     }
 
     for (0..safety.loop_bound) |_| {
-        const maybe_leading_emph = try self.parseAnyEmphasis(gpa, arena);
+        const maybe_leading_emph = try self.parseStarEmphasis(gpa, arena);
 
-        if (try self.parseAnyStrong(gpa, arena)) |strong| {
+        if (blk: {
+            if (try self.parseUnderscoreEmphasis(gpa, arena)) |emph| {
+                break :blk emph;
+            }
+
+            if (try self.parseAnyStrong(gpa, arena)) |strong| {
+                break :blk strong;
+            }
+
+            if (try self.parseText(gpa, arena)) |text| {
+                break :blk text;
+            }
+
+            break :blk null;
+        }) |node| {
             if (maybe_leading_emph) |emph| {
                 try children.append(gpa, emph);
             }
-            try children.append(gpa, strong);
-            const maybe_trailing_emph = try self.parseAnyEmphasis(gpa, arena);
-            if (maybe_trailing_emph) |emph| {
-                try children.append(gpa, emph);
-            }
-            continue;
-        }
-
-        if (try self.parseText(gpa, arena)) |text| {
-            if (maybe_leading_emph) |emph| {
-                try children.append(gpa, emph);
-            }
-            try children.append(gpa, text);
-            const maybe_trailing_emph = try self.parseAnyEmphasis(gpa, arena);
-            if (maybe_trailing_emph) |emph| {
+            try children.append(gpa, node);
+            if (try self.parseStarEmphasis(gpa, arena)) |emph| {
                 try children.append(gpa, emph);
             }
             continue;
@@ -325,10 +316,10 @@ fn parseUnderscoreStrong(
     return strong_node;
 }
 
-// emph  => open inner close
+// under_emph  => open inner close
 // open  => l_underscore | lr_underscore
 // close => r_underscore | lr_underscore
-// inner => (emph? (strong | text) emph?)+
+// inner => (under_emph? (star_emph | strong | text) under_emph?)+
 fn parseUnderscoreEmphasis(
     self: *Self,
     gpa: Allocator,
@@ -370,27 +361,28 @@ fn parseUnderscoreEmphasis(
     }
 
     for (0..safety.loop_bound) |_| {
-        const maybe_leading_emph = try self.parseAnyEmphasis(gpa, arena);
+        const maybe_leading_emph = try self.parseUnderscoreEmphasis(gpa, arena);
 
-        if (try self.parseAnyStrong(gpa, arena)) |strong| {
+        if (blk: {
+            if (try self.parseStarEmphasis(gpa, arena)) |emph| {
+                break :blk emph;
+            }
+
+            if (try self.parseAnyStrong(gpa, arena)) |strong| {
+                break :blk strong;
+            }
+
+            if (try self.parseText(gpa, arena)) |text| {
+                break :blk text;
+            }
+
+            break :blk null;
+        }) |node| {
             if (maybe_leading_emph) |emph| {
                 try children.append(gpa, emph);
             }
-            try children.append(gpa, strong);
-            const maybe_trailing_emph = try self.parseAnyEmphasis(gpa, arena);
-            if (maybe_trailing_emph) |emph| {
-                try children.append(gpa, emph);
-            }
-            continue;
-        }
-
-        if (try self.parseText(gpa, arena)) |text| {
-            if (maybe_leading_emph) |emph| {
-                try children.append(gpa, emph);
-            }
-            try children.append(gpa, text);
-            const maybe_trailing_emph = try self.parseAnyEmphasis(gpa, arena);
-            if (maybe_trailing_emph) |emph| {
+            try children.append(gpa, node);
+            if (try self.parseUnderscoreEmphasis(gpa, arena)) |emph| {
                 try children.append(gpa, emph);
             }
             continue;
