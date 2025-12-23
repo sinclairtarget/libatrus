@@ -115,12 +115,12 @@ fn parseStarStrong(
     }
 
     for (0..safety.loop_bound) |_| {
-        if (try self.parseStarEmphasis(gpa, arena)) |emph| {
+        if (try self.parseAnyEmphasis(gpa, arena)) |emph| {
             try children.append(gpa, emph);
             continue;
         }
 
-        if (try self.parseStarStrong(gpa, arena)) |strong| {
+        if (try self.parseAnyStrong(gpa, arena)) |strong| {
             try children.append(gpa, strong);
             continue;
         }
@@ -158,7 +158,7 @@ fn parseStarStrong(
 // emph  => open inner close
 // open  => l_star | lr_star
 // close => r_star | lr_star
-// inner => (strong (text | emph)? | emph? (strong | text) emph?)+
+// inner => (emph? (strong | text) emph?)+
 fn parseStarEmphasis(
     self: *Self,
     gpa: Allocator,
@@ -184,41 +184,37 @@ fn parseStarEmphasis(
     }
 
     for (0..safety.loop_bound) |_| {
-        if (try self.parseStarStrong(gpa, arena)) |strong| {
-            try children.append(gpa, strong);
+        const maybe_leading_emph = try self.parseAnyEmphasis(gpa, arena);
 
-            if (try self.parseStarEmphasis(gpa, arena)) |emph| {
-                try children.append(gpa, emph);
-            } else if (try self.parseText(gpa, arena)) |text| {
-                try children.append(gpa, text);
-            }
-
-            continue;
-        }
-
-        const maybe_leading_emph = try self.parseStarEmphasis(gpa, arena);
-
-        if (try self.parseStarStrong(gpa, arena)) |strong| {
+        if (try self.parseAnyStrong(gpa, arena)) |strong| {
             if (maybe_leading_emph) |emph| {
                 try children.append(gpa, emph);
             }
             try children.append(gpa, strong);
-        } else if (try self.parseText(gpa, arena)) |text| {
+            const maybe_trailing_emph = try self.parseAnyEmphasis(gpa, arena);
+            if (maybe_trailing_emph) |emph| {
+                try children.append(gpa, emph);
+            }
+            continue;
+        }
+
+        if (try self.parseText(gpa, arena)) |text| {
             if (maybe_leading_emph) |emph| {
                 try children.append(gpa, emph);
             }
             try children.append(gpa, text);
-        } else {
-            // Inner nodes did not successfully parse
-            if (maybe_leading_emph) |emph| {
-                emph.deinit(gpa);
+            const maybe_trailing_emph = try self.parseAnyEmphasis(gpa, arena);
+            if (maybe_trailing_emph) |emph| {
+                try children.append(gpa, emph);
             }
-            break;
+            continue;
         }
 
-        if (try self.parseStarEmphasis(gpa, arena)) |emph| {
-            try children.append(gpa, emph);
+        // failed to parse anything
+        if (maybe_leading_emph) |emph| {
+            emph.deinit(gpa);
         }
+        break;
     } else @panic(safety.loop_bound_panic_msg);
 
     if (children.items.len == 0) {
@@ -289,6 +285,16 @@ fn parseUnderscoreStrong(
     }
 
     for (0..safety.loop_bound) |_| {
+        if (try self.parseAnyEmphasis(gpa, arena)) |emph| {
+            try children.append(gpa, emph);
+            continue;
+        }
+
+        if (try self.parseAnyStrong(gpa, arena)) |strong| {
+            try children.append(gpa, strong);
+            continue;
+        }
+
         if (try self.parseText(gpa, arena)) |text| {
             try children.append(gpa, text);
             continue;
@@ -322,7 +328,7 @@ fn parseUnderscoreStrong(
 // emph  => open inner close
 // open  => l_underscore | lr_underscore
 // close => r_underscore | lr_underscore
-// inner => (strong (text | emph)? | emph? (strong | text) emph?)+
+// inner => (emph? (strong | text) emph?)+
 fn parseUnderscoreEmphasis(
     self: *Self,
     gpa: Allocator,
@@ -364,11 +370,36 @@ fn parseUnderscoreEmphasis(
     }
 
     for (0..safety.loop_bound) |_| {
-        if (try self.parseText(gpa, arena)) |text| {
-            try children.append(gpa, text);
+        const maybe_leading_emph = try self.parseAnyEmphasis(gpa, arena);
+
+        if (try self.parseAnyStrong(gpa, arena)) |strong| {
+            if (maybe_leading_emph) |emph| {
+                try children.append(gpa, emph);
+            }
+            try children.append(gpa, strong);
+            const maybe_trailing_emph = try self.parseAnyEmphasis(gpa, arena);
+            if (maybe_trailing_emph) |emph| {
+                try children.append(gpa, emph);
+            }
             continue;
         }
 
+        if (try self.parseText(gpa, arena)) |text| {
+            if (maybe_leading_emph) |emph| {
+                try children.append(gpa, emph);
+            }
+            try children.append(gpa, text);
+            const maybe_trailing_emph = try self.parseAnyEmphasis(gpa, arena);
+            if (maybe_trailing_emph) |emph| {
+                try children.append(gpa, emph);
+            }
+            continue;
+        }
+
+        // failed to parse anything
+        if (maybe_leading_emph) |emph| {
+            emph.deinit(gpa);
+        }
         break;
     } else @panic(safety.loop_bound_panic_msg);
 
@@ -391,6 +422,38 @@ fn parseUnderscoreEmphasis(
         },
     };
     return emphasis_node;
+}
+
+fn parseAnyEmphasis(
+    self: *Self,
+    gpa: Allocator,
+    arena: Allocator,
+) Error!?*ast.Node {
+    if (try self.parseStarEmphasis(gpa, arena)) |emph| {
+        return emph;
+    }
+
+    if (try self.parseUnderscoreEmphasis(gpa, arena)) |emph| {
+        return emph;
+    }
+
+    return null;
+}
+
+fn parseAnyStrong(
+    self: *Self,
+    gpa: Allocator,
+    arena: Allocator,
+) Error!?*ast.Node {
+    if (try self.parseStarStrong(gpa, arena)) |strong| {
+        return strong;
+    }
+
+    if (try self.parseUnderscoreStrong(gpa, arena)) |strong| {
+        return strong;
+    }
+
+    return null;
 }
 
 // @       => allowed*
@@ -745,6 +808,32 @@ test "triple star strong nested" {
     try testing.expectEqualStrings(".", nodes[2].text.value);
 }
 
+test "triple underscore strong nested" {
+    const value = "This is ___a strong in an emphasis___.";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(3, nodes.len);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqualStrings("This is ", nodes[0].text.value);
+
+    try testing.expectEqual(
+        ast.NodeType.emphasis,
+        @as(ast.NodeType, nodes[1].*),
+    );
+    try testing.expectEqual(
+        ast.NodeType.strong,
+        @as(ast.NodeType, nodes[1].emphasis.children[0].*),
+    );
+    try testing.expectEqualStrings(
+        "a strong in an emphasis",
+        nodes[1].emphasis.children[0].strong.children[0].text.value,
+    );
+
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
+    try testing.expectEqualStrings(".", nodes[2].text.value);
+}
+
 test "star strong nested inside star emphasis" {
     const value = "This ***is strong** that is also emphasized*.";
     const nodes = try parseIntoNodes(value);
@@ -894,4 +983,85 @@ test "underscore strong" {
     );
 
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
+}
+
+test "nesting feast of insanity" {
+    const value = "**_My, __**hello**___, *what a __feast!__***";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    // strong
+    // - emphasis
+    //   - text "My, "
+    //   - strong
+    //     - strong
+    //       - text "hello"
+    // - text ", "
+    // - emphasis
+    //   - text "what a "
+    //   - strong
+    //     - text "feast!"
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.strong, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqual(3, nodes[0].strong.children.len);
+
+    const emph = nodes[0].strong.children[0];
+    try testing.expectEqual(ast.NodeType.emphasis, @as(ast.NodeType, emph.*));
+    try testing.expectEqual(2, emph.emphasis.children.len);
+    {
+        const child_text = emph.emphasis.children[0];
+        try testing.expectEqual(
+            ast.NodeType.text,
+            @as(ast.NodeType, child_text.*),
+        );
+        try testing.expectEqualStrings("My, ", child_text.text.value);
+
+        const child_strong = emph.emphasis.children[1];
+        try testing.expectEqual(
+            ast.NodeType.strong,
+            @as(ast.NodeType, child_strong.*),
+        );
+        try testing.expectEqual(1, child_strong.strong.children.len);
+        const grandchild_strong = child_strong.strong.children[0];
+        try testing.expectEqual(
+            ast.NodeType.strong,
+            @as(ast.NodeType, grandchild_strong.*),
+        );
+        try testing.expectEqual(1, grandchild_strong.strong.children.len);
+        const ggrandchild_text = grandchild_strong.strong.children[0];
+        try testing.expectEqual(
+            ast.NodeType.text,
+            @as(ast.NodeType, ggrandchild_text.*),
+        );
+        try testing.expectEqualStrings("hello", ggrandchild_text.text.value);
+    }
+
+    const text = nodes[0].strong.children[1];
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, text.*));
+    try testing.expectEqualStrings(", ", text.text.value);
+
+    const emph2 = nodes[0].strong.children[2];
+    try testing.expectEqual(ast.NodeType.emphasis, @as(ast.NodeType, emph2.*));
+    try testing.expectEqual(2, emph2.emphasis.children.len);
+    {
+        const child_text = emph2.emphasis.children[0];
+        try testing.expectEqual(
+            ast.NodeType.text,
+            @as(ast.NodeType, child_text.*),
+        );
+        try testing.expectEqualStrings("what a ", child_text.text.value);
+
+        const child_strong = emph2.emphasis.children[1];
+        try testing.expectEqual(
+            ast.NodeType.strong,
+            @as(ast.NodeType, child_strong.*),
+        );
+        try testing.expectEqual(1, child_strong.strong.children.len);
+        const grandchild_text = child_strong.strong.children[0];
+        try testing.expectEqual(
+            ast.NodeType.text,
+            @as(ast.NodeType, grandchild_text.*),
+        );
+        try testing.expectEqualStrings("feast!", grandchild_text.text.value);
+    }
 }
