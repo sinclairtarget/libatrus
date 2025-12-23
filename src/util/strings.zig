@@ -30,7 +30,7 @@ pub fn isPunctuation(s: []const u8) bool {
     }
 
     return switch (s[0]) {
-        '!'...'/', ':'...'@', '['...'`' => true,
+        '!'...'/', ':'...'@', '['...'`', '{'...'~' => true,
         else => false,
     };
 }

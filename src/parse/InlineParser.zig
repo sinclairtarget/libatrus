@@ -10,8 +10,8 @@ const InlineToken = tokens.InlineToken;
 const InlineTokenType = tokens.InlineTokenType;
 const InlineTokenizer = @import("../lex/InlineTokenizer.zig");
 const references = @import("references.zig");
+const punctuation = @import("punctuation.zig");
 const safety = @import("../util/safety.zig");
-const strings = @import("../util/strings.zig");
 
 pub const Error = (
     references.CharacterReferenceError || Allocator.Error
@@ -252,24 +252,20 @@ fn parseUnderscoreStrong(
     const open_token = try self.peek(arena) orelse return null;
     switch (open_token.token_type) {
         .l_delim_underscore => |t| {
-            _ = try self.consume(arena, t) orelse return null;
+            _ = try self.consume(arena, t);
             _ = try self.consume(arena, t) orelse return null;
         },
         .lr_delim_underscore => |t| {
-            // Can only open emphasis if it follows a punctuation character
-            const prev = self.peekPrevious() orelse return null;
-            if (prev.lexeme.len == 0) {
+            // Can only open strong if it follows a punctuation character
+            // We should always have a preceding token unless we messed up
+            const prev = self.peekPrevious() orelse @panic(
+                "no token before lr_delim_underscore... tokenization mistake?"
+            );
+            if (!punctuation.endsWithPunctuation(prev)) {
                 return null;
             }
 
-            // TODO: Unicode character handling, can't assume all chars are one
-            // single byte.
-            const last_char = prev.lexeme[prev.lexeme.len - 1..prev.lexeme.len];
-            if (!strings.isPunctuation(last_char)) {
-                return null;
-            }
-
-            _ = try self.consume(arena, t) orelse return null;
+            _ = try self.consume(arena, t);
             _ = try self.consume(arena, t) orelse return null;
         },
         else => return null,
@@ -300,9 +296,22 @@ fn parseUnderscoreStrong(
 
     const close_token = try self.peek(arena) orelse return null;
     switch (close_token.token_type) {
-        .r_delim_underscore, .lr_delim_underscore => |t| {
+        .r_delim_underscore => |t| {
+            _ = try self.consume(arena, t);
             _ = try self.consume(arena, t) orelse return null;
+        },
+        .lr_delim_underscore => |t| {
+            _ = try self.consume(arena, t);
             _ = try self.consume(arena, t) orelse return null;
+
+            // Can only close strong if it is followed by punctuation
+            // We should always have a next token unless we messed up
+            const next = try self.peek(arena) orelse @panic(
+                "no token after lr_delim_underscore... tokenization mistake?"
+            );
+            if (!punctuation.startsWithPunctuation(next)) {
+                return null;
+            }
         },
         else => return null,
     }
@@ -343,15 +352,11 @@ fn parseUnderscoreEmphasis(
         .l_delim_underscore => _ = try self.consume(arena, .l_delim_underscore),
         .lr_delim_underscore => {
             // Can only open emphasis if it follows a punctuation character
-            const prev = self.peekPrevious() orelse return null;
-            if (prev.lexeme.len == 0) {
-                return null;
-            }
-
-            // TODO: Unicode character handling, can't assume all chars are one
-            // single byte.
-            const last_char = prev.lexeme[prev.lexeme.len - 1..prev.lexeme.len];
-            if (!strings.isPunctuation(last_char)) {
+            // We should always have a preceding token unless we messed up
+            const prev = self.peekPrevious() orelse @panic(
+                "no token before lr_delim_underscore... tokenization mistake?"
+            );
+            if (!punctuation.endsWithPunctuation(prev)) {
                 return null;
             }
 
@@ -401,8 +406,18 @@ fn parseUnderscoreEmphasis(
 
     const close_token = try self.peek(arena) orelse return null;
     switch (close_token.token_type) {
-        .r_delim_underscore, .lr_delim_underscore => |t| {
-            _ = try self.consume(arena, t);
+        .r_delim_underscore => _ = try self.consume(arena, .r_delim_underscore),
+        .lr_delim_underscore => {
+            _ = try self.consume(arena, .lr_delim_underscore);
+
+            // Can only close emphasis if it is followed by punctuation
+            // We should always have a next token unless we messed up
+            const next = try self.peek(arena) orelse @panic(
+                "no token after lr_delim_underscore... tokenization mistake?"
+            );
+            if (!punctuation.startsWithPunctuation(next)) {
+                return null;
+            }
         },
         else => return null,
     }
@@ -912,7 +927,7 @@ test "underscore emphasis" {
 }
 
 test "underscore right-delimiter emphasis" {
-    const value = "This is _hyper_emphasized.";
+    const value = "This is _hyper_-cool!";
     const nodes = try parseIntoNodes(value);
     defer freeNodes(nodes);
 

@@ -461,25 +461,6 @@ fn evaluate_tokens(
     return try tokens.toOwnedSlice(arena);
 }
 
-fn evaluate_lexeme(
-    self: *Self,
-    arena: Allocator,
-    token_type: InlineTokenType,
-    lookahead_i: usize,
-) !?[]const u8 {
-    switch (token_type) {
-        .newline => {
-            return null;
-        },
-        .text => {
-            return try copyWithoutEscapes(arena, self.in[self.i..lookahead_i]);
-        },
-        else => {
-            return try arena.dupe(u8, self.in[self.i..lookahead_i]);
-        },
-    }
-}
-
 /// Duplicates the given string, but skips all backslashes (unless they are
 /// themselves escaped).
 fn copyWithoutEscapes(alloc: Allocator, s: []const u8) ![]const u8 {

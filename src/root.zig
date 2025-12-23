@@ -159,8 +159,11 @@ pub const lex =
 test {
     // Ensures all unit tests are reachable even when filtering only for tests
     // in imported structs/namespaces and not in this file.
-    _ = @import("parse/InlineParser.zig");
     _ = @import("lex/BlockTokenizer.zig");
+    _ = @import("lex/InlineTokenizer.zig");
+    _ = @import("parse/BlockParser.zig");
+    _ = @import("parse/InlineParser.zig");
+    _ = @import("parse/punctuation.zig");
 }
 
 test renderHTMLString {
