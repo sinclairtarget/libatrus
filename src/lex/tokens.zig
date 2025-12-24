@@ -31,10 +31,28 @@ pub const InlineTokenType = enum {
 pub const BlockToken = Token(BlockTokenType);
 pub const InlineToken = Token(InlineTokenType);
 
+pub const DelimStarExtra = struct {
+    run_len: u16,
+};
+
+pub const DelimUnderscoreExtra = struct {
+    run_len: u16,
+    preceded_by_punct: bool,
+    followed_by_punct: bool,
+};
+
+// Additional data needed for some tokens
+pub const Extra = union {
+    empty: void,
+    delim_star: DelimStarExtra,
+    delim_underscore: DelimUnderscoreExtra,
+};
+
 fn Token(comptime TokenType: type) type {
     return struct {
         token_type: TokenType,
         lexeme: []const u8 = "",
+        extra: Extra = .{ .empty = {} },
 
         const Self = @This();
 

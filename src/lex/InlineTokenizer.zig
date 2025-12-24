@@ -4,8 +4,10 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 
-const InlineToken = @import("../lex/tokens.zig").InlineToken;
-const InlineTokenType = @import("../lex/tokens.zig").InlineTokenType;
+const InlineToken = @import("tokens.zig").InlineToken;
+const InlineTokenType = @import("tokens.zig").InlineTokenType;
+const Extra = @import("tokens.zig").Extra;
+const strings = @import("../util/strings.zig");
 
 const State = enum {
     started,
@@ -400,7 +402,7 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
     };
 
     const token_type, const next_state = result;
-    const tokens = try evaluate_tokens(self, arena, token_type, lookahead_i);
+    const tokens = try evaluateTokens(self, arena, token_type, lookahead_i);
 
     self.i = lookahead_i;
     self.state = next_state;
@@ -410,7 +412,7 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
 
     if (tokens.len > 1) {
         var i = tokens.len - 1;
-        while (i > 1) {
+        while (i > 0) {
             try self.staged.append(arena, tokens[i]);
             i -= 1;
         }
@@ -418,7 +420,7 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
     return tokens[0];
 }
 
-fn evaluate_tokens(
+fn evaluateTokens(
     self: *Self,
     arena: Allocator,
     token_type: InlineTokenType,
@@ -442,11 +444,21 @@ fn evaluate_tokens(
                 .lexeme = lexeme,
             });
         },
-        .l_delim_star, .r_delim_star, .lr_delim_star, .l_delim_underscore,
-        .r_delim_underscore, .lr_delim_underscore => {
-            for (self.i..lookahead_i + 1) |_| {
+        .l_delim_star, .r_delim_star, .lr_delim_star => {
+            const len = lookahead_i - self.i;
+            for (0..len) |_| {
                 try tokens.append(arena, InlineToken{
                     .token_type = token_type,
+                    .extra = self.evaluateExtra(token_type, lookahead_i),
+                });
+            }
+        },
+        .l_delim_underscore, .r_delim_underscore, .lr_delim_underscore => {
+            const len = lookahead_i - self.i;
+            for (0..len) |_| {
+                try tokens.append(arena, InlineToken{
+                    .token_type = token_type,
+                    .extra = self.evaluateExtra(token_type, lookahead_i),
                 });
             }
         },
@@ -459,6 +471,36 @@ fn evaluate_tokens(
     }
 
     return try tokens.toOwnedSlice(arena);
+}
+
+fn evaluateExtra(
+    self: Self,
+    token_type: InlineTokenType,
+    lookahead_i: usize,
+) Extra {
+    const last_state = self.state;
+    return switch (token_type) {
+        .l_delim_star, .r_delim_star, .lr_delim_star => .{
+            .delim_star = .{
+                .run_len = @intCast(lookahead_i - self.i),
+            }
+        },
+        .l_delim_underscore, .r_delim_underscore, .lr_delim_underscore => .{
+            .delim_underscore = .{
+                .run_len = @intCast(lookahead_i - self.i),
+                .preceded_by_punct = (
+                    last_state == .r_delim_underscore_punct_run
+                ),
+                .followed_by_punct = (
+                    lookahead_i < self.in.len
+                    and strings.isPunctuation(
+                        self.in[lookahead_i..lookahead_i + 1]
+                    )
+                ),
+            }
+        },
+        else => .{ .empty = {} },
+    };
 }
 
 /// Duplicates the given string, but skips all backslashes (unless they are
@@ -534,5 +576,88 @@ test "tokenize mixed delimiter runs" {
         try testing.expectEqual(exp, token.?.token_type);
     }
 
-    try testing.expectEqual(null, try tokenizer.next(arena));
+    try testing.expect(try tokenizer.next(arena) == null);
+}
+
+test "tokenize delim star extra" {
+    const line = "**foo**";
+
+    const expected = [_]InlineTokenType{
+        .l_delim_star,
+        .l_delim_star,
+        .text,
+        .r_delim_star,
+        .r_delim_star,
+    };
+
+    var tokenizer = Self.init(line);
+
+    var arena_impl = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_impl.deinit();
+    const arena = arena_impl.allocator();
+
+    for (expected) |exp| {
+        const token = (try tokenizer.next(arena)).?;
+        try testing.expectEqual(exp, token.token_type);
+
+        if (
+            token.token_type == .l_delim_star
+            or token.token_type == .r_delim_star
+        ) {
+            try testing.expectEqual(2, token.extra.delim_star.run_len);
+        }
+    }
+
+    try testing.expect(try tokenizer.next(arena) == null);
+}
+
+test "tokenize delim underscore extra" {
+    const line = "(__foo__)";
+
+    const expected = [_]InlineTokenType{
+        .text,
+        .l_delim_underscore,
+        .l_delim_underscore,
+        .text,
+        .r_delim_underscore,
+        .r_delim_underscore,
+        .text,
+    };
+
+    var tokenizer = Self.init(line);
+
+    var arena_impl = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_impl.deinit();
+    const arena = arena_impl.allocator();
+
+    for (expected) |exp| {
+        const token = (try tokenizer.next(arena)).?;
+        try testing.expectEqual(exp, token.token_type);
+
+        if (token.token_type == .l_delim_underscore) {
+            try testing.expectEqual(2, token.extra.delim_underscore.run_len);
+            try testing.expectEqual(
+                true,
+                token.extra.delim_underscore.preceded_by_punct,
+            );
+            try testing.expectEqual(
+                false,
+                token.extra.delim_underscore.followed_by_punct,
+            );
+        }
+
+        if (token.token_type == .r_delim_underscore) {
+            try testing.expectEqual(2, token.extra.delim_underscore.run_len);
+            try testing.expectEqual(
+                false,
+                token.extra.delim_underscore.preceded_by_punct,
+            );
+            try testing.expectEqual(
+                true,
+                token.extra.delim_underscore.followed_by_punct,
+            );
+        }
+    }
+
+    try testing.expect(try tokenizer.next(arena) == null);
 }

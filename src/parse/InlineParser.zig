@@ -10,7 +10,6 @@ const InlineToken = tokens.InlineToken;
 const InlineTokenType = tokens.InlineTokenType;
 const InlineTokenizer = @import("../lex/InlineTokenizer.zig");
 const references = @import("references.zig");
-const punctuation = @import("punctuation.zig");
 const safety = @import("../util/safety.zig");
 
 pub const Error = (
@@ -256,12 +255,8 @@ fn parseUnderscoreStrong(
             _ = try self.consume(arena, t) orelse return null;
         },
         .lr_delim_underscore => |t| {
-            // Can only open strong if it follows a punctuation character
-            // We should always have a preceding token unless we messed up
-            const prev = self.peekPrevious() orelse @panic(
-                "no token before lr_delim_underscore... tokenization mistake?"
-            );
-            if (!punctuation.endsWithPunctuation(prev)) {
+            // Can only open strong if delimiter run follows punctuation
+            if (!open_token.extra.delim_underscore.preceded_by_punct) {
                 return null;
             }
 
@@ -301,17 +296,13 @@ fn parseUnderscoreStrong(
             _ = try self.consume(arena, t) orelse return null;
         },
         .lr_delim_underscore => |t| {
-            _ = try self.consume(arena, t);
-            _ = try self.consume(arena, t) orelse return null;
-
-            // Can only close strong if it is followed by punctuation
-            // We should always have a next token unless we messed up
-            const next = try self.peek(arena) orelse @panic(
-                "no token after lr_delim_underscore... tokenization mistake?"
-            );
-            if (!punctuation.startsWithPunctuation(next)) {
+            // Can only close strong if delimiter run is followed by punctuation
+            if (!close_token.extra.delim_underscore.followed_by_punct) {
                 return null;
             }
+
+            _ = try self.consume(arena, t);
+            _ = try self.consume(arena, t) orelse return null;
         },
         else => return null,
     }
@@ -351,12 +342,8 @@ fn parseUnderscoreEmphasis(
     switch (open_token.token_type) {
         .l_delim_underscore => _ = try self.consume(arena, .l_delim_underscore),
         .lr_delim_underscore => {
-            // Can only open emphasis if it follows a punctuation character
-            // We should always have a preceding token unless we messed up
-            const prev = self.peekPrevious() orelse @panic(
-                "no token before lr_delim_underscore... tokenization mistake?"
-            );
-            if (!punctuation.endsWithPunctuation(prev)) {
+            // Can only open emphasis if delimiter run follows punctuation
+            if (!open_token.extra.delim_underscore.preceded_by_punct) {
                 return null;
             }
 
@@ -408,16 +395,12 @@ fn parseUnderscoreEmphasis(
     switch (close_token.token_type) {
         .r_delim_underscore => _ = try self.consume(arena, .r_delim_underscore),
         .lr_delim_underscore => {
-            _ = try self.consume(arena, .lr_delim_underscore);
-
-            // Can only close emphasis if it is followed by punctuation
-            // We should always have a next token unless we messed up
-            const next = try self.peek(arena) orelse @panic(
-                "no token after lr_delim_underscore... tokenization mistake?"
-            );
-            if (!punctuation.startsWithPunctuation(next)) {
+            // Can only close emphasis if delimiter run is followed by punctuation
+            if (!close_token.extra.delim_underscore.followed_by_punct) {
                 return null;
             }
+
+            _ = try self.consume(arena, .lr_delim_underscore);
         },
         else => return null,
     }
@@ -515,14 +498,6 @@ fn peek(self: *Self, arena: Allocator) !?InlineToken {
     }
 
     return self.line.items[self.token_index];
-}
-
-fn peekPrevious(self: *Self) ?InlineToken {
-    if (self.token_index == 0) {
-        return null;
-    }
-
-    return self.line.items[self.token_index - 1];
 }
 
 fn consume(

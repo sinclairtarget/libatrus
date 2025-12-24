@@ -332,5 +332,5 @@ test "can tokenize" {
         try std.testing.expectEqual(exp, token.?.token_type);
     }
 
-    try std.testing.expectEqual(null, try tokenizer.next(arena));
+    try std.testing.expect(try tokenizer.next(arena) == null);
 }
