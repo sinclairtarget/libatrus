@@ -94,14 +94,14 @@ fn parseStarStrong(
         }
     }
 
-    const open_token = try self.peek(arena) orelse return null;
-    switch (open_token.token_type) {
-        .l_delim_star, .lr_delim_star => |t| {
-            _ = try self.consume(arena, t) orelse return null;
-            _ = try self.consume(arena, t) orelse return null;
-        },
-        else => return null,
-    }
+    const open_token = try self.consume(arena, &.{
+        .l_delim_star,
+        .lr_delim_star,
+    }) orelse return null;
+    _ = try self.consume(arena, &.{
+        .l_delim_star,
+        .lr_delim_star,
+    }) orelse return null;
 
     for (0..safety.loop_bound) |_| {
         if (try self.parseAnyEmphasis(gpa, arena)) |emph| {
@@ -126,13 +126,17 @@ fn parseStarStrong(
         return null;
     }
 
-    const close_token = try self.peek(arena) orelse return null;
-    switch (close_token.token_type) {
-        .r_delim_star, .lr_delim_star => |t| {
-            _ = try self.consume(arena, t) orelse return null;
-            _ = try self.consume(arena, t) orelse return null;
-        },
-        else => return null,
+    const close_token = try self.consume(arena, &.{
+        .r_delim_star,
+        .lr_delim_star,
+    }) orelse return null;
+    _ = try self.consume(arena, &.{
+        .r_delim_star,
+        .lr_delim_star,
+    }) orelse return null;
+
+    if (!isValidBySumOfLengthsRule(open_token, close_token)) {
+        return null;
     }
 
     strong_node = try gpa.create(ast.Node);
@@ -166,11 +170,10 @@ fn parseStarEmphasis(
         }
     }
 
-    const open_token = try self.peek(arena) orelse return null;
-    switch (open_token.token_type) {
-        .l_delim_star, .lr_delim_star => |t| _ = try self.consume(arena, t),
-        else => return null,
-    }
+    const open_token = try self.consume(arena, &.{
+        .l_delim_star,
+        .lr_delim_star,
+    }) orelse return null;
 
     for (0..safety.loop_bound) |_| {
         const maybe_leading_emph = try self.parseStarEmphasis(gpa, arena);
@@ -211,10 +214,13 @@ fn parseStarEmphasis(
         return null;
     }
 
-    const close_token = try self.peek(arena) orelse return null;
-    switch (close_token.token_type) {
-        .r_delim_star, .lr_delim_star => |t| _ = try self.consume(arena, t),
-        else => return null,
+    const close_token = try self.consume(arena, &.{
+        .r_delim_star,
+        .lr_delim_star,
+    }) orelse return null;
+
+    if (!isValidBySumOfLengthsRule(open_token, close_token)) {
+        return null;
     }
 
     emphasis_node = try gpa.create(ast.Node);
@@ -251,8 +257,8 @@ fn parseUnderscoreStrong(
     const open_token = try self.peek(arena) orelse return null;
     switch (open_token.token_type) {
         .l_delim_underscore => |t| {
-            _ = try self.consume(arena, t);
-            _ = try self.consume(arena, t) orelse return null;
+            _ = try self.consume(arena, &.{t});
+            _ = try self.consume(arena, &.{t}) orelse return null;
         },
         .lr_delim_underscore => |t| {
             // Can only open strong if delimiter run follows punctuation
@@ -260,8 +266,8 @@ fn parseUnderscoreStrong(
                 return null;
             }
 
-            _ = try self.consume(arena, t);
-            _ = try self.consume(arena, t) orelse return null;
+            _ = try self.consume(arena, &.{t});
+            _ = try self.consume(arena, &.{t}) orelse return null;
         },
         else => return null,
     }
@@ -292,8 +298,8 @@ fn parseUnderscoreStrong(
     const close_token = try self.peek(arena) orelse return null;
     switch (close_token.token_type) {
         .r_delim_underscore => |t| {
-            _ = try self.consume(arena, t);
-            _ = try self.consume(arena, t) orelse return null;
+            _ = try self.consume(arena, &.{t});
+            _ = try self.consume(arena, &.{t}) orelse return null;
         },
         .lr_delim_underscore => |t| {
             // Can only close strong if delimiter run is followed by punctuation
@@ -301,10 +307,14 @@ fn parseUnderscoreStrong(
                 return null;
             }
 
-            _ = try self.consume(arena, t);
-            _ = try self.consume(arena, t) orelse return null;
+            _ = try self.consume(arena, &.{t});
+            _ = try self.consume(arena, &.{t}) orelse return null;
         },
         else => return null,
+    }
+
+    if (!isValidBySumOfLengthsRule(open_token, close_token)) {
+        return null;
     }
 
     strong_node = try gpa.create(ast.Node);
@@ -340,14 +350,14 @@ fn parseUnderscoreEmphasis(
 
     const open_token = try self.peek(arena) orelse return null;
     switch (open_token.token_type) {
-        .l_delim_underscore => _ = try self.consume(arena, .l_delim_underscore),
+        .l_delim_underscore => _ = try self.consume(arena, &.{.l_delim_underscore}),
         .lr_delim_underscore => {
             // Can only open emphasis if delimiter run follows punctuation
             if (!open_token.extra.delim_underscore.preceded_by_punct) {
                 return null;
             }
 
-            _ = try self.consume(arena, .lr_delim_underscore);
+            _ = try self.consume(arena, &.{.lr_delim_underscore});
         },
         else => return null,
     }
@@ -393,16 +403,20 @@ fn parseUnderscoreEmphasis(
 
     const close_token = try self.peek(arena) orelse return null;
     switch (close_token.token_type) {
-        .r_delim_underscore => _ = try self.consume(arena, .r_delim_underscore),
+        .r_delim_underscore => _ = try self.consume(arena, &.{.r_delim_underscore}),
         .lr_delim_underscore => {
             // Can only close emphasis if delimiter run is followed by punctuation
             if (!close_token.extra.delim_underscore.followed_by_punct) {
                 return null;
             }
 
-            _ = try self.consume(arena, .lr_delim_underscore);
+            _ = try self.consume(arena, &.{.lr_delim_underscore});
         },
         else => return null,
+    }
+
+    if (!isValidBySumOfLengthsRule(open_token, close_token)) {
+        return null;
     }
 
     emphasis_node = try gpa.create(ast.Node);
@@ -455,7 +469,7 @@ fn parseText(self: *Self, gpa: Allocator, arena: Allocator) Error!?*ast.Node {
         switch (token.token_type) {
             .decimal_character_reference, .hexadecimal_character_reference,
             .entity_reference, .newline, .text => |t| {
-                _ = try self.consume(arena, t);
+                _ = try self.consume(arena, &.{t});
 
                 const value = try inlineTextValue(arena, token);
                 try values.append(arena, value);
@@ -468,7 +482,7 @@ fn parseText(self: *Self, gpa: Allocator, arena: Allocator) Error!?*ast.Node {
                 ) {
                     break;
                 }
-                _ = try self.consume(arena, .lr_delim_underscore);
+                _ = try self.consume(arena, &.{.lr_delim_underscore});
 
                 const value = try inlineTextValue(arena, token);
                 try values.append(arena, value);
@@ -491,10 +505,50 @@ fn parseTextFallback(
     arena: Allocator,
 ) Error!?*ast.Node {
     const token = try self.peek(arena) orelse return null;
-    _ = try self.consume(arena, token.token_type);
+    _ = try self.consume(arena, &.{token.token_type});
 
     const text_value = try inlineTextValue(arena, token);
     return try createTextNode(gpa, &.{ text_value });
+}
+
+/// Checks commonmark spec rule 9. and 10. for parsing emphasis and strong
+/// emphasis.
+///
+/// Returns true if the emphasis is valid, false otherwise.
+fn isValidBySumOfLengthsRule(open: InlineToken, close: InlineToken) bool {
+    if (
+        open.token_type == .lr_delim_star
+        or close.token_type == .lr_delim_star
+    ) {
+        const sum_of_len = (
+            open.extra.delim_star.run_len
+            + close.extra.delim_star.run_len
+        );
+        if (sum_of_len % 3 == 0) {
+            return (
+                open.extra.delim_star.run_len % 3 == 0
+                and open.extra.delim_star.run_len % 3 == 0
+            );
+        }
+    }
+
+    if (
+        open.token_type == .lr_delim_underscore
+        and close.token_type == .lr_delim_underscore
+    ) {
+        const sum_of_len = (
+            open.extra.delim_underscore.run_len
+            + close.extra.delim_underscore.run_len
+        );
+        if (sum_of_len % 3 == 0) {
+            return (
+                open.extra.delim_underscore.run_len % 3 == 0
+                and open.extra.delim_underscore.run_len % 3 == 0
+            );
+        }
+    }
+
+    return true;
 }
 
 fn peek(self: *Self, arena: Allocator) !?InlineToken {
@@ -513,15 +567,17 @@ fn peek(self: *Self, arena: Allocator) !?InlineToken {
 fn consume(
     self: *Self,
     arena: Allocator,
-    token_type: InlineTokenType,
+    token_types: []const InlineTokenType,
 ) !?InlineToken {
     const current = try self.peek(arena) orelse return null;
-    if (current.token_type != token_type) {
-        return null;
+    for (token_types) |token_type| {
+        if (current.token_type == token_type) {
+            self.token_index += 1;
+            return current;
+        }
     }
 
-    self.token_index += 1;
-    return current;
+    return null;
 }
 
 fn checkpoint(self: *Self) usize {
