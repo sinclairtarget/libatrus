@@ -446,26 +446,36 @@ fn parseAnyStrong(
     return null;
 }
 
-// @       => allowed*
-// allowed => ref10 | ref16 | ref& | \n | text
+// @       => allowed+
+// allowed => ref10 | ref16 | ref& | \n | text | lr_delim_underscore
 fn parseText(self: *Self, gpa: Allocator, arena: Allocator) Error!?*ast.Node {
     var values: ArrayList([]const u8) = .empty;
 
-    const allowed = .{
-        .decimal_character_reference,
-        .hexadecimal_character_reference,
-        .entity_reference,
-        .newline,
-        .text,
-    };
-    outer: for (0..safety.loop_bound) |_| {
-        const value = inline for (allowed) |token_type| {
-            if (try self.consume(arena, token_type)) |token| {
-                break try inlineTextValue(arena, token);
-            }
-        } else break :outer;
-        try values.append(arena, value);
-    } else @panic(safety.loop_bound_panic_msg);
+    while (try self.peek(arena)) |token| {
+        switch (token.token_type) {
+            .decimal_character_reference, .hexadecimal_character_reference,
+            .entity_reference, .newline, .text => |t| {
+                _ = try self.consume(arena, t);
+
+                const value = try inlineTextValue(arena, token);
+                try values.append(arena, value);
+            },
+            .lr_delim_underscore => {
+                // Only allowed if cannot start or stop emphasis
+                if (
+                    token.extra.delim_underscore.preceded_by_punct
+                    or token.extra.delim_underscore.followed_by_punct
+                ) {
+                    break;
+                }
+                _ = try self.consume(arena, .lr_delim_underscore);
+
+                const value = try inlineTextValue(arena, token);
+                try values.append(arena, value);
+            },
+            else => break,
+        }
+    }
 
     if (values.items.len == 0) {
         return null;
