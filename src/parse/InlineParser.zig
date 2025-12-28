@@ -45,6 +45,11 @@ pub fn parse(self: *Self, gpa: Allocator, arena: Allocator) Error![]*ast.Node {
     for (0..safety.loop_bound) |_| { // could hit if we forget to consume tokens
         _ = try self.peek(arena) orelse break;
 
+        if (try self.parseInlineCode(gpa, arena)) |code| {
+            try nodes.append(gpa, code);
+            continue;
+        }
+
         if (try self.parseAnyEmphasis(gpa, arena)) |emph| {
             try nodes.append(gpa, emph);
             continue;
@@ -428,6 +433,46 @@ fn parseUnderscoreEmphasis(
     return emphasis_node;
 }
 
+/// Checks commonmark spec rule 9. and 10. for parsing emphasis and strong
+/// emphasis.
+///
+/// Returns true if the emphasis is valid, false otherwise.
+fn isValidBySumOfLengthsRule(open: InlineToken, close: InlineToken) bool {
+    if (
+        open.token_type == .lr_delim_star
+        or close.token_type == .lr_delim_star
+    ) {
+        const sum_of_len = (
+            open.extra.delim_star.run_len
+            + close.extra.delim_star.run_len
+        );
+        if (sum_of_len % 3 == 0) {
+            return (
+                open.extra.delim_star.run_len % 3 == 0
+                and open.extra.delim_star.run_len % 3 == 0
+            );
+        }
+    }
+
+    if (
+        open.token_type == .lr_delim_underscore
+        and close.token_type == .lr_delim_underscore
+    ) {
+        const sum_of_len = (
+            open.extra.delim_underscore.run_len
+            + close.extra.delim_underscore.run_len
+        );
+        if (sum_of_len % 3 == 0) {
+            return (
+                open.extra.delim_underscore.run_len % 3 == 0
+                and open.extra.delim_underscore.run_len % 3 == 0
+            );
+        }
+    }
+
+    return true;
+}
+
 fn parseAnyEmphasis(
     self: *Self,
     gpa: Allocator,
@@ -458,6 +503,57 @@ fn parseAnyStrong(
     }
 
     return null;
+}
+
+// @ => backtick(n) .+ backtick(n)
+fn parseInlineCode(
+    self: *Self,
+    gpa: Allocator,
+    arena: Allocator,
+) Error!?*ast.Node {
+    var inline_code_node: ?*ast.Node = null;
+    const checkpoint_index = self.checkpoint();
+    defer {
+        if (inline_code_node == null) {
+            self.backtrack(checkpoint_index);
+        }
+    }
+
+    const open = try self.consume(arena, &.{ .backtick }) orelse return null;
+
+    var values: ArrayList([]const u8) = .empty;
+    for (0..safety.loop_bound) |_| {
+        const token = try self.peek(arena) orelse return null;
+        switch (token.token_type) {
+            .backtick => {
+                _ = try self.consume(arena, &.{ .backtick });
+                if (token.lexeme.len == open.lexeme.len) {
+                    break;
+                }
+
+                const value = try inlineCodeValue(token);
+                try values.append(arena, value);
+            },
+            else => |t| {
+                _ = try self.consume(arena, &.{t});
+
+                const value = try inlineCodeValue(token);
+                try values.append(arena, value);
+            }
+        }
+    } else @panic(safety.loop_bound_panic_msg);
+
+    if (values.items.len == 0) {
+        return null;
+    }
+
+    inline_code_node = try gpa.create(ast.Node);
+    inline_code_node.?.* = .{
+        .inline_code = .{
+            .value = try std.mem.join(gpa, "", values.items),
+        },
+    };
+    return inline_code_node;
 }
 
 // @       => allowed+
@@ -511,46 +607,6 @@ fn parseTextFallback(
     return try createTextNode(gpa, &.{ text_value });
 }
 
-/// Checks commonmark spec rule 9. and 10. for parsing emphasis and strong
-/// emphasis.
-///
-/// Returns true if the emphasis is valid, false otherwise.
-fn isValidBySumOfLengthsRule(open: InlineToken, close: InlineToken) bool {
-    if (
-        open.token_type == .lr_delim_star
-        or close.token_type == .lr_delim_star
-    ) {
-        const sum_of_len = (
-            open.extra.delim_star.run_len
-            + close.extra.delim_star.run_len
-        );
-        if (sum_of_len % 3 == 0) {
-            return (
-                open.extra.delim_star.run_len % 3 == 0
-                and open.extra.delim_star.run_len % 3 == 0
-            );
-        }
-    }
-
-    if (
-        open.token_type == .lr_delim_underscore
-        and close.token_type == .lr_delim_underscore
-    ) {
-        const sum_of_len = (
-            open.extra.delim_underscore.run_len
-            + close.extra.delim_underscore.run_len
-        );
-        if (sum_of_len % 3 == 0) {
-            return (
-                open.extra.delim_underscore.run_len % 3 == 0
-                and open.extra.delim_underscore.run_len % 3 == 0
-            );
-        }
-    }
-
-    return true;
-}
-
 fn peek(self: *Self, arena: Allocator) !?InlineToken {
     if (self.token_index >= self.line.items.len) {
         const next = try self.tokenizer.next(arena);
@@ -588,6 +644,19 @@ fn backtrack(self: *Self, checkpoint_index: usize) void {
     self.token_index = checkpoint_index;
 }
 
+fn inlineCodeValue(token: InlineToken) ![]const u8 {
+    const value = switch (token.token_type) {
+        .decimal_character_reference, .hexadecimal_character_reference,
+        .entity_reference, .text, .backtick => blk: {
+            break :blk token.lexeme;
+        },
+        .newline => " ",
+        .l_delim_star, .r_delim_star, .lr_delim_star => "*",
+        .l_delim_underscore, .r_delim_underscore, .lr_delim_underscore => "_",
+    };
+    return value;
+}
+
 fn inlineTextValue(arena: Allocator, token: InlineToken) ![]const u8 {
     const value = switch (token.token_type) {
         .decimal_character_reference, .hexadecimal_character_reference,
@@ -595,10 +664,9 @@ fn inlineTextValue(arena: Allocator, token: InlineToken) ![]const u8 {
             break :blk try resolveCharacterEntityRef(arena, token);
         },
         .newline => "\n",
-        .text => token.lexeme,
+        .text, .backtick => token.lexeme,
         .l_delim_star, .r_delim_star, .lr_delim_star => "*",
         .l_delim_underscore, .r_delim_underscore, .lr_delim_underscore => "_",
-        .backtick => "`",
     };
     return value;
 }

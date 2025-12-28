@@ -163,7 +163,6 @@ test {
     _ = @import("lex/InlineTokenizer.zig");
     _ = @import("parse/BlockParser.zig");
     _ = @import("parse/InlineParser.zig");
-    _ = @import("parse/punctuation.zig");
 }
 
 test renderHTMLString {

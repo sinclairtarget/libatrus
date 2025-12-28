@@ -466,9 +466,7 @@ fn evaluateTokens(
 
     switch (token_type) {
         .newline => {
-            try tokens.append(arena, InlineToken{
-                .token_type = .newline,
-            });
+            try tokens.append(arena, InlineToken{ .token_type = .newline });
         },
         .text => {
             const lexeme = try copyWithoutEscapes(
@@ -480,16 +478,8 @@ fn evaluateTokens(
                 .lexeme = lexeme,
             });
         },
-        .l_delim_star, .r_delim_star, .lr_delim_star => {
-            const len = lookahead_i - self.i;
-            for (0..len) |_| {
-                try tokens.append(arena, InlineToken{
-                    .token_type = token_type,
-                    .extra = self.evaluateExtra(token_type, lookahead_i),
-                });
-            }
-        },
-        .l_delim_underscore, .r_delim_underscore, .lr_delim_underscore => {
+        .l_delim_star, .r_delim_star, .lr_delim_star, .l_delim_underscore,
+        .r_delim_underscore, .lr_delim_underscore => {
             const len = lookahead_i - self.i;
             for (0..len) |_| {
                 try tokens.append(arena, InlineToken{

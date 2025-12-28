@@ -39,6 +39,7 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
 
     switch (node.*) {
         .thematic_break => try stringify.write("thematicBreak"),
+        .inline_code => try stringify.write("inlineCode"),
         else => try stringify.write(@tagName(node.*)),
     }
 
