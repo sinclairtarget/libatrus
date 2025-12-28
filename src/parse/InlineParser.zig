@@ -9,6 +9,7 @@ const tokens = @import("../lex/tokens.zig");
 const InlineToken = tokens.InlineToken;
 const InlineTokenType = tokens.InlineTokenType;
 const InlineTokenizer = @import("../lex/InlineTokenizer.zig");
+const escape = @import("escape.zig");
 const references = @import("references.zig");
 const safety = @import("../util/safety.zig");
 const strings = @import("../util/strings.zig");
@@ -660,9 +661,7 @@ fn backtrack(self: *Self, checkpoint_index: usize) void {
 fn inlineCodeValue(token: InlineToken) ![]const u8 {
     const value = switch (token.token_type) {
         .decimal_character_reference, .hexadecimal_character_reference,
-        .entity_reference, .text, .backtick => blk: {
-            break :blk token.lexeme;
-        },
+        .entity_reference, .backtick, .text => token.lexeme,
         .newline => " ",
         .l_delim_star, .r_delim_star, .lr_delim_star => "*",
         .l_delim_underscore, .r_delim_underscore, .lr_delim_underscore => "_",
@@ -677,9 +676,10 @@ fn inlineTextValue(arena: Allocator, token: InlineToken) ![]const u8 {
             break :blk try resolveCharacterEntityRef(arena, token);
         },
         .newline => "\n",
-        .text, .backtick => token.lexeme,
+        .backtick => token.lexeme,
         .l_delim_star, .r_delim_star, .lr_delim_star => "*",
         .l_delim_underscore, .r_delim_underscore, .lr_delim_underscore => "_",
+        .text => try escape.copyEscape(arena, token.lexeme),
     };
     return value;
 }

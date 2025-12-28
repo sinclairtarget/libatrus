@@ -9619,14 +9619,14 @@
           "children": [
             {
               "type": "inlineCode",
-              "value": " b "
+              "value": " b "
             }
           ]
         }
       ]
     },
-    "myst": "` b `\n",
-    "html": "<p><code> b </code></p>\n"
+    "myst": "` b `\n",
+    "html": "<p><code> b </code></p>\n"
   },
   {
     "title": "cmark_spec_0.30: Code spans - example 334",

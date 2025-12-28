@@ -400,11 +400,19 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
             }
         },
         .text_escaped => {
-            if (lookahead_i < self.in.len) {
-                lookahead_i += 1;
+            if (lookahead_i >= self.in.len) {
+                continue :fsm .text;
             }
 
-            continue :fsm .text;
+            switch (self.in[lookahead_i]) {
+                '`' => {
+                    continue :fsm .text;
+                },
+                else => {
+                    lookahead_i += 1;
+                    continue :fsm .text;
+                },
+            }
         },
         .text_punct => {
             if (lookahead_i >= self.in.len) {
@@ -468,16 +476,6 @@ fn evaluateTokens(
         .newline => {
             try tokens.append(arena, InlineToken{ .token_type = .newline });
         },
-        .text => {
-            const lexeme = try copyWithoutEscapes(
-                arena,
-                self.in[self.i..lookahead_i],
-            );
-            try tokens.append(arena, InlineToken{
-                .token_type = .text,
-                .lexeme = lexeme,
-            });
-        },
         .l_delim_star, .r_delim_star, .lr_delim_star, .l_delim_underscore,
         .r_delim_underscore, .lr_delim_underscore => {
             const len = lookahead_i - self.i;
@@ -527,47 +525,6 @@ fn evaluateExtra(
         },
         else => .{ .empty = {} },
     };
-}
-
-/// Duplicates the given string, but skips all backslashes (unless they are
-/// themselves escaped).
-fn copyWithoutEscapes(alloc: Allocator, s: []const u8) ![]const u8 {
-    const copy = try alloc.alloc(u8, s.len);
-
-    var state: enum { normal, escape } = .normal;
-    var source_index: usize = 0;
-    var dest_index: usize = 0;
-    while (source_index < s.len) {
-        switch (state) {
-            .normal => {
-                switch (s[source_index]) {
-                    '\\' => {
-                        source_index += 1;
-                        state = .escape;
-                    },
-                    else => {
-                        copy[dest_index] = s[source_index];
-                        source_index += 1;
-                        dest_index += 1;
-                    },
-                }
-            },
-            .escape => {
-                switch (s[source_index]) {
-                    '\\' => {
-                        // literal backslash
-                        copy[dest_index] = s[source_index];
-                        source_index += 1;
-                        dest_index += 1;
-                    },
-                    else => {},
-                }
-                state = .normal;
-            },
-        }
-    }
-
-    return copy[0..dest_index];
 }
 
 // ----------------------------------------------------------------------------
