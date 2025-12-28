@@ -11,6 +11,7 @@ const InlineTokenType = tokens.InlineTokenType;
 const InlineTokenizer = @import("../lex/InlineTokenizer.zig");
 const references = @import("references.zig");
 const safety = @import("../util/safety.zig");
+const strings = @import("../util/strings.zig");
 
 pub const Error = (
     references.CharacterReferenceError || Allocator.Error
@@ -547,10 +548,22 @@ fn parseInlineCode(
         return null;
     }
 
+    var value = try std.mem.join(gpa, "", values.items);
+
+    // Special case for stripping single leading and following space
+    if (value.len > 1 and !strings.containsOnly(value, " ")) {
+        if (value[0] == ' ' and value[value.len - 1] == ' ') {
+            // TODO: Do we have to allocate here?
+            const new = try gpa.dupe(u8, value[1..value.len - 1]);
+            gpa.free(value);
+            value = new;
+        }
+    }
+
     inline_code_node = try gpa.create(ast.Node);
     inline_code_node.?.* = .{
         .inline_code = .{
-            .value = try std.mem.join(gpa, "", values.items),
+            .value = value,
         },
     };
     return inline_code_node;
@@ -1215,5 +1228,21 @@ test "codespan and underscore emphasis" {
     try testing.expectEqualStrings(
         "bar",
         nodes[2].inline_code.value,
+    );
+}
+
+test "codespan strip space" {
+    const value = "` ``foo`` `";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(
+        ast.NodeType.inline_code,
+        @as(ast.NodeType, nodes[0].*),
+    );
+    try testing.expectEqualStrings(
+        "``foo``",
+        nodes[0].inline_code.value,
     );
 }
