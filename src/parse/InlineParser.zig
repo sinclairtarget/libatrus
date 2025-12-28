@@ -598,6 +598,7 @@ fn inlineTextValue(arena: Allocator, token: InlineToken) ![]const u8 {
         .text => token.lexeme,
         .l_delim_star, .r_delim_star, .lr_delim_star => "*",
         .l_delim_underscore, .r_delim_underscore, .lr_delim_underscore => "_",
+        .backtick => "`",
     };
     return value;
 }
@@ -1112,4 +1113,39 @@ test "nesting feast of insanity" {
         );
         try testing.expectEqualStrings("feast!", grandchild_text.text.value);
     }
+}
+
+test "codespan and underscore emphasis" {
+    const value = "`foo`_bim_`bar`";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(3, nodes.len);
+
+    try testing.expectEqual(
+        ast.NodeType.inline_code,
+        @as(ast.NodeType, nodes[0].*),
+    );
+    try testing.expectEqualStrings(
+        "foo",
+        nodes[0].inline_code.value,
+    );
+
+    try testing.expectEqual(
+        ast.NodeType.emphasis,
+        @as(ast.NodeType, nodes[1].*),
+    );
+    try testing.expectEqualStrings(
+        "bim",
+        nodes[1].emphasis.children[0].text.value,
+    );
+
+    try testing.expectEqual(
+        ast.NodeType.inline_code,
+        @as(ast.NodeType, nodes[2].*),
+    );
+    try testing.expectEqualStrings(
+        "bar",
+        nodes[2].inline_code.value,
+    );
 }

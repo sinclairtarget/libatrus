@@ -54,7 +54,7 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
             try stringify.write(n.depth);
             try render_children(stringify, n);
         },
-        .text => |n| {
+        .text, .inline_code => |n| {
             try stringify.objectField("value");
             try stringify.write(n.value);
         },

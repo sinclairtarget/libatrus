@@ -11,6 +11,7 @@ const strings = @import("../util/strings.zig");
 
 const State = enum {
     started,
+    started_punct,
     text,
     text_escaped,
     text_whitespace,
@@ -24,6 +25,7 @@ const State = enum {
     l_delim_underscore_run,
     r_delim_underscore_run,
     r_delim_underscore_punct_run, // preceded by punctuation
+    backtick_run,
     done,
 };
 
@@ -89,8 +91,27 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                     lookahead_i += 1;
                     continue :fsm .l_delim_underscore_run;
                 },
+                '`' => {
+                    lookahead_i += 1;
+                    continue :fsm .backtick_run;
+                },
                 else => {
                     continue :fsm .text;
+                },
+            }
+        },
+        .started_punct => {
+            switch (self.in[lookahead_i]) {
+                '*' => {
+                    lookahead_i += 1;
+                    continue :fsm .r_delim_star_punct_run;
+                },
+                '_' => {
+                    lookahead_i += 1;
+                    continue :fsm .r_delim_underscore_punct_run;
+                },
+                else => {
+                    continue :fsm .started;
                 },
             }
         },
@@ -309,13 +330,28 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                 }
             }
         },
+        .backtick_run => {
+            if (lookahead_i >= self.in.len) {
+                break :fsm .{ .backtick, .started };
+            }
+
+            switch (self.in[lookahead_i]) {
+                '`' => {
+                    lookahead_i += 1;
+                    continue :fsm .backtick_run;
+                },
+                else => {
+                    break :fsm .{ .backtick, .started_punct };
+                },
+            }
+        },
         .text => {
             if (lookahead_i >= self.in.len) {
                 break :fsm .{ .text, .started };
             }
 
             switch (self.in[lookahead_i]) {
-                '\n', '&' => {
+                '\n', '&', '`' => {
                     break :fsm .{ .text, .started };
                 },
                 '*' => {
@@ -331,7 +367,7 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                 ' ', '\t' => {
                     continue :fsm .text_whitespace;
                 },
-                '!'...'%', '\''...')', '+'...'/', ':'...'@', '[', ']', '^', '`',
+                '!'...'%', '\''...')', '+'...'/', ':'...'@', '[', ']', '^',
                 '}'...'~' => {
                     lookahead_i += 1;
                     continue :fsm .text_punct;
@@ -376,7 +412,7 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
             }
 
             switch (self.in[lookahead_i]) {
-                '\n', '&' => {
+                '\n', '&', '`' => {
                     break :fsm .{ .text, .started };
                 },
                 '*' => {

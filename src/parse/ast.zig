@@ -16,6 +16,7 @@ pub const NodeType = enum {
     thematic_break,
     emphasis,
     strong,
+    inline_code,
 };
 
 pub const Node = union(NodeType) {
@@ -28,6 +29,7 @@ pub const Node = union(NodeType) {
     thematic_break: Empty,
     emphasis: Container,
     strong: Container,
+    inline_code: Text,
 
     const Self = @This();
 
