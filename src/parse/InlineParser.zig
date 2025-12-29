@@ -665,6 +665,12 @@ fn inlineCodeValue(token: InlineToken) ![]const u8 {
         .newline => " ",
         .l_delim_star, .r_delim_star, .lr_delim_star => "*",
         .l_delim_underscore, .r_delim_underscore, .lr_delim_underscore => "_",
+        .l_square_bracket => "[",
+        .r_square_bracket => "]",
+        .l_angle_bracket => "<",
+        .r_angle_bracket => ">",
+        .l_paren => "(",
+        .r_paren => ")",
     };
     return value;
 }
@@ -680,6 +686,12 @@ fn inlineTextValue(arena: Allocator, token: InlineToken) ![]const u8 {
         .l_delim_star, .r_delim_star, .lr_delim_star => "*",
         .l_delim_underscore, .r_delim_underscore, .lr_delim_underscore => "_",
         .text => try escape.copyEscape(arena, token.lexeme),
+        .l_square_bracket => "[",
+        .r_square_bracket => "]",
+        .l_angle_bracket => "<",
+        .r_angle_bracket => ">",
+        .l_paren => "(",
+        .r_paren => ")",
     };
     return value;
 }

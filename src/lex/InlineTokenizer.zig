@@ -61,6 +61,7 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
     var lookahead_i = self.i;
     const result: struct { InlineTokenType, State } = fsm: switch (self.state) {
         .started => {
+            self.state = .started; // Keep struct field in sync with switch
             switch (self.in[lookahead_i]) {
                 '\n' => {
                     lookahead_i += 1;
@@ -80,7 +81,9 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                         'a'...'z', 'A'...'Z', '0'...'9' => {
                             continue :fsm .entity_reference;
                         },
-                        else => continue :fsm .text_punct,
+                        else => {
+                            continue :fsm .text_punct;
+                        },
                     }
                 },
                 '*' => {
@@ -95,12 +98,37 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                     lookahead_i += 1;
                     continue :fsm .backtick_run;
                 },
+                '[' => {
+                    lookahead_i += 1;
+                    break :fsm .{ .l_square_bracket, .started_punct };
+                },
+                ']' => {
+                    lookahead_i += 1;
+                    break :fsm .{ .r_square_bracket, .started_punct };
+                },
+                '<' => {
+                    lookahead_i += 1;
+                    break :fsm .{ .l_angle_bracket, .started_punct };
+                },
+                '>' => {
+                    lookahead_i += 1;
+                    break :fsm .{ .r_angle_bracket, .started_punct };
+                },
+                '(' => {
+                    lookahead_i += 1;
+                    break :fsm .{ .l_paren, .started_punct };
+                },
+                ')' => {
+                    lookahead_i += 1;
+                    break :fsm .{ .r_paren, .started_punct };
+                },
                 else => {
                     continue :fsm .text;
                 },
             }
         },
         .started_punct => {
+            self.state = .started_punct;
             switch (self.in[lookahead_i]) {
                 '*' => {
                     lookahead_i += 1;
@@ -116,6 +144,8 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
             }
         },
         .decimal_character_reference => {
+            self.state = .decimal_character_reference;
+
             var num_digits: u8 = 0;
             while (num_digits < 8 and lookahead_i < self.in.len) {
                 switch (self.in[lookahead_i]) {
@@ -148,6 +178,8 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
             continue :fsm .text;
         },
         .hexadecimal_character_reference => {
+            self.state = .hexadecimal_character_reference;
+
             var num_digits: u8 = 0;
             while (num_digits < 7 and lookahead_i < self.in.len) {
                 switch (self.in[lookahead_i]) {
@@ -176,6 +208,7 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
             continue :fsm .text;
         },
         .entity_reference => {
+            self.state = .entity_reference;
             if (lookahead_i >= self.in.len) {
                 break :fsm .{ .text, .started };
             }
@@ -195,6 +228,7 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
             }
         },
         .l_delim_star_run => {
+            self.state = .l_delim_star_run;
             if (lookahead_i >= self.in.len) {
                 break :fsm .{ .text, .started };
             }
@@ -216,6 +250,7 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
             }
         },
         .r_delim_star_run => {
+            self.state = .r_delim_star_run;
             if (lookahead_i >= self.in.len) {
                 break :fsm .{ .r_delim_star, .started };
             }
@@ -238,6 +273,7 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
             }
         },
         .r_delim_star_punct_run => {
+            self.state = .r_delim_star_punct_run;
             if (lookahead_i >= self.in.len) {
                 break :fsm .{ .r_delim_star, .started };
             }
@@ -263,6 +299,7 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
             }
         },
         .l_delim_underscore_run => {
+            self.state = .l_delim_underscore_run;
             if (lookahead_i >= self.in.len) {
                 break :fsm .{ .text, .started };
             }
@@ -284,6 +321,7 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
             }
         },
         .r_delim_underscore_run => {
+            self.state = .r_delim_underscore_run;
             if (lookahead_i >= self.in.len) {
                 break :fsm .{ .r_delim_underscore, .started };
             }
@@ -306,6 +344,7 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
             }
         },
         .r_delim_underscore_punct_run => {
+            self.state = .r_delim_underscore_punct_run;
             if (lookahead_i >= self.in.len) {
                 break :fsm .{ .r_delim_underscore, .started };
             }
@@ -331,6 +370,7 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
             }
         },
         .backtick_run => {
+            self.state = .backtick_run;
             if (lookahead_i >= self.in.len) {
                 break :fsm .{ .backtick, .started };
             }
@@ -346,12 +386,13 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
             }
         },
         .text => {
+            self.state = .text;
             if (lookahead_i >= self.in.len) {
                 break :fsm .{ .text, .started };
             }
 
             switch (self.in[lookahead_i]) {
-                '\n', '&', '`' => {
+                '\n', '&', '`', '[', ']', '<', '>', '(', ')' => {
                     break :fsm .{ .text, .started };
                 },
                 '*' => {
@@ -367,8 +408,8 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                 ' ', '\t' => {
                     continue :fsm .text_whitespace;
                 },
-                '!'...'%', '\''...')', '+'...'/', ':'...'@', '[', ']', '^',
-                '}'...'~' => {
+                '!'...'%', '\'', '+'...'/', ':', ';', '=', '?', '@', '^',
+                '{'...'~' => {
                     lookahead_i += 1;
                     continue :fsm .text_punct;
                 },
@@ -379,6 +420,7 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
             }
         },
         .text_whitespace => {
+            self.state = .text_whitespace;
             if (lookahead_i >= self.in.len) {
                 break :fsm .{ .text, .started };
             }
@@ -400,6 +442,7 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
             }
         },
         .text_escaped => {
+            self.state = .text_escaped;
             if (lookahead_i >= self.in.len) {
                 continue :fsm .text;
             }
@@ -415,29 +458,19 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
             }
         },
         .text_punct => {
+            self.state = .text_punct;
             if (lookahead_i >= self.in.len) {
                 break :fsm .{ .text, .started };
             }
 
             switch (self.in[lookahead_i]) {
-                '\n', '&', '`' => {
-                    break :fsm .{ .text, .started };
-                },
                 '*' => {
                     break :fsm .{ .text, .r_delim_star_punct_run };
                 },
                 '_' => {
                     break :fsm .{ .text, .r_delim_underscore_punct_run };
                 },
-                '\\' => {
-                    lookahead_i += 1;
-                    continue :fsm .text_escaped;
-                },
-                ' ', '\t' => {
-                    continue :fsm .text_whitespace;
-                },
                 else => {
-                    lookahead_i += 1;
                     continue :fsm .text;
                 },
             }
@@ -598,13 +631,13 @@ test "tokenize delim underscore extra" {
     const line = "(__foo__)";
 
     const expected = [_]InlineTokenType{
-        .text,
+        .l_paren,
         .l_delim_underscore,
         .l_delim_underscore,
         .text,
         .r_delim_underscore,
         .r_delim_underscore,
-        .text,
+        .r_paren,
     };
 
     var tokenizer = Self.init(line);

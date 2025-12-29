@@ -27,6 +27,12 @@ pub const InlineTokenType = enum {
     r_delim_underscore,
     lr_delim_underscore,
     backtick,                           // one or more consecutive backticks
+    l_square_bracket,
+    r_square_bracket,
+    l_angle_bracket,
+    r_angle_bracket,
+    l_paren,
+    r_paren,
 };
 
 pub const BlockToken = Token(BlockTokenType);
