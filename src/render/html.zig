@@ -71,10 +71,14 @@ fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
             try out.print("</code>", .{});
         },
         .link => |n| {
-            try out.print(
-                "<a href=\"{s}\" title=\"{s}\">",
-                .{ n.url, n.title },
-            );
+            if (n.title.len > 0) {
+                try out.print(
+                    "<a href=\"{s}\" title=\"{s}\">",
+                    .{ n.url, n.title },
+                );
+            } else {
+                try out.print("<a href=\"{s}\">", .{ n.url });
+            }
             for (n.children) |child| {
                 try renderNode(out, child);
             }

@@ -115,7 +115,14 @@ pub const Link = struct {
 
     const Self = @This();
 
-    pub fn deinit(_: *Self, _: Allocator) void {
+    pub fn deinit(self: *Self, alloc: Allocator) void {
+        for (self.children) |child| {
+            child.deinit(alloc);
+        }
+        alloc.free(self.children);
+
+        alloc.free(self.url);
+        alloc.free(self.title);
     }
 };
 

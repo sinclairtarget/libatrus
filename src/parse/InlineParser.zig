@@ -581,14 +581,30 @@ fn parseInlineLink(
     gpa: Allocator,
     arena: Allocator,
 ) Error!?*ast.Node {
+    var inline_link: ?*ast.Node = null;
+    const checkpoint_index = self.checkpoint();
+    defer {
+        if (inline_link == null) {
+            self.backtrack(checkpoint_index);
+        }
+    }
+
     const link_text_nodes = (
         try self.parseLinkText(gpa, arena) orelse return null
     );
+    defer {
+        if (inline_link == null) {
+            for (link_text_nodes) |node| {
+                node.deinit(gpa);
+            }
+            gpa.free(link_text_nodes);
+        }
+    }
     _ = try self.consume(arena, &.{.l_paren}) orelse return null;
     _ = try self.consume(arena, &.{.r_paren}) orelse return null;
 
-    const inline_link = try gpa.create(ast.Node);
-    inline_link.* = .{
+    inline_link = try gpa.create(ast.Node);
+    inline_link.?.* = .{
         .link = .{
             .url = "",
             .title = "",
@@ -600,12 +616,52 @@ fn parseInlineLink(
 
 fn parseLinkText(
     self: *Self,
-    _: Allocator,
+    gpa: Allocator,
     arena: Allocator,
 ) Error!?[]*ast.Node {
+    var nodes: ArrayList(*ast.Node) = .empty;
+    var did_parse_successfully = false;
+    const checkpoint_index = self.checkpoint();
+    defer {
+        if (!did_parse_successfully) {
+            self.backtrack(checkpoint_index);
+            for (nodes.items) |node| {
+                node.deinit(gpa);
+            }
+            nodes.deinit(gpa);
+        }
+    }
+
     _ = try self.consume(arena, &.{.l_square_bracket}) orelse return null;
+
+    for (0..safety.loop_bound) |_| {
+        if (try self.parseInlineCode(gpa, arena)) |code| {
+            try nodes.append(gpa, code);
+            continue;
+        }
+
+        if (try self.parseAnyEmphasis(gpa, arena)) |emph| {
+            try nodes.append(gpa, emph);
+            continue;
+        }
+
+        if (try self.parseAnyStrong(gpa, arena)) |strong| {
+            try nodes.append(gpa, strong);
+            continue;
+        }
+
+        if (try self.parseText(gpa, arena)) |text| {
+            try nodes.append(gpa, text);
+            continue;
+        }
+
+        break;
+    } else @panic(safety.loop_bound_panic_msg);
+
     _ = try self.consume(arena, &.{.r_square_bracket}) orelse return null;
-    return &.{};
+
+    did_parse_successfully = true;
+    return try nodes.toOwnedSlice(gpa);
 }
 
 // @       => allowed+
