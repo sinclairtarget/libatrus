@@ -17,6 +17,7 @@ pub const NodeType = enum {
     emphasis,
     strong,
     inline_code,
+    link,
 };
 
 pub const Node = union(NodeType) {
@@ -30,6 +31,7 @@ pub const Node = union(NodeType) {
     emphasis: Container,
     strong: Container,
     inline_code: Text,
+    link: Link,
 
     const Self = @This();
 
@@ -103,6 +105,17 @@ pub const Code = struct {
     pub fn deinit(self: *Self, alloc: Allocator) void {
         alloc.free(self.value);
         alloc.free(self.lang);
+    }
+};
+
+pub const Link = struct {
+    url: []const u8,
+    title: []const u8,
+    children: []*Node,
+
+    const Self = @This();
+
+    pub fn deinit(_: *Self, _: Allocator) void {
     }
 };
 

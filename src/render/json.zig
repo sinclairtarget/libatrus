@@ -65,6 +65,13 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
             try stringify.objectField("value");
             try stringify.write(n.value);
         },
+        .link => |n| {
+            try stringify.objectField("url");
+            try stringify.write(n.url);
+            try stringify.objectField("title");
+            try stringify.write(n.title);
+            try render_children(stringify, n);
+        },
         .thematic_break => {},
     }
 

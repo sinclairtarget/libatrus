@@ -52,6 +52,11 @@ pub fn parse(self: *Self, gpa: Allocator, arena: Allocator) Error![]*ast.Node {
             continue;
         }
 
+        if (try self.parseInlineLink(gpa, arena)) |link| {
+            try nodes.append(gpa, link);
+            continue;
+        }
+
         if (try self.parseAnyEmphasis(gpa, arena)) |emph| {
             try nodes.append(gpa, emph);
             continue;
@@ -568,6 +573,39 @@ fn parseInlineCode(
         },
     };
     return inline_code_node;
+}
+
+// @ => link_text ()
+fn parseInlineLink(
+    self: *Self,
+    gpa: Allocator,
+    arena: Allocator,
+) Error!?*ast.Node {
+    const link_text_nodes = (
+        try self.parseLinkText(gpa, arena) orelse return null
+    );
+    _ = try self.consume(arena, &.{.l_paren}) orelse return null;
+    _ = try self.consume(arena, &.{.r_paren}) orelse return null;
+
+    const inline_link = try gpa.create(ast.Node);
+    inline_link.* = .{
+        .link = .{
+            .url = "",
+            .title = "",
+            .children = link_text_nodes,
+        },
+    };
+    return inline_link;
+}
+
+fn parseLinkText(
+    self: *Self,
+    _: Allocator,
+    arena: Allocator,
+) Error!?[]*ast.Node {
+    _ = try self.consume(arena, &.{.l_square_bracket}) orelse return null;
+    _ = try self.consume(arena, &.{.r_square_bracket}) orelse return null;
+    return &.{};
 }
 
 // @       => allowed+

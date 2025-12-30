@@ -58,7 +58,7 @@ fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
         .code => |n| {
             // TODO: Lang?
             try out.print("<pre><code>", .{});
-            try printEscaped(out, n.value);
+            try printEscaped(out, n.value); // TODO: Do we want to escape here??
             try out.print("\n", .{});
             try out.print("</code></pre>", .{});
         },
@@ -67,12 +67,23 @@ fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
         },
         .inline_code => |n| {
             try out.print("<code>", .{});
-            try printEscaped(out, n.value);
+            try printEscaped(out, n.value); // TODO: Escape?
             try out.print("</code>", .{});
+        },
+        .link => |n| {
+            try out.print(
+                "<a href=\"{s}\" title=\"{s}\">",
+                .{ n.url, n.title },
+            );
+            for (n.children) |child| {
+                try renderNode(out, child);
+            }
+            try out.print("</a>", .{});
         },
     }
 }
 
+// HTML escaped output
 fn printEscaped(out: *Io.Writer, s: []const u8) Io.Writer.Error!void {
     for (s) |c| {
         switch (c) {
