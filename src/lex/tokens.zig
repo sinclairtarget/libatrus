@@ -2,10 +2,11 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Io = std.Io;
 
+/// Tokens recognized by the block parser.
 pub const BlockTokenType = enum {
-    text,
-    indent,          // indent at beginning of line
-    pound,           // one or more consecutive '#' symbols, word-bounded
+    text,                      // indent at beginning of line
+    indent,                    // one or more consecutive '#' symbols
+    pound,
     newline,
     rule_star,
     rule_underline,
@@ -14,6 +15,7 @@ pub const BlockTokenType = enum {
     rule_equals,
 };
 
+/// Tokens recognized by the inline parser.
 pub const InlineTokenType = enum {
     text,
     newline,
@@ -38,6 +40,13 @@ pub const InlineTokenType = enum {
 pub const BlockToken = Token(BlockTokenType);
 pub const InlineToken = Token(InlineTokenType);
 
+// Additional data needed for some tokens
+pub const Extra = union {
+    empty: void,
+    delim_star: DelimStarExtra,
+    delim_underscore: DelimUnderscoreExtra,
+};
+
 pub const DelimStarExtra = struct {
     run_len: u16,
 };
@@ -46,13 +55,6 @@ pub const DelimUnderscoreExtra = struct {
     run_len: u16,
     preceded_by_punct: bool,
     followed_by_punct: bool,
-};
-
-// Additional data needed for some tokens
-pub const Extra = union {
-    empty: void,
-    delim_star: DelimStarExtra,
-    delim_underscore: DelimUnderscoreExtra,
 };
 
 fn Token(comptime TokenType: type) type {

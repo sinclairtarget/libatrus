@@ -1,6 +1,8 @@
-//! Tokenizer that recognizes block-defining tokens.
+//! Tokenizer that recognizes block-level tokens.
 //!
-//! Takes an input reader and tokenizes line by line.
+//! Takes an input reader over a MyST markdown document. Reads the document one
+//! line at a time, producing tokens on demand. Anything that isn't scanned as
+//! a meaningful block-level token is yielded as a generic "text" token.
 
 const std = @import("std");
 const ascii = std.ascii;
@@ -14,11 +16,13 @@ const BlockToken = @import("tokens.zig").BlockToken;
 const BlockTokenType = @import("tokens.zig").BlockTokenType;
 
 pub const Error = error{
+    /// Input reader did not have a large enough buffer to read a whole line.
     LineTooLong,
+    /// Failure in reading from input stream.
     ReadFailed,
-    UnicodeError,
 } || Allocator.Error;
 
+/// Possible states for the FSM.
 const State = enum {
     started,
     indent,
@@ -30,7 +34,7 @@ const State = enum {
 
 in: *Io.Reader,
 line: []const u8,
-i: usize,
+i: usize,                // current index into line
 state: State,
 
 const Self = @This();
@@ -44,13 +48,14 @@ pub fn init(in: *Io.Reader) Self {
     };
 }
 
-// Get next token from the stream.
-//
-// Caller responsible for freeing memory associated with each returned token.
-pub fn next(self: *Self, arena: Allocator) Error!?BlockToken {
+/// Get next token from the stream. Returns null when the stream is exhausted.
+///
+/// Caller is responsible for freeing memory associated with each returned
+/// token. (The returned tokens own the memory used to store their lexemes.)
+pub fn next(self: *Self, alloc: Allocator) Error!?BlockToken {
     // Load new input line when needed
     while (self.i >= self.line.len) {
-        self.line = read_line(arena, self.in) catch |err| {
+        self.line = read_line(alloc, self.in) catch |err| {
             switch (err) {
                 DelimiterError.EndOfStream => {
                     return null;
@@ -64,62 +69,11 @@ pub fn next(self: *Self, arena: Allocator) Error!?BlockToken {
         self.i = 0;
     }
 
-    return try self.scan(arena);
+    return try self.scan(alloc);
 }
 
-// Reads the next line from the input stream.
-//
-// Returned line will always be terminated by a newline character.
-//
-// This basically implements `takeDelimiterInclusive` so that it treats EOF as
-// a break the same way `takeDelimiterExclusive` does.
-fn read_line(arena: Allocator, in: *Io.Reader) ![]const u8 {
-    const line = in.takeDelimiterInclusive('\n') catch |err| blk: {
-        switch (err) {
-            DelimiterError.EndOfStream => {
-                if (in.bufferedLen() > 0) {
-                    // terminate with newline
-                    const line = try fmt.allocPrint(
-                        arena,
-                        "{s}\n",
-                        .{in.buffered()},
-                    );
-                    in.tossBuffered();
-                    break :blk line;
-                }
-
-                return err;
-            },
-            DelimiterError.StreamTooLong => {
-                // Next newline is further away than the capacity of the
-                // reader's buffer. If the stream is about to end anyway though,
-                // we just treat that the same as the end-of-stream case.
-                const line = try fmt.allocPrint(
-                    arena,
-                    "{s}\n",
-                    .{in.buffered()},
-                );
-                in.tossBuffered();
-                _ = in.peekByte() catch |peek_err| {
-                    switch (peek_err) {
-                        Io.Reader.Error.EndOfStream => {
-                            break :blk line;
-                        },
-                        else => return peek_err,
-                    }
-                };
-
-                return DelimiterError.StreamTooLong;
-            },
-            else => return err,
-        }
-    };
-
-    return line;
-}
-
-// Returns the next token starting at the current index.
-fn scan(self: *Self, arena: Allocator) !BlockToken {
+/// Returns the next token starting at the current index.
+fn scan(self: *Self, alloc: Allocator) !BlockToken {
     var lookahead_i = self.i;
     const token_type: BlockTokenType = fsm: switch (self.state) {
         .started => {
@@ -256,7 +210,7 @@ fn scan(self: *Self, arena: Allocator) !BlockToken {
         },
     };
 
-    const lexeme = try evaluate_lexeme(self, arena, token_type, lookahead_i);
+    const lexeme = try evaluate_lexeme(self, alloc, token_type, lookahead_i);
     const token = BlockToken{
         .token_type = token_type,
         .lexeme = lexeme,
@@ -266,28 +220,80 @@ fn scan(self: *Self, arena: Allocator) !BlockToken {
     return token;
 }
 
+/// Constructs the lexeme given the token type and what we have scanned over.
 fn evaluate_lexeme(
     self: *Self,
-    arena: Allocator,
+    alloc: Allocator,
     token_type: BlockTokenType,
     lookahead_i: usize,
 ) ![]const u8 {
     switch (token_type) {
         .newline, .indent, .rule_star, .rule_underline,
         .rule_dash_with_whitespace => {
-            return "";
+            return ""; // no lexeme
         },
         .pound => {
-            const lexeme = try arena.dupe(
+            const lexeme = try alloc.dupe(
                 u8,
                 std.mem.trim(u8, self.line[self.i..lookahead_i], " \t"),
             );
             return lexeme;
         },
         else => {
-            return try arena.dupe(u8, self.line[self.i..lookahead_i]);
+            return try alloc.dupe(u8, self.line[self.i..lookahead_i]);
         },
     }
+}
+
+/// Reads the next line from the input stream.
+///
+/// Returned line will always be terminated by a newline character.
+///
+/// This basically implements `takeDelimiterInclusive` so that it treats EOF as
+/// a break the same way `takeDelimiterExclusive` does.
+fn read_line(alloc: Allocator, in: *Io.Reader) ![]const u8 {
+    const line = in.takeDelimiterInclusive('\n') catch |err| blk: {
+        switch (err) {
+            DelimiterError.EndOfStream => {
+                if (in.bufferedLen() > 0) {
+                    // terminate with newline
+                    const line = try fmt.allocPrint(
+                        alloc,
+                        "{s}\n",
+                        .{in.buffered()},
+                    );
+                    in.tossBuffered();
+                    break :blk line;
+                }
+
+                return err;
+            },
+            DelimiterError.StreamTooLong => {
+                // Next newline is further away than the capacity of the
+                // reader's buffer. If the stream is about to end anyway though,
+                // we just treat that the same as the end-of-stream case.
+                const line = try fmt.allocPrint(
+                    alloc,
+                    "{s}\n",
+                    .{in.buffered()},
+                );
+                in.tossBuffered();
+                _ = in.peekByte() catch |peek_err| {
+                    switch (peek_err) {
+                        Io.Reader.Error.EndOfStream => {
+                            break :blk line;
+                        },
+                        else => return peek_err,
+                    }
+                };
+
+                return DelimiterError.StreamTooLong;
+            },
+            else => return err,
+        }
+    };
+
+    return line;
 }
 
 // ----------------------------------------------------------------------------
