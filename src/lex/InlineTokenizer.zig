@@ -16,6 +16,8 @@ const InlineTokenType = @import("tokens.zig").InlineTokenType;
 const Context = @import("tokens.zig").Context;
 const strings = @import("../util/strings.zig");
 
+pub const Error = Allocator.Error;
+
 /// States for the tokenizer FSM.
 const State = enum {
     start,
@@ -60,7 +62,10 @@ pub fn init(in: []const u8) Self {
     };
 }
 
-pub fn next(self: *Self, arena: Allocator) !?InlineToken {
+/// Returns the next token in the stream, or null if the stream is exhausted.
+///
+/// Caller owns the returned token.
+pub fn next(self: *Self, alloc: Allocator) Error!?InlineToken {
     if (self.staged.pop()) |token| {
         return token;
     }
@@ -69,10 +74,10 @@ pub fn next(self: *Self, arena: Allocator) !?InlineToken {
         return null;
     }
 
-    return try self.scan(arena);
+    return try self.scan(alloc);
 }
 
-fn scan(self: *Self, arena: Allocator) !?InlineToken {
+fn scan(self: *Self, alloc: Allocator) !?InlineToken {
     var lookahead_i = self.i;
     const result: FSMResult = fsm: switch (self.state) {
         .start => {
@@ -648,7 +653,7 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
     };
 
     const tokens = try evaluateTokens(
-        arena,
+        alloc,
         result.token_type,
         result.context,
         self.in[self.i..lookahead_i],
@@ -663,7 +668,7 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
     if (tokens.len > 1) {
         var i = tokens.len - 1;
         while (i > 0) {
-            try self.staged.append(arena, tokens[i]);
+            try self.staged.append(alloc, tokens[i]);
             i -= 1;
         }
     }
@@ -693,7 +698,7 @@ fn evaluateDelimUnderscoreContext(
 }
 
 fn evaluateTokens(
-    arena: Allocator,
+    alloc: Allocator,
     token_type: InlineTokenType,
     context: Context,
     range: []const u8,
@@ -702,26 +707,26 @@ fn evaluateTokens(
 
     switch (token_type) {
         .newline => {
-            try tokens.append(arena, InlineToken{ .token_type = .newline });
+            try tokens.append(alloc, InlineToken{ .token_type = .newline });
         },
         .l_delim_star, .r_delim_star, .lr_delim_star, .l_delim_underscore,
         .r_delim_underscore, .lr_delim_underscore => {
             for (0..range.len) |_| {
-                try tokens.append(arena, InlineToken{
+                try tokens.append(alloc, InlineToken{
                     .token_type = token_type,
                     .context = context,
                 });
             }
         },
         else => {
-            try tokens.append(arena, InlineToken{
+            try tokens.append(alloc, InlineToken{
                 .token_type = token_type,
-                .lexeme = try arena.dupe(u8, range),
+                .lexeme = try alloc.dupe(u8, range),
             });
         },
     }
 
-    return try tokens.toOwnedSlice(arena);
+    return try tokens.toOwnedSlice(alloc);
 }
 
 // ----------------------------------------------------------------------------
