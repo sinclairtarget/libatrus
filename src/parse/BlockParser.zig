@@ -409,6 +409,9 @@ fn clear_line(self: *Self, arena: Allocator) !void {
 // ----------------------------------------------------------------------------
 // Unit Tests
 // ----------------------------------------------------------------------------
+const testing = std.testing;
+const LineReader = @import("../lex/LineReader.zig");
+
 test "ATX heading and paragraphs" {
     const md =
         \\# This is a heading
@@ -423,7 +426,9 @@ test "ATX heading and paragraphs" {
     ;
 
     var reader: Io.Reader = .fixed(md);
-    var tokenizer = BlockTokenizer.init(&reader);
+    var line_buf: [512]u8 = undefined;
+    const line_reader: LineReader = .{ .in = &reader, .buf = &line_buf };
+    var tokenizer = BlockTokenizer.init(line_reader);
     var parser = Self.init(&tokenizer);
 
     const root = try parser.parse(std.testing.allocator);

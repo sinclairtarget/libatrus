@@ -1,6 +1,6 @@
 //! Tokenizer that recognizes block-level tokens.
 //!
-//! Takes an input reader over a MyST markdown document. Reads the document one
+//! Takes a line reader over a MyST markdown document. Reads the document one
 //! line at a time, producing tokens on demand. Anything that isn't scanned as
 //! a meaningful block-level token is yielded as a generic "text" token.
 
@@ -14,6 +14,7 @@ const ArrayList = std.ArrayList;
 
 const BlockToken = @import("tokens.zig").BlockToken;
 const BlockTokenType = @import("tokens.zig").BlockTokenType;
+const LineReader = @import("LineReader.zig");
 
 pub const Error = error{
     /// Input reader did not have a large enough buffer to read a whole line.
@@ -32,16 +33,16 @@ const State = enum {
     rule,
 };
 
-in: *Io.Reader,
+reader: LineReader,
 line: []const u8,
 i: usize,                // current index into line
 state: State,
 
 const Self = @This();
 
-pub fn init(in: *Io.Reader) Self {
+pub fn init(reader: LineReader) Self {
     return .{
-        .in = in,
+        .reader = reader,
         .line = "",
         .i = 0,
         .state = .started,
@@ -54,18 +55,8 @@ pub fn init(in: *Io.Reader) Self {
 /// token. (The returned tokens own the memory used to store their lexemes.)
 pub fn next(self: *Self, alloc: Allocator) Error!?BlockToken {
     // Load new input line when needed
-    while (self.i >= self.line.len) {
-        self.line = read_line(alloc, self.in) catch |err| {
-            switch (err) {
-                DelimiterError.EndOfStream => {
-                    return null;
-                },
-                DelimiterError.StreamTooLong => {
-                    return Error.LineTooLong;
-                },
-                else => |e| return e,
-            }
-        };
+    if (self.i >= self.line.len) {
+        self.line = try self.reader.next() orelse return null;
         self.i = 0;
     }
 
@@ -245,56 +236,6 @@ fn evaluate_lexeme(
     }
 }
 
-/// Reads the next line from the input stream.
-///
-/// Returned line will always be terminated by a newline character.
-///
-/// This basically implements `takeDelimiterInclusive` so that it treats EOF as
-/// a break the same way `takeDelimiterExclusive` does.
-fn read_line(alloc: Allocator, in: *Io.Reader) ![]const u8 {
-    const line = in.takeDelimiterInclusive('\n') catch |err| blk: {
-        switch (err) {
-            DelimiterError.EndOfStream => {
-                if (in.bufferedLen() > 0) {
-                    // terminate with newline
-                    const line = try fmt.allocPrint(
-                        alloc,
-                        "{s}\n",
-                        .{in.buffered()},
-                    );
-                    in.tossBuffered();
-                    break :blk line;
-                }
-
-                return err;
-            },
-            DelimiterError.StreamTooLong => {
-                // Next newline is further away than the capacity of the
-                // reader's buffer. If the stream is about to end anyway though,
-                // we just treat that the same as the end-of-stream case.
-                const line = try fmt.allocPrint(
-                    alloc,
-                    "{s}\n",
-                    .{in.buffered()},
-                );
-                in.tossBuffered();
-                _ = in.peekByte() catch |peek_err| {
-                    switch (peek_err) {
-                        Io.Reader.Error.EndOfStream => {
-                            break :blk line;
-                        },
-                        else => return peek_err,
-                    }
-                };
-
-                return DelimiterError.StreamTooLong;
-            },
-            else => return err,
-        }
-    };
-
-    return line;
-}
 
 // ----------------------------------------------------------------------------
 // Unit Tests
@@ -315,7 +256,9 @@ test "can tokenize" {
     const arena = arena_impl.allocator();
 
     var reader: Io.Reader = .fixed(md);
-    var tokenizer = Self.init(&reader);
+    var buf: [512]u8 = undefined;
+    const line_reader: LineReader = .{ .in = &reader, .buf = &buf };
+    var tokenizer = Self.init(line_reader);
 
     const expected = [_]BlockTokenType{
         .pound,

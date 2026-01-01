@@ -9,6 +9,7 @@ const Allocator = std.mem.Allocator;
 const Io = std.Io;
 const ArrayList = std.ArrayList;
 
+const LineReader = @import("lex/LineReader.zig");
 const BlockTokenizer = @import("lex/BlockTokenizer.zig");
 const BlockParser = @import("parse/BlockParser.zig");
 const InlineParser = @import("parse/InlineParser.zig");
@@ -18,6 +19,9 @@ const html = @import("render/html.zig");
 
 const logger = @import("logging.zig").logger;
 
+// Maximum allowed length for a single line in a Markdown document.
+const max_line_len = 4096; // bytes
+
 // The below `pub` variable and function declarations define the public
 // interface of libatrus.
 
@@ -26,7 +30,7 @@ pub const version = config.version;
 
 pub const ParseError = error{
     ReadFailed,
-    LineTooLong, // TODO: Remove this?
+    LineTooLong,
     UnrecognizedBlockToken,
 } || InlineParser.Error || Allocator.Error || Io.Writer.Error;
 
@@ -51,7 +55,10 @@ pub fn parse(
 
     // first stage; parse into blocks
     logger.debug("Beginning block parsing...", .{});
-    var block_tokenizer = BlockTokenizer.init(&reader);
+
+    var line_buf: [max_line_len]u8 = undefined;
+    const line_reader: LineReader = .{ .in = &reader, .buf = &line_buf };
+    var block_tokenizer = BlockTokenizer.init(line_reader);
     var block_parser = BlockParser.init(&block_tokenizer);
     var root = try block_parser.parse(alloc);
     if (options.parse_level == .block) {
@@ -149,6 +156,7 @@ pub const lex =
         struct {
             pub const BlockTokenizer = @import("lex/BlockTokenizer.zig");
             pub const InlineTokenizer = @import("lex/InlineTokenizer.zig");
+            pub const LineReader = @import("lex/LineReader.zig");
         }
     else
         @compileError("tokenziation is only supported in the debug release mode");
@@ -159,6 +167,7 @@ pub const lex =
 test {
     // Ensures all unit tests are reachable even when filtering only for tests
     // in imported structs/namespaces and not in this file.
+    _ = @import("lex/LineReader.zig");
     _ = @import("lex/BlockTokenizer.zig");
     _ = @import("lex/InlineTokenizer.zig");
     _ = @import("parse/BlockParser.zig");

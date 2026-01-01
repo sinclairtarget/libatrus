@@ -161,7 +161,13 @@ fn printVersion(out: *Io.Writer) !void {
 }
 
 fn blockTokenize(arena: Allocator, out: *Io.Writer, reader: *Io.Reader) !void {
-    var tokenizer = atrus.lex.BlockTokenizer.init(reader);
+    var line_buf: [max_line_len]u8 = undefined;
+    const line_reader: atrus.lex.LineReader = .{
+        .in = reader,
+        .buf = &line_buf,
+    };
+
+    var tokenizer = atrus.lex.BlockTokenizer.init(line_reader);
     while (try tokenizer.next(arena)) |token| {
         if (token.token_type == .newline) {
             try out.print("{f}\n", .{token});
