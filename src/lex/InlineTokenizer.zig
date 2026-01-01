@@ -1,7 +1,7 @@
 //! Tokenizer for inline MyST syntax.
 //!
 //! Some transitions through the finite state machine might generate multiple
-//! tokens. We do this to attach context to some tokens that need them to be
+//! tokens. We do this to attach context to some tokens that need context to be
 //! correctly parsed (e.g. we need the delimiter run length for individual
 //! delimiter tokens). Since the token stream is meant to be consumed one token
 //! at a time, when we have multiple tokens we "stage" them in an array list
@@ -18,21 +18,21 @@ const strings = @import("../util/strings.zig");
 
 /// States for the tokenizer FSM.
 const State = enum {
-    started,
-    started_punct,
+    start,
+    start_punct,                     // preceded by punctuation
     text,
     text_escaped,
     text_whitespace,
-    text_punct,
+    text_punct,                      // preceded by punctuation
     entity_reference,
     decimal_character_reference,
     hexadecimal_character_reference,
     l_delim_star_run,
     r_delim_star_run,
-    r_delim_star_punct_run, // preceded by punctuation
+    r_delim_star_punct_run,          // preceded by punctuation
     l_delim_underscore_run,
     r_delim_underscore_run,
-    r_delim_underscore_punct_run, // preceded by punctuation
+    r_delim_underscore_punct_run,    // preceded by punctuation
     backtick_run,
     done,
 };
@@ -41,7 +41,7 @@ const State = enum {
 const FSMResult = struct {
     token_type: InlineTokenType,
     context: Context = .{ .empty = {} },
-    next_state: State = .started,
+    next_state: State = .start,
 };
 
 in: []const u8,
@@ -55,7 +55,7 @@ pub fn init(in: []const u8) Self {
     return .{
         .in = in,
         .i = 0,
-        .state = .started,
+        .state = .start,
         .staged = .empty,
     };
 }
@@ -75,7 +75,7 @@ pub fn next(self: *Self, arena: Allocator) !?InlineToken {
 fn scan(self: *Self, arena: Allocator) !?InlineToken {
     var lookahead_i = self.i;
     const result: FSMResult = fsm: switch (self.state) {
-        .started => {
+        .start => {
             switch (self.in[lookahead_i]) {
                 '\n' => {
                     lookahead_i += 1;
@@ -116,42 +116,42 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                     lookahead_i += 1;
                     break :fsm .{
                         .token_type = .l_square_bracket,
-                        .next_state = .started_punct,
+                        .next_state = .start_punct,
                     };
                 },
                 ']' => {
                     lookahead_i += 1;
                     break :fsm .{
                         .token_type = .r_square_bracket,
-                        .next_state = .started_punct,
+                        .next_state = .start_punct,
                     };
                 },
                 '<' => {
                     lookahead_i += 1;
                     break :fsm .{
                         .token_type = .l_angle_bracket,
-                        .next_state = .started_punct,
+                        .next_state = .start_punct,
                     };
                 },
                 '>' => {
                     lookahead_i += 1;
                     break :fsm .{
                         .token_type = .r_angle_bracket,
-                        .next_state = .started_punct,
+                        .next_state = .start_punct,
                     };
                 },
                 '(' => {
                     lookahead_i += 1;
                     break :fsm .{
                         .token_type = .l_paren,
-                        .next_state = .started_punct,
+                        .next_state = .start_punct,
                     };
                 },
                 ')' => {
                     lookahead_i += 1;
                     break :fsm .{
                         .token_type = .r_paren,
-                        .next_state = .started_punct,
+                        .next_state = .start_punct,
                     };
                 },
                 else => {
@@ -159,7 +159,7 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                 },
             }
         },
-        .started_punct => {
+        .start_punct => {
             switch (self.in[lookahead_i]) {
                 '*' => {
                     lookahead_i += 1;
@@ -170,7 +170,7 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                     continue :fsm .r_delim_underscore_punct_run;
                 },
                 else => {
-                    continue :fsm .started;
+                    continue :fsm .start;
                 },
             }
         },
