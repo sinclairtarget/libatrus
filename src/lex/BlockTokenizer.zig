@@ -25,7 +25,7 @@ pub const Error = error{
 
 /// Possible states for the FSM.
 const State = enum {
-    started,
+    start,
     indent,
     pound,
     text,
@@ -45,7 +45,7 @@ pub fn init(reader: LineReader) Self {
         .reader = reader,
         .line = "",
         .i = 0,
-        .state = .started,
+        .state = .start,
     };
 }
 
@@ -66,8 +66,9 @@ pub fn next(self: *Self, alloc: Allocator) Error!?BlockToken {
 /// Returns the next token starting at the current index.
 fn scan(self: *Self, alloc: Allocator) !BlockToken {
     var lookahead_i = self.i;
-    const token_type: BlockTokenType = fsm: switch (self.state) {
-        .started => {
+    const state: State = .start;
+    const token_type: BlockTokenType = fsm: switch (state) {
+        .start => {
             switch (self.line[lookahead_i]) {
                 '#' => {
                     continue :fsm .pound;
@@ -235,7 +236,6 @@ fn evaluate_lexeme(
         },
     }
 }
-
 
 // ----------------------------------------------------------------------------
 // Unit Tests

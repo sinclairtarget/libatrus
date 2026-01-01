@@ -17,13 +17,15 @@ const State = enum {
 };
 
 in: *Io.Reader,
-buf: []u8,
+buf: []u8,        // Scratch memory holding the modified next line
 
 const Self = @This();
 
 /// Returns the next line.
 ///
 /// If there is no next line, returns null.
+///
+/// The previous line is invalidated.
 pub fn next(self: Self) Error!?[]const u8 {
     var i: usize = 0;
     var state: State = .normal;

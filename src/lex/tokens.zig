@@ -4,9 +4,9 @@ const Io = std.Io;
 
 /// Tokens recognized by the block parser.
 pub const BlockTokenType = enum {
-    text,                      // indent at beginning of line
-    indent,                    // one or more consecutive '#' symbols
-    pound,
+    text,
+    indent,                     // indent at beginning of line
+    pound,                      // one or more consecutive '#' symbols
     newline,
     rule_star,
     rule_underline,
