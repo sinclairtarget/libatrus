@@ -1,4 +1,11 @@
 //! Tokenizer for inline MyST syntax.
+//!
+//! Some transitions through the finite state machine might generate multiple
+//! tokens. We do this to attach context to some tokens that need them to be
+//! correctly parsed (e.g. we need the delimiter run length for individual
+//! delimiter tokens). Since the token stream is meant to be consumed one token
+//! at a time, when we have multiple tokens we "stage" them in an array list
+//! until they can be consumed.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -6,7 +13,7 @@ const ArrayList = std.ArrayList;
 
 const InlineToken = @import("tokens.zig").InlineToken;
 const InlineTokenType = @import("tokens.zig").InlineTokenType;
-const Extra = @import("tokens.zig").Extra;
+const Context = @import("tokens.zig").Context;
 const strings = @import("../util/strings.zig");
 
 const State = enum {
@@ -515,7 +522,7 @@ fn evaluateTokens(
             for (0..len) |_| {
                 try tokens.append(arena, InlineToken{
                     .token_type = token_type,
-                    .extra = self.evaluateExtra(token_type, lookahead_i),
+                    .context = self.evaluateContext(token_type, lookahead_i),
                 });
             }
         },
@@ -530,11 +537,11 @@ fn evaluateTokens(
     return try tokens.toOwnedSlice(arena);
 }
 
-fn evaluateExtra(
+fn evaluateContext(
     self: Self,
     token_type: InlineTokenType,
     lookahead_i: usize,
-) Extra {
+) Context {
     const last_state = self.state;
     return switch (token_type) {
         .l_delim_star, .r_delim_star, .lr_delim_star => .{
@@ -595,7 +602,7 @@ test "tokenize mixed delimiter runs" {
     try testing.expect(try tokenizer.next(arena) == null);
 }
 
-test "tokenize delim star extra" {
+test "tokenize delim star context" {
     const line = "**foo**";
 
     const expected = [_]InlineTokenType{
@@ -620,14 +627,14 @@ test "tokenize delim star extra" {
             token.token_type == .l_delim_star
             or token.token_type == .r_delim_star
         ) {
-            try testing.expectEqual(2, token.extra.delim_star.run_len);
+            try testing.expectEqual(2, token.context.delim_star.run_len);
         }
     }
 
     try testing.expect(try tokenizer.next(arena) == null);
 }
 
-test "tokenize delim underscore extra" {
+test "tokenize delim underscore context" {
     const line = "(__foo__)";
 
     const expected = [_]InlineTokenType{
@@ -651,26 +658,26 @@ test "tokenize delim underscore extra" {
         try testing.expectEqual(exp, token.token_type);
 
         if (token.token_type == .l_delim_underscore) {
-            try testing.expectEqual(2, token.extra.delim_underscore.run_len);
+            try testing.expectEqual(2, token.context.delim_underscore.run_len);
             try testing.expectEqual(
                 true,
-                token.extra.delim_underscore.preceded_by_punct,
+                token.context.delim_underscore.preceded_by_punct,
             );
             try testing.expectEqual(
                 false,
-                token.extra.delim_underscore.followed_by_punct,
+                token.context.delim_underscore.followed_by_punct,
             );
         }
 
         if (token.token_type == .r_delim_underscore) {
-            try testing.expectEqual(2, token.extra.delim_underscore.run_len);
+            try testing.expectEqual(2, token.context.delim_underscore.run_len);
             try testing.expectEqual(
                 false,
-                token.extra.delim_underscore.preceded_by_punct,
+                token.context.delim_underscore.preceded_by_punct,
             );
             try testing.expectEqual(
                 true,
-                token.extra.delim_underscore.followed_by_punct,
+                token.context.delim_underscore.followed_by_punct,
             );
         }
     }

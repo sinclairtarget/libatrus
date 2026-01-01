@@ -1,4 +1,6 @@
 //! Parser for the second parsing stage that handles inline elements.
+//!
+//! This is a recursive-descent parser with backtracking.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -274,7 +276,7 @@ fn parseUnderscoreStrong(
         },
         .lr_delim_underscore => |t| {
             // Can only open strong if delimiter run follows punctuation
-            if (!open_token.extra.delim_underscore.preceded_by_punct) {
+            if (!open_token.context.delim_underscore.preceded_by_punct) {
                 return null;
             }
 
@@ -315,7 +317,7 @@ fn parseUnderscoreStrong(
         },
         .lr_delim_underscore => |t| {
             // Can only close strong if delimiter run is followed by punctuation
-            if (!close_token.extra.delim_underscore.followed_by_punct) {
+            if (!close_token.context.delim_underscore.followed_by_punct) {
                 return null;
             }
 
@@ -365,7 +367,7 @@ fn parseUnderscoreEmphasis(
         .l_delim_underscore => _ = try self.consume(arena, &.{.l_delim_underscore}),
         .lr_delim_underscore => {
             // Can only open emphasis if delimiter run follows punctuation
-            if (!open_token.extra.delim_underscore.preceded_by_punct) {
+            if (!open_token.context.delim_underscore.preceded_by_punct) {
                 return null;
             }
 
@@ -418,7 +420,7 @@ fn parseUnderscoreEmphasis(
         .r_delim_underscore => _ = try self.consume(arena, &.{.r_delim_underscore}),
         .lr_delim_underscore => {
             // Can only close emphasis if delimiter run is followed by punctuation
-            if (!close_token.extra.delim_underscore.followed_by_punct) {
+            if (!close_token.context.delim_underscore.followed_by_punct) {
                 return null;
             }
 
@@ -450,13 +452,13 @@ fn isValidBySumOfLengthsRule(open: InlineToken, close: InlineToken) bool {
         or close.token_type == .lr_delim_star
     ) {
         const sum_of_len = (
-            open.extra.delim_star.run_len
-            + close.extra.delim_star.run_len
+            open.context.delim_star.run_len
+            + close.context.delim_star.run_len
         );
         if (sum_of_len % 3 == 0) {
             return (
-                open.extra.delim_star.run_len % 3 == 0
-                and open.extra.delim_star.run_len % 3 == 0
+                open.context.delim_star.run_len % 3 == 0
+                and open.context.delim_star.run_len % 3 == 0
             );
         }
     }
@@ -466,13 +468,13 @@ fn isValidBySumOfLengthsRule(open: InlineToken, close: InlineToken) bool {
         and close.token_type == .lr_delim_underscore
     ) {
         const sum_of_len = (
-            open.extra.delim_underscore.run_len
-            + close.extra.delim_underscore.run_len
+            open.context.delim_underscore.run_len
+            + close.context.delim_underscore.run_len
         );
         if (sum_of_len % 3 == 0) {
             return (
-                open.extra.delim_underscore.run_len % 3 == 0
-                and open.extra.delim_underscore.run_len % 3 == 0
+                open.context.delim_underscore.run_len % 3 == 0
+                and open.context.delim_underscore.run_len % 3 == 0
             );
         }
     }
@@ -681,8 +683,8 @@ fn parseText(self: *Self, gpa: Allocator, arena: Allocator) Error!?*ast.Node {
             .lr_delim_underscore => {
                 // Only allowed if cannot start or stop emphasis
                 if (
-                    token.extra.delim_underscore.preceded_by_punct
-                    or token.extra.delim_underscore.followed_by_punct
+                    token.context.delim_underscore.preceded_by_punct
+                    or token.context.delim_underscore.followed_by_punct
                 ) {
                     break;
                 }

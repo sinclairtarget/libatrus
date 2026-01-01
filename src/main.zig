@@ -18,7 +18,7 @@ pub fn main() !void {
     const stdout = &stdout_writer.interface;
 
     var debug_allocator: std.heap.DebugAllocator(.{
-        .verbose_log = false,
+        .verbose_log = true,
     }) = .init;
     defer {
         if (builtin.mode == .Debug) {

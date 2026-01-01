@@ -4,7 +4,7 @@
 //! an array list. The array list is cleared of consumed tokens as each block is
 //! successfully parsed.
 //!
-//! This parser is a predictive recursive-descent parser.
+//! This parser is a predictive recursive-descent parser (i.e. no backtracking).
 
 const std = @import("std");
 const fmt = std.fmt;

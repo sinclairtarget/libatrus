@@ -40,18 +40,18 @@ pub const InlineTokenType = enum {
 pub const BlockToken = Token(BlockTokenType);
 pub const InlineToken = Token(InlineTokenType);
 
-// Additional data needed for some tokens
-pub const Extra = union {
+// Additional "context" data needed for some tokens
+pub const Context = union {
     empty: void,
-    delim_star: DelimStarExtra,
-    delim_underscore: DelimUnderscoreExtra,
+    delim_star: DelimStarContext,
+    delim_underscore: DelimUnderscoreContext,
 };
 
-pub const DelimStarExtra = struct {
+pub const DelimStarContext = struct {
     run_len: u16,
 };
 
-pub const DelimUnderscoreExtra = struct {
+pub const DelimUnderscoreContext = struct {
     run_len: u16,
     preceded_by_punct: bool,
     followed_by_punct: bool,
@@ -61,7 +61,7 @@ fn Token(comptime TokenType: type) type {
     return struct {
         token_type: TokenType,
         lexeme: []const u8 = "",
-        extra: Extra = .{ .empty = {} },
+        context: Context = .{ .empty = {} },
 
         const Self = @This();
 
