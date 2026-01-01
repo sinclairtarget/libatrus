@@ -36,7 +36,6 @@ const State = enum {
 reader: LineReader,
 line: []const u8,
 i: usize,                // current index into line
-state: State,
 
 const Self = @This();
 
@@ -45,7 +44,6 @@ pub fn init(reader: LineReader) Self {
         .reader = reader,
         .line = "",
         .i = 0,
-        .state = .start,
     };
 }
 
