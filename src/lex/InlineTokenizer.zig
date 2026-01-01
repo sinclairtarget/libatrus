@@ -16,6 +16,7 @@ const InlineTokenType = @import("tokens.zig").InlineTokenType;
 const Context = @import("tokens.zig").Context;
 const strings = @import("../util/strings.zig");
 
+/// States for the tokenizer FSM.
 const State = enum {
     started,
     started_punct,
@@ -34,6 +35,13 @@ const State = enum {
     r_delim_underscore_punct_run, // preceded by punctuation
     backtick_run,
     done,
+};
+
+/// Emitted by the tokenizer FSM when a character sequence is accepted.
+const FSMResult = struct {
+    token_type: InlineTokenType,
+    context: Context = .{ .empty = {} },
+    next_state: State = .started,
 };
 
 in: []const u8,
@@ -66,18 +74,17 @@ pub fn next(self: *Self, arena: Allocator) !?InlineToken {
 
 fn scan(self: *Self, arena: Allocator) !?InlineToken {
     var lookahead_i = self.i;
-    const result: struct { InlineTokenType, State } = fsm: switch (self.state) {
+    const result: FSMResult = fsm: switch (self.state) {
         .started => {
-            self.state = .started; // Keep struct field in sync with switch
             switch (self.in[lookahead_i]) {
                 '\n' => {
                     lookahead_i += 1;
-                    break :fsm .{ .newline, .started };
+                    break :fsm .{ .token_type = .newline };
                 },
                 '&' => {
                     lookahead_i += 1;
                     if (lookahead_i >= self.in.len) {
-                        break :fsm .{ .text, .started };
+                        break :fsm .{ .token_type = .text };
                     }
 
                     switch (self.in[lookahead_i]) {
@@ -107,27 +114,45 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                 },
                 '[' => {
                     lookahead_i += 1;
-                    break :fsm .{ .l_square_bracket, .started_punct };
+                    break :fsm .{
+                        .token_type = .l_square_bracket,
+                        .next_state = .started_punct,
+                    };
                 },
                 ']' => {
                     lookahead_i += 1;
-                    break :fsm .{ .r_square_bracket, .started_punct };
+                    break :fsm .{
+                        .token_type = .r_square_bracket,
+                        .next_state = .started_punct,
+                    };
                 },
                 '<' => {
                     lookahead_i += 1;
-                    break :fsm .{ .l_angle_bracket, .started_punct };
+                    break :fsm .{
+                        .token_type = .l_angle_bracket,
+                        .next_state = .started_punct,
+                    };
                 },
                 '>' => {
                     lookahead_i += 1;
-                    break :fsm .{ .r_angle_bracket, .started_punct };
+                    break :fsm .{
+                        .token_type = .r_angle_bracket,
+                        .next_state = .started_punct,
+                    };
                 },
                 '(' => {
                     lookahead_i += 1;
-                    break :fsm .{ .l_paren, .started_punct };
+                    break :fsm .{
+                        .token_type = .l_paren,
+                        .next_state = .started_punct,
+                    };
                 },
                 ')' => {
                     lookahead_i += 1;
-                    break :fsm .{ .r_paren, .started_punct };
+                    break :fsm .{
+                        .token_type = .r_paren,
+                        .next_state = .started_punct,
+                    };
                 },
                 else => {
                     continue :fsm .text;
@@ -135,7 +160,6 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
             }
         },
         .started_punct => {
-            self.state = .started_punct;
             switch (self.in[lookahead_i]) {
                 '*' => {
                     lookahead_i += 1;
@@ -151,8 +175,6 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
             }
         },
         .decimal_character_reference => {
-            self.state = .decimal_character_reference;
-
             var num_digits: u8 = 0;
             while (num_digits < 8 and lookahead_i < self.in.len) {
                 switch (self.in[lookahead_i]) {
@@ -165,8 +187,7 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
 
                         if (num_digits > 0) {
                             break :fsm .{
-                                .decimal_character_reference,
-                                .started,
+                                .token_type = .decimal_character_reference,
                             };
                         } else {
                             continue :fsm .text_punct;
@@ -185,8 +206,6 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
             continue :fsm .text;
         },
         .hexadecimal_character_reference => {
-            self.state = .hexadecimal_character_reference;
-
             var num_digits: u8 = 0;
             while (num_digits < 7 and lookahead_i < self.in.len) {
                 switch (self.in[lookahead_i]) {
@@ -199,8 +218,7 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
 
                         if (num_digits > 0) {
                             break :fsm .{
-                                .hexadecimal_character_reference,
-                                .started,
+                                .token_type = .hexadecimal_character_reference,
                             };
                         } else {
                             continue :fsm .text_punct;
@@ -215,9 +233,8 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
             continue :fsm .text;
         },
         .entity_reference => {
-            self.state = .entity_reference;
             if (lookahead_i >= self.in.len) {
-                break :fsm .{ .text, .started };
+                break :fsm .{ .token_type = .text };
             }
 
             switch (self.in[lookahead_i]) {
@@ -227,7 +244,7 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                 },
                 ';' => {
                     lookahead_i += 1;
-                    break :fsm .{ .entity_reference, .started };
+                    break :fsm .{ .token_type = .entity_reference };
                 },
                 else => {
                     continue :fsm .text;
@@ -235,9 +252,8 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
             }
         },
         .l_delim_star_run => {
-            self.state = .l_delim_star_run;
             if (lookahead_i >= self.in.len) {
-                break :fsm .{ .text, .started };
+                break :fsm .{ .token_type = .text };
             }
 
             switch (self.in[lookahead_i]) {
@@ -246,20 +262,35 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                     continue :fsm .l_delim_star_run;
                 },
                 '_' => {
-                    break :fsm .{ .l_delim_star, .r_delim_underscore_punct_run };
+                    break :fsm .{
+                        .token_type = .l_delim_star,
+                        .context = evaluateDelimStarContext(
+                            self.in[self.i..lookahead_i],
+                        ),
+                        .next_state = .r_delim_underscore_punct_run,
+                    };
                 },
                 ' ', '\t', '\n' => {
                     continue :fsm .text;
                 },
                 else => {
-                    break :fsm .{ .l_delim_star, .started };
+                    break :fsm .{
+                        .token_type = .l_delim_star,
+                        .context = evaluateDelimStarContext(
+                            self.in[self.i..lookahead_i],
+                        ),
+                    };
                 }
             }
         },
         .r_delim_star_run => {
-            self.state = .r_delim_star_run;
             if (lookahead_i >= self.in.len) {
-                break :fsm .{ .r_delim_star, .started };
+                break :fsm .{
+                    .token_type = .r_delim_star,
+                    .context = evaluateDelimStarContext(
+                        self.in[self.i..lookahead_i],
+                    ),
+                };
             }
 
             switch (self.in[lookahead_i]) {
@@ -268,21 +299,41 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                     continue :fsm .r_delim_star_run;
                 },
                 '_' => {
-                    break :fsm .{ .r_delim_star, .r_delim_underscore_punct_run };
+                    break :fsm .{
+                        .token_type = .r_delim_star,
+                        .context = evaluateDelimStarContext(
+                            self.in[self.i..lookahead_i],
+                        ),
+                        .next_state = .r_delim_underscore_punct_run,
+                    };
                 },
                 ' ', '\t', '\n', '!'...'%', '\''...')', '+'...'/', ':'...'@',
                 '[', ']', '^', '`', '}'...'~' => {
-                    break :fsm .{ .r_delim_star, .started };
+                    break :fsm .{
+                        .token_type = .r_delim_star,
+                        .context = evaluateDelimStarContext(
+                            self.in[self.i..lookahead_i],
+                        ),
+                    };
                 },
                 else => {
-                    break :fsm .{ .lr_delim_star, .started };
+                    break :fsm .{
+                        .token_type = .lr_delim_star,
+                        .context = evaluateDelimStarContext(
+                            self.in[self.i..lookahead_i],
+                        ),
+                    };
                 }
             }
         },
         .r_delim_star_punct_run => {
-            self.state = .r_delim_star_punct_run;
             if (lookahead_i >= self.in.len) {
-                break :fsm .{ .r_delim_star, .started };
+                break :fsm .{
+                    .token_type = .r_delim_star,
+                    .context = evaluateDelimStarContext(
+                        self.in[self.i..lookahead_i],
+                    ),
+                };
             }
 
             switch (self.in[lookahead_i]) {
@@ -291,24 +342,44 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                     continue :fsm .r_delim_star_punct_run;
                 },
                 ' ', '\t', '\n' => {
-                    break :fsm .{ .r_delim_star, .started };
+                    break :fsm .{
+                        .token_type = .r_delim_star,
+                        .context = evaluateDelimStarContext(
+                            self.in[self.i..lookahead_i],
+                        ),
+                    };
                 },
                 '_' => {
-                    break :fsm .{ .lr_delim_star, .r_delim_underscore_punct_run };
+                    break :fsm .{
+                        .token_type = .lr_delim_star,
+                        .context = evaluateDelimStarContext(
+                            self.in[self.i..lookahead_i],
+                        ),
+                        .next_state = .r_delim_underscore_punct_run,
+                    };
                 },
                 '!'...'%', '\''...')', '+'...'/', ':'...'@', '[', ']', '^', '`',
                 '}'...'~' => {
-                    break :fsm .{ .lr_delim_star, .started };
+                    break :fsm .{
+                        .token_type = .lr_delim_star,
+                        .context = evaluateDelimStarContext(
+                            self.in[self.i..lookahead_i],
+                        ),
+                    };
                 },
                 else => {
-                    break :fsm .{ .l_delim_star, .started };
+                    break :fsm .{
+                        .token_type = .l_delim_star,
+                        .context = evaluateDelimStarContext(
+                            self.in[self.i..lookahead_i],
+                        ),
+                    };
                 }
             }
         },
         .l_delim_underscore_run => {
-            self.state = .l_delim_underscore_run;
             if (lookahead_i >= self.in.len) {
-                break :fsm .{ .text, .started };
+                break :fsm .{ .token_type = .text };
             }
 
             switch (self.in[lookahead_i]) {
@@ -317,20 +388,41 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                     continue :fsm .l_delim_underscore_run;
                 },
                 '*' => {
-                    break :fsm .{ .l_delim_underscore, .r_delim_star_punct_run };
+                    break :fsm .{
+                        .token_type = .l_delim_underscore,
+                        .context = evaluateDelimUnderscoreContext(
+                            self.in[self.i..lookahead_i],
+                            false,
+                            true,
+                        ),
+                        .next_state = .r_delim_star_punct_run,
+                    };
                 },
                 ' ', '\t', '\n' => {
                     continue :fsm .text;
                 },
-                else => {
-                    break :fsm .{ .l_delim_underscore, .started };
+                else => |b| {
+                    break :fsm .{
+                        .token_type = .l_delim_underscore,
+                        .context = evaluateDelimUnderscoreContext(
+                            self.in[self.i..lookahead_i],
+                            false,
+                            strings.isPunctuation(&.{ b }),
+                        ),
+                    };
                 }
             }
         },
         .r_delim_underscore_run => {
-            self.state = .r_delim_underscore_run;
             if (lookahead_i >= self.in.len) {
-                break :fsm .{ .r_delim_underscore, .started };
+                break :fsm .{
+                    .token_type = .r_delim_underscore,
+                    .context = evaluateDelimUnderscoreContext(
+                        self.in[self.i..lookahead_i],
+                        false,
+                        false,
+                    ),
+                };
             }
 
             switch (self.in[lookahead_i]) {
@@ -339,21 +431,49 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                     continue :fsm .r_delim_underscore_run;
                 },
                 '*' => {
-                    break :fsm .{ .r_delim_underscore, .r_delim_star_punct_run };
+                    break :fsm .{
+                        .token_type = .r_delim_underscore,
+                        .context = evaluateDelimUnderscoreContext(
+                            self.in[self.i..lookahead_i],
+                            false,
+                            true,
+                        ),
+                        .next_state = .r_delim_star_punct_run,
+                    };
                 },
                 ' ', '\t', '\n', '!'...'%', '\''...')', '+'...'/', ':'...'@',
-                '[', ']', '^', '`', '}'...'~' => {
-                    break :fsm .{ .r_delim_underscore, .started };
+                '[', ']', '^', '`', '}'...'~' => |b| {
+                    break :fsm .{
+                        .token_type = .r_delim_underscore,
+                        .context = evaluateDelimUnderscoreContext(
+                            self.in[self.i..lookahead_i],
+                            false,
+                            strings.isPunctuation(&.{b}),
+                        ),
+                    };
                 },
-                else => {
-                    break :fsm .{ .lr_delim_underscore, .started };
+                else => |b| {
+                    break :fsm .{
+                        .token_type = .lr_delim_underscore,
+                        .context = evaluateDelimUnderscoreContext(
+                            self.in[self.i..lookahead_i],
+                            false,
+                            strings.isPunctuation(&.{b}),
+                        ),
+                    };
                 }
             }
         },
         .r_delim_underscore_punct_run => {
-            self.state = .r_delim_underscore_punct_run;
             if (lookahead_i >= self.in.len) {
-                break :fsm .{ .r_delim_underscore, .started };
+                break :fsm .{
+                    .token_type = .r_delim_underscore,
+                    .context = evaluateDelimUnderscoreContext(
+                        self.in[self.i..lookahead_i],
+                        true,
+                        false,
+                    ),
+                };
             }
 
             switch (self.in[lookahead_i]) {
@@ -362,24 +482,52 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                     continue :fsm .r_delim_underscore_punct_run;
                 },
                 ' ', '\t', '\n' => {
-                    break :fsm .{ .r_delim_underscore, .started };
+                    break :fsm .{
+                        .token_type = .r_delim_underscore,
+                        .context = evaluateDelimUnderscoreContext(
+                            self.in[self.i..lookahead_i],
+                            true,
+                            false,
+                        ),
+                    };
                 },
                 '*' => {
-                    break :fsm .{ .lr_delim_underscore, .r_delim_star_punct_run };
+                    break :fsm .{
+                        .token_type = .lr_delim_underscore,
+                        .context = evaluateDelimUnderscoreContext(
+                            self.in[self.i..lookahead_i],
+                            true,
+                            true,
+                        ),
+                        .next_state = .r_delim_star_punct_run,
+                    };
                 },
                 '!'...'%', '\''...')', '+'...'/', ':'...'@', '[', ']', '^', '`',
                 '}'...'~' => {
-                    break :fsm .{ .lr_delim_underscore, .started };
+                    break :fsm .{
+                        .token_type = .lr_delim_underscore,
+                        .context = evaluateDelimUnderscoreContext(
+                            self.in[self.i..lookahead_i],
+                            true,
+                            true,
+                        ),
+                    };
                 },
-                else => {
-                    break :fsm .{ .l_delim_underscore, .started };
+                else => |b| {
+                    break :fsm .{
+                        .token_type = .l_delim_underscore,
+                        .context = evaluateDelimUnderscoreContext(
+                            self.in[self.i..lookahead_i],
+                            true,
+                            strings.isPunctuation(&.{b}),
+                        ),
+                    };
                 }
             }
         },
         .backtick_run => {
-            self.state = .backtick_run;
             if (lookahead_i >= self.in.len) {
-                break :fsm .{ .backtick, .started };
+                break :fsm .{ .token_type = .backtick };
             }
 
             switch (self.in[lookahead_i]) {
@@ -388,25 +536,30 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
                     continue :fsm .backtick_run;
                 },
                 else => {
-                    break :fsm .{ .backtick, .started_punct };
+                    break :fsm .{ .token_type = .backtick };
                 },
             }
         },
         .text => {
-            self.state = .text;
             if (lookahead_i >= self.in.len) {
-                break :fsm .{ .text, .started };
+                break :fsm .{ .token_type = .text };
             }
 
             switch (self.in[lookahead_i]) {
                 '\n', '&', '`', '[', ']', '<', '>', '(', ')' => {
-                    break :fsm .{ .text, .started };
+                    break :fsm .{ .token_type = .text };
                 },
                 '*' => {
-                    break :fsm .{ .text, .r_delim_star_run };
+                    break :fsm .{
+                        .token_type = .text,
+                        .next_state = .r_delim_star_run,
+                    };
                 },
                 '_' => {
-                    break :fsm .{ .text, .r_delim_underscore_run };
+                    break :fsm .{
+                        .token_type = .text,
+                        .next_state = .r_delim_underscore_run,
+                    };
                 },
                 '\\' => {
                     lookahead_i += 1;
@@ -427,17 +580,22 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
             }
         },
         .text_whitespace => {
-            self.state = .text_whitespace;
             if (lookahead_i >= self.in.len) {
-                break :fsm .{ .text, .started };
+                break :fsm .{ .token_type = .text };
             }
 
             switch (self.in[lookahead_i]) {
                 '*' => {
-                    break :fsm .{ .text, .l_delim_star_run };
+                    break :fsm .{
+                        .token_type = .text,
+                        .next_state = .l_delim_star_run,
+                    };
                 },
                 '_' => {
-                    break :fsm .{ .text, .l_delim_underscore_run };
+                    break :fsm .{
+                        .token_type = .text,
+                        .next_state = .l_delim_underscore_run,
+                    };
                 },
                 ' ', '\t' => {
                     lookahead_i += 1;
@@ -449,7 +607,6 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
             }
         },
         .text_escaped => {
-            self.state = .text_escaped;
             if (lookahead_i >= self.in.len) {
                 continue :fsm .text;
             }
@@ -465,17 +622,22 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
             }
         },
         .text_punct => {
-            self.state = .text_punct;
             if (lookahead_i >= self.in.len) {
-                break :fsm .{ .text, .started };
+                break :fsm .{ .token_type = .text };
             }
 
             switch (self.in[lookahead_i]) {
                 '*' => {
-                    break :fsm .{ .text, .r_delim_star_punct_run };
+                    break :fsm .{
+                        .token_type = .text,
+                        .next_state = .r_delim_star_punct_run,
+                    };
                 },
                 '_' => {
-                    break :fsm .{ .text, .r_delim_underscore_punct_run };
+                    break :fsm .{
+                        .token_type = .text,
+                        .next_state = .r_delim_underscore_punct_run,
+                    };
                 },
                 else => {
                     continue :fsm .text;
@@ -485,11 +647,15 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
         .done => unreachable,
     };
 
-    const token_type, const next_state = result;
-    const tokens = try evaluateTokens(self, arena, token_type, lookahead_i);
+    const tokens = try evaluateTokens(
+        arena,
+        result.token_type,
+        result.context,
+        self.in[self.i..lookahead_i],
+    );
 
     self.i = lookahead_i;
-    self.state = next_state;
+    self.state = result.next_state;
     if (self.i >= self.in.len) {
         self.state = .done;
     }
@@ -504,11 +670,33 @@ fn scan(self: *Self, arena: Allocator) !?InlineToken {
     return tokens[0];
 }
 
+fn evaluateDelimStarContext(range: []const u8) Context {
+    return .{
+        .delim_star = .{
+            .run_len = @intCast(range.len),
+        }
+    };
+}
+
+fn evaluateDelimUnderscoreContext(
+    range: []const u8,
+    preceded_by_punct: bool,
+    followed_by_punct: bool,
+) Context {
+    return .{
+        .delim_underscore = .{
+            .run_len = @intCast(range.len),
+            .preceded_by_punct = preceded_by_punct,
+            .followed_by_punct = followed_by_punct,
+        }
+    };
+}
+
 fn evaluateTokens(
-    self: *Self,
     arena: Allocator,
     token_type: InlineTokenType,
-    lookahead_i: usize,
+    context: Context,
+    range: []const u8,
 ) ![]InlineToken {
     var tokens: ArrayList(InlineToken) = .empty;
 
@@ -518,53 +706,22 @@ fn evaluateTokens(
         },
         .l_delim_star, .r_delim_star, .lr_delim_star, .l_delim_underscore,
         .r_delim_underscore, .lr_delim_underscore => {
-            const len = lookahead_i - self.i;
-            for (0..len) |_| {
+            for (0..range.len) |_| {
                 try tokens.append(arena, InlineToken{
                     .token_type = token_type,
-                    .context = self.evaluateContext(token_type, lookahead_i),
+                    .context = context,
                 });
             }
         },
         else => {
             try tokens.append(arena, InlineToken{
                 .token_type = token_type,
-                .lexeme = try arena.dupe(u8, self.in[self.i..lookahead_i]),
+                .lexeme = try arena.dupe(u8, range),
             });
         },
     }
 
     return try tokens.toOwnedSlice(arena);
-}
-
-fn evaluateContext(
-    self: Self,
-    token_type: InlineTokenType,
-    lookahead_i: usize,
-) Context {
-    const last_state = self.state;
-    return switch (token_type) {
-        .l_delim_star, .r_delim_star, .lr_delim_star => .{
-            .delim_star = .{
-                .run_len = @intCast(lookahead_i - self.i),
-            }
-        },
-        .l_delim_underscore, .r_delim_underscore, .lr_delim_underscore => .{
-            .delim_underscore = .{
-                .run_len = @intCast(lookahead_i - self.i),
-                .preceded_by_punct = (
-                    last_state == .r_delim_underscore_punct_run
-                ),
-                .followed_by_punct = (
-                    lookahead_i < self.in.len
-                    and strings.isPunctuation(
-                        self.in[lookahead_i..lookahead_i + 1]
-                    )
-                ),
-            }
-        },
-        else => .{ .empty = {} },
-    };
 }
 
 // ----------------------------------------------------------------------------
@@ -602,6 +759,8 @@ test "tokenize mixed delimiter runs" {
     try testing.expect(try tokenizer.next(arena) == null);
 }
 
+// We should record the run length of the delimiter runs as context for the
+// delimiter tokens.
 test "tokenize delim star context" {
     const line = "**foo**";
 
@@ -634,6 +793,11 @@ test "tokenize delim star context" {
     try testing.expect(try tokenizer.next(arena) == null);
 }
 
+// We should record the run length of the delimiter runs as context for the
+// delimiter tokens.
+//
+// Additionally, for underscore delimiter tokens, we want to attach whether the
+// delimiter run is preceded by punctuation or followed by punctuation.
 test "tokenize delim underscore context" {
     const line = "(__foo__)";
 
