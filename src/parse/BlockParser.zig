@@ -1,7 +1,7 @@
 //! Parser for the first parsing stage that handles block-level parsing.
 //!
 //! Parser pulls tokens from the tokenizer as needed. The tokens are stored in
-//! an array list. The array list is cleared as each line is successfully
+//! an array list. The array list is cleared as each block is successfully
 //! parsed.
 
 const std = @import("std");
@@ -13,9 +13,8 @@ const ArrayList = std.ArrayList;
 
 const ast = @import("ast.zig");
 const BlockTokenizer = @import("../lex/BlockTokenizer.zig");
-const tokens = @import("../lex/tokens.zig");
-const BlockToken = tokens.BlockToken;
-const BlockTokenType = tokens.BlockTokenType;
+const BlockToken = @import("../lex/tokens.zig").BlockToken;
+const BlockTokenType = @import("../lex/tokens.zig").BlockTokenType;
 const safety = @import("../util/safety.zig");
 const strings = @import("../util/strings.zig");
 
@@ -24,7 +23,7 @@ const Error = error{
 };
 
 tokenizer: *BlockTokenizer,
-line: ArrayList(BlockToken),
+tokens: ArrayList(BlockToken),
 token_index: usize,
 
 const Self = @This();
@@ -32,76 +31,78 @@ const Self = @This();
 pub fn init(tokenizer: *BlockTokenizer) Self {
     return .{
         .tokenizer = tokenizer,
-        .line = .empty,
+        .tokens = .empty,
         .token_index = 0,
     };
 }
 
-/// Parse block tokens from the token stream.
+/// Parse block nodes from the token stream.
 ///
 /// Returns the root node of the resulting AST. The AST may contain blocks of
 /// unparsed inline text.
-pub fn parse(self: *Self, gpa: Allocator) !*ast.Node {
-    // Arena used for tokenization
-    var arena_impl = std.heap.ArenaAllocator.init(gpa);
-    defer arena_impl.deinit();
-    const arena = arena_impl.allocator();
+///
+/// Caller owns the returned AST.
+pub fn parse(self: *Self, perm: Allocator) !*ast.Node {
+    // Arena used for tokenization / scratch
+    var arena = std.heap.ArenaAllocator.init(perm);
+    defer arena.deinit();
+    const scratch = arena.allocator();
 
     var children: ArrayList(*ast.Node) = .empty;
     errdefer {
         for (children.items) |child| {
-            child.deinit(gpa);
+            child.deinit(perm);
         }
-        children.deinit(gpa);
+        children.deinit(perm);
     }
 
     for (0..safety.loop_bound) |_| { // could hit if we forget to consume tokens
-        _ = try self.peek(arena) orelse break;
+        _ = try self.peek(scratch) orelse break;
 
         const maybe_next = blk: {
-            if (try self.parseIndentedCode(gpa, arena)) |indent_code| {
+            if (try self.parseIndentedCode(perm, scratch)) |indent_code| {
                 break :blk indent_code;
             }
 
-            if (try self.parseATXHeading(gpa, arena)) |heading| {
+            if (try self.parseATXHeading(perm, scratch)) |heading| {
                 break :blk heading;
             }
 
-            if (try self.parseThematicBreak(gpa, arena)) |thematic_break| {
+            if (try self.parseThematicBreak(perm, scratch)) |thematic_break| {
                 break :blk thematic_break;
             }
 
-            if (try self.parseParagraph(gpa, arena)) |paragraph| {
+            if (try self.parseParagraph(perm, scratch)) |paragraph| {
                 break :blk paragraph;
             }
 
             break :blk null;
         };
         if (maybe_next) |next| {
-            try children.append(gpa, next);
-            try self.clear_line(arena);
+            try children.append(perm, next);
+            try self.clear_parsed_tokens();
             continue;
         }
 
         // blank lines
-        if (try self.consume(arena, .newline) != null) {
+        if (try self.consume(scratch, .newline) != null) {
             continue;
         }
 
         @panic("unable to parse block token");
     } else @panic(safety.loop_bound_panic_msg);
 
-    const node = try gpa.create(ast.Node);
+    const node = try perm.create(ast.Node);
     node.* = .{
         .root = .{
-            .children = try children.toOwnedSlice(gpa),
+            .children = try children.toOwnedSlice(perm),
         },
     };
     return node;
 }
 
-fn parseATXHeading(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
-    const start_token = try self.peek(arena) orelse return null;
+fn parseATXHeading(self: *Self, perm: Allocator, scratch: Allocator) !?*ast.Node {
+    const start_token = try self.peek(scratch) orelse return null;
     if (start_token.token_type != .pound) {
         return null;
     }
@@ -111,17 +112,17 @@ fn parseATXHeading(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
         return null;
     }
 
-    _ = try self.consume(arena, .pound);
+    _ = try self.consume(scratch, .pound);
 
-    var buf = Io.Writer.Allocating.init(arena);
+    var buf = Io.Writer.Allocating.init(scratch);
     for (0..safety.loop_bound) |_| {
-        const current = try self.peek(arena) orelse break;
+        const current = try self.peek(scratch) orelse break;
         if (current.token_type == .pound) {
             // Look ahead for a newline. If there is one, this is a closing
             // sequence of #.
             const checkpoint_index = self.checkpoint();
-            _ = try self.consume(arena, .pound);
-            if (try self.peek(arena)) |t| {
+            _ = try self.consume(scratch, .pound);
+            if (try self.peek(scratch)) |t| {
                 if (t.token_type == .newline) {
                     break;
                 }
@@ -131,25 +132,25 @@ fn parseATXHeading(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
             self.backtrack(checkpoint_index);
         }
 
-        const node = try self.parseText(gpa, arena) orelse break;
+        const node = try self.parseText(perm, scratch) orelse break;
         try buf.writer.print("{s}", .{node.text.value});
-        node.deinit(gpa);
+        node.deinit(perm);
     } else @panic(safety.loop_bound_panic_msg);
 
-    _ = try self.consume(arena, .newline);
+    _ = try self.consume(scratch, .newline);
 
     var children: []const *ast.Node = &.{};
     const inner_value = std.mem.trim(u8, buf.written(), " \t");
     if (inner_value.len > 0) {
-        const text_node = try createTextNode(gpa, inner_value);
+        const text_node = try createTextNode(perm, inner_value);
         children = &.{ text_node };
     }
 
-    const node = try gpa.create(ast.Node);
+    const node = try perm.create(ast.Node);
     node.* = .{
         .heading = .{
             .depth = @truncate(depth),
-            .children = try gpa.dupe(*ast.Node, children),
+            .children = try perm.dupe(*ast.Node, children),
         },
     };
     return node;
@@ -157,38 +158,38 @@ fn parseATXHeading(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
 
 fn parseThematicBreak(
     self: *Self,
-    gpa: Allocator,
-    arena: Allocator,
+    perm: Allocator,
+    scratch: Allocator,
 ) !?*ast.Node {
-    const token = try self.peek(arena) orelse return null;
+    const token = try self.peek(scratch) orelse return null;
     switch (token.token_type) {
         .rule_star, .rule_underline, .rule_dash_with_whitespace => |t| {
-            _ = try self.consume(arena, t);
+            _ = try self.consume(scratch, t);
         },
         .rule_dash => |t| {
             if (token.lexeme.len < 3) {
                 return null;
             }
 
-            _ = try self.consume(arena, t);
+            _ = try self.consume(scratch, t);
         },
         else => return null,
     }
 
-    _ = try self.consume(arena, .newline);
+    _ = try self.consume(scratch, .newline);
 
-    const node = try gpa.create(ast.Node);
+    const node = try perm.create(ast.Node);
     node.* = .{ .thematic_break = .{} };
     return node;
 }
 
 fn parseIndentedCode(
     self: *Self,
-    gpa: Allocator,
-    arena: Allocator,
+    perm: Allocator,
+    scratch: Allocator,
 ) !?*ast.Node {
     // Has to start with an indent
-    const initial = try self.peek(arena) orelse return null;
+    const initial = try self.peek(scratch) orelse return null;
     if (initial.token_type != .indent) {
         return null;
     }
@@ -196,34 +197,34 @@ fn parseIndentedCode(
     // Parse one or more indented lines
     var lines: ArrayList([]const u8) = .empty;
     for (0..safety.loop_bound) |_| {
-        const line_start = try self.peek(arena) orelse break;
+        const line_start = try self.peek(scratch) orelse break;
 
-        var line = Io.Writer.Allocating.init(arena);
+        var line = Io.Writer.Allocating.init(scratch);
         switch (line_start.token_type) {
             .indent => {
                 // Parse a single indented line
-                _ = try self.consume(arena, .indent);
-                while (try self.peek(arena)) |next| {
+                _ = try self.consume(scratch, .indent);
+                while (try self.peek(scratch)) |next| {
                     if (next.token_type == .newline) {
                         break;
                     }
 
-                    _ = try self.consume(arena, next.token_type);
+                    _ = try self.consume(scratch, next.token_type);
                     try line.writer.print("{s}", .{next.lexeme});
                 } else @panic(safety.loop_bound_panic_msg);
 
-                _ = try self.consume(arena, .newline);
+                _ = try self.consume(scratch, .newline);
             },
             .newline => { // newline doesn't end indented block
-                _ = try self.consume(arena, .newline);
+                _ = try self.consume(scratch, .newline);
                 try line.writer.print("", .{});
             },
             .text => { // blank line doesn't end indented block
                 if (strings.isBlankLine(line_start.lexeme)) {
                     // https://spec.commonmark.org/0.30/#example-111
-                    _ = try self.consume(arena, .text);
+                    _ = try self.consume(scratch, .text);
                     try line.writer.print("", .{});
-                    _ = try self.consume(arena, .newline);
+                    _ = try self.consume(scratch, .newline);
                 } else {
                     break;
                 }
@@ -231,7 +232,7 @@ fn parseIndentedCode(
             else => break,
         }
 
-        try lines.append(arena, line.written());
+        try lines.append(scratch, line.written());
     } else @panic(safety.loop_bound_panic_msg);
 
     if (lines.items.len == 0) {
@@ -260,40 +261,40 @@ fn parseIndentedCode(
     };
 
     const buf = try std.mem.join(
-        arena,
+        scratch,
         "\n",
         lines.items[start_index..end_index],
     );
-    const node = try gpa.create(ast.Node);
+    const node = try perm.create(ast.Node);
     node.* = .{
         .code = .{
-            .value = try gpa.dupe(u8, buf),
+            .value = try perm.dupe(u8, buf),
             .lang = "",
         },
     };
     return node;
 }
 
-fn parseParagraph(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
+fn parseParagraph(self: *Self, perm: Allocator, scratch: Allocator) !?*ast.Node {
     var lines: ArrayList([]const u8) = .empty;
 
     for (0..safety.loop_bound) |_| {
-        var line = Io.Writer.Allocating.init(arena);
+        var line = Io.Writer.Allocating.init(scratch);
 
         {
-            const start = try self.parseTextStart(gpa, arena) orelse break;
-            defer start.deinit(gpa);
+            const start = try self.parseTextStart(perm, scratch) orelse break;
+            defer start.deinit(perm);
             try line.writer.print("{s}", .{start.text.value});
         }
 
         for (0..safety.loop_bound) |_| {
-            const next = try self.parseText(gpa, arena) orelse break;
-            defer next.deinit(gpa);
+            const next = try self.parseText(perm, scratch) orelse break;
+            defer next.deinit(perm);
             try line.writer.print("{s}", .{next.text.value});
         } else @panic(safety.loop_bound_panic_msg);
 
-        try lines.append(arena, line.written());
-        _ = try self.consume(arena, .newline);
+        try lines.append(scratch, line.written());
+        _ = try self.consume(scratch, .newline);
     } else @panic(safety.loop_bound_panic_msg);
 
     if (lines.items.len == 0) {
@@ -301,37 +302,37 @@ fn parseParagraph(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
     }
 
     // Join lines by putting a newline between them
-    const buf = try std.mem.join(arena, "\n", lines.items);
-    const text_node = try createTextNode(gpa, buf);
+    const buf = try std.mem.join(scratch, "\n", lines.items);
+    const text_node = try createTextNode(perm, buf);
 
-    const node = try gpa.create(ast.Node);
+    const node = try perm.create(ast.Node);
     node.* = .{
         .paragraph = .{
-            .children = try gpa.dupe(*ast.Node, &.{ text_node }),
+            .children = try perm.dupe(*ast.Node, &.{ text_node }),
         },
     };
     return node;
 }
 
 /// Parse text potentially starting later in a line.
-fn parseText(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
-    const token = try self.peek(arena) orelse return null;
+fn parseText(self: *Self, perm: Allocator, scratch: Allocator) !?*ast.Node {
+    const token = try self.peek(scratch) orelse return null;
     switch (token.token_type) {
         .text, .pound, .rule_equals, .rule_dash => |t| {
-            _ = try self.consume(arena, t);
-            return createTextNode(gpa, token.lexeme);
+            _ = try self.consume(scratch, t);
+            return createTextNode(perm, token.lexeme);
         },
         else => return null,
     }
 }
 
 /// Parse text starting from the beginning of a line.
-fn parseTextStart(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
-    const token = try self.peek(arena) orelse return null;
+fn parseTextStart(self: *Self, perm: Allocator, scratch: Allocator) !?*ast.Node {
+    const token = try self.peek(scratch) orelse return null;
     switch (token.token_type) {
         .pound => {
             if (token.lexeme.len > 6) {
-                return try self.parseText(gpa, arena);
+                return try self.parseText(perm, scratch);
             } else {
                 return null;
             }
@@ -339,45 +340,45 @@ fn parseTextStart(self: *Self, gpa: Allocator, arena: Allocator) !?*ast.Node {
         .indent => {
             // If we're already parsing a paragraph, leading indents are okay.
             // https://spec.commonmark.org/0.30/#example-113
-            _ = try self.consume(arena, .indent);
-            return try self.parseText(gpa, arena);
+            _ = try self.consume(scratch, .indent);
+            return try self.parseText(perm, scratch);
         },
         .text, .rule_equals, .rule_dash => {
-            return try self.parseText(gpa, arena);
+            return try self.parseText(perm, scratch);
         },
         else => return null,
     }
 }
 
-fn createTextNode(gpa: Allocator, value: []const u8) !*ast.Node {
-    const node = try gpa.create(ast.Node);
+fn createTextNode(perm: Allocator, value: []const u8) !*ast.Node {
+    const node = try perm.create(ast.Node);
     node.* = .{
         .text = .{
-            .value = try gpa.dupe(u8, value),
+            .value = try perm.dupe(u8, value),
         },
     };
     return node;
 }
 
-fn peek(self: *Self, arena: Allocator) !?BlockToken {
-    if (self.token_index >= self.line.items.len) {
-        const next = try self.tokenizer.next(arena);
+fn peek(self: *Self, scratch: Allocator) !?BlockToken {
+    if (self.token_index >= self.tokens.items.len) {
+        const next = try self.tokenizer.next(scratch);
         if (next == null) {
             return null; // end of input
         }
 
-        try self.line.append(arena, next.?);
+        try self.tokens.append(scratch, next.?);
     }
 
-    return self.line.items[self.token_index];
+    return self.tokens.items[self.token_index];
 }
 
 fn consume(
     self: *Self,
-    arena: Allocator,
+    scratch: Allocator,
     token_type: BlockTokenType,
 ) !?BlockToken {
-    const current = try self.peek(arena) orelse return null;
+    const current = try self.peek(scratch) orelse return null;
     if (current.token_type != token_type) {
         return null;
     }
@@ -394,16 +395,13 @@ fn backtrack(self: *Self, checkpoint_index: usize) void {
     self.token_index = checkpoint_index;
 }
 
-fn clear_line(self: *Self, arena: Allocator) !void {
-    std.debug.assert(self.line.items.len > 0);
+fn clear_parsed_tokens(self: *Self) !void {
+    std.debug.assert(self.tokens.items.len > 0);
 
-    const current = try self.peek(arena);
+    // Copy unparsed tokens to beginning of list
+    const unparsed = self.tokens.items[self.token_index..];
+    self.tokens.replaceRangeAssumeCapacity(0, self.tokens.items.len, unparsed);
     self.token_index = 0;
-    self.line.clearRetainingCapacity();
-
-    if (current) |c| {
-        try self.line.append(arena, c);
-    }
 }
 
 // ----------------------------------------------------------------------------

@@ -53,11 +53,11 @@ pub fn parse(
 ) ParseError!*ast.Node {
     var reader: Io.Reader = .fixed(in);
 
-    // first stage; parse into blocks
-    logger.debug("Beginning block parsing...", .{});
-
     var line_buf: [max_line_len]u8 = undefined;
     const line_reader: LineReader = .{ .in = &reader, .buf = &line_buf };
+
+    // first stage; parse into blocks
+    logger.debug("Beginning block parsing...", .{});
     var block_tokenizer = BlockTokenizer.init(line_reader);
     var block_parser = BlockParser.init(&block_tokenizer);
     var root = try block_parser.parse(alloc);
