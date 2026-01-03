@@ -92,7 +92,7 @@ pub fn parse(self: *Self, gpa: Allocator, arena: Allocator) Error![]*ast.Node {
 // strong => open inner close
 // open   => l_star l_star | lr_star lr_star
 // close  => r_star r_star | lr_star lr_star
-// inner  => (emph | strong | text)+
+// inner  => (link | emph | strong | text)+
 fn parseStarStrong(
     self: *Self,
     gpa: Allocator,
@@ -121,6 +121,11 @@ fn parseStarStrong(
     }) orelse return null;
 
     for (0..safety.loop_bound) |_| {
+        if (try self.parseInlineLink(gpa, arena)) |link| {
+            try children.append(link);
+            continue;
+        }
+
         if (try self.parseAnyEmphasis(gpa, arena)) |emph| {
             try children.append(emph);
             continue;
@@ -190,7 +195,7 @@ fn parseStarStrong(
 // star_emph  => open inner close
 // open  => l_star | lr_star
 // close => r_star | lr_star
-// inner => (star_emph? (under_emph | strong | text) star_emph?)+
+// inner => (star_emph? (link | under_emph | strong | text) star_emph?)+
 //
 /// Parse emphasis using star delimiters.
 ///
@@ -223,6 +228,10 @@ fn parseStarEmphasis(
         const maybe_leading_emph = try self.parseStarEmphasis(gpa, arena);
 
         if (blk: {
+            if (try self.parseInlineLink(gpa, arena)) |link| {
+                break :blk link;
+            }
+
             if (try self.parseUnderscoreEmphasis(gpa, arena)) |emph| {
                 break :blk emph;
             }
@@ -303,7 +312,7 @@ fn parseStarEmphasis(
 // strong => open inner close
 // open   => l_star l_star | lr_star lr_star
 // close  => r_star r_star | lr_star lr_star
-// inner  => (emph | strong | text)+
+// inner  => (link | emph | strong | text)+
 fn parseUnderscoreStrong(
     self: *Self,
     gpa: Allocator,
@@ -341,6 +350,11 @@ fn parseUnderscoreStrong(
     }
 
     for (0..safety.loop_bound) |_| {
+        if (try self.parseInlineLink(gpa, arena)) |link| {
+            try children.append(link);
+            continue;
+        }
+
         if (try self.parseAnyEmphasis(gpa, arena)) |emph| {
             try children.append(emph);
             continue;
@@ -419,7 +433,7 @@ fn parseUnderscoreStrong(
 // under_emph  => open inner close
 // open  => l_underscore | lr_underscore
 // close => r_underscore | lr_underscore
-// inner => (under_emph? (star_emph | strong | text) under_emph?)+
+// inner => (under_emph? (link | star_emph | strong | text) under_emph?)+
 //
 /// Parse underscore-delimited emphasis.
 ///
@@ -461,6 +475,10 @@ fn parseUnderscoreEmphasis(
         const maybe_leading_emph = try self.parseUnderscoreEmphasis(gpa, arena);
 
         if (blk: {
+            if (try self.parseInlineLink(gpa, arena)) |link| {
+                break :blk link;
+            }
+
             if (try self.parseStarEmphasis(gpa, arena)) |emph| {
                 break :blk emph;
             }
@@ -729,39 +747,79 @@ fn parseLinkText(
     gpa: Allocator,
     arena: Allocator,
 ) Error!?[]*ast.Node {
-    var nodes: ArrayList(*ast.Node) = .empty;
+    var nodes = NodeList.init(gpa, arena, createTextNode);
     var did_parse_successfully = false;
     const checkpoint_index = self.checkpoint();
     defer {
         if (!did_parse_successfully) {
             self.backtrack(checkpoint_index);
-            for (nodes.items) |node| {
+            for (nodes.items()) |node| {
                 node.deinit(gpa);
             }
-            nodes.deinit(gpa);
+            nodes.deinit();
         }
     }
 
     _ = try self.consume(arena, &.{.l_square_bracket}) orelse return null;
 
-    for (0..safety.loop_bound) |_| {
+    var bracket_depth: u32 = 0;
+    loop: for (0..safety.loop_bound) |_| {
+        if (try self.parseInlineLink(gpa, arena)) |link| {
+            try nodes.append(link); // ensure it gets cleaned up
+            return null; // nested links are not allowed!
+        }
+
+        // Handle square brackets, which are only allowed if they are balanced
+        const allowed_bracket: []const u8 = blk: {
+            const token = try self.peek(arena) orelse return null;
+            switch (token.token_type) {
+                .l_square_bracket => {
+                    bracket_depth += 1;
+                },
+                .r_square_bracket => {
+                    if (bracket_depth == 0) {
+                        // end of link text
+                        break :loop;
+                    }
+
+                    bracket_depth -= 1;
+                },
+                else => break :blk "",
+            }
+
+            _ = try self.consume(arena, &.{token.token_type});
+            const value = try resolveInlineText(arena, token);
+            break :blk value;
+        };
+        if (allowed_bracket.len > 0) {
+            try nodes.appendText(allowed_bracket);
+            continue;
+        }
+
         if (try self.parseInlineCode(gpa, arena)) |code| {
-            try nodes.append(gpa, code);
+            try nodes.append(code);
             continue;
         }
 
         if (try self.parseAnyEmphasis(gpa, arena)) |emph| {
-            try nodes.append(gpa, emph);
+            try nodes.append(emph);
             continue;
         }
 
         if (try self.parseAnyStrong(gpa, arena)) |strong| {
-            try nodes.append(gpa, strong);
+            try nodes.append(strong);
             continue;
         }
 
-        if (try self.parseText(gpa, arena)) |text| {
-            try nodes.append(gpa, text);
+        const text_value = try self.scanText(arena);
+        if (text_value.len > 0) {
+            try nodes.appendText(text_value);
+            continue;
+        }
+
+        const text_fallback_value = try self.scanTextFallback(arena);
+        if (text_fallback_value.len > 0) {
+            try nodes.appendText(text_fallback_value);
             continue;
         }
 
@@ -770,8 +828,12 @@ fn parseLinkText(
 
     _ = try self.consume(arena, &.{.r_square_bracket}) orelse return null;
 
+    if (bracket_depth > 0) {
+        return null; // contained unbalanced brackets
+    }
+
     did_parse_successfully = true;
-    return try nodes.toOwnedSlice(gpa);
+    return try nodes.toOwnedSlice();
 }
 
 // @       => allowed+
@@ -1537,4 +1599,85 @@ test "codespan strip space" {
         "``foo``",
         nodes[0].inline_code.value,
     );
+}
+
+test "inline link containing emphasis" {
+    const value = "[*my link*]()";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(
+        ast.NodeType.link,
+        @as(ast.NodeType, nodes[0].*),
+    );
+
+    try testing.expectEqual(1, nodes[0].link.children.len);
+    const emph = nodes[0].link.children[0];
+    try testing.expectEqual(
+        ast.NodeType.emphasis,
+        @as(ast.NodeType, emph.*),
+    );
+    try testing.expectEqualStrings(
+        "my link",
+        emph.emphasis.children[0].text.value,
+    );
+}
+
+test "inline link emphasis precedence" {
+    const value = "*[foo*]()";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(2, nodes.len);
+
+    try testing.expectEqual(
+        ast.NodeType.text,
+        @as(ast.NodeType, nodes[0].*),
+    );
+    try testing.expectEqualStrings(
+        "*",
+        nodes[0].text.value,
+    );
+
+    const link_node = nodes[1];
+    try testing.expectEqual(
+        ast.NodeType.link,
+        @as(ast.NodeType, link_node.*),
+    );
+
+    try testing.expectEqual(1, link_node.link.children.len);
+    try testing.expectEqual(
+        ast.NodeType.text,
+        @as(ast.NodeType, link_node.link.children[0].*),
+    );
+    try testing.expectEqualStrings(
+        "foo*",
+        link_node.link.children[0].text.value,
+    );
+}
+
+test "inline link nesting" {
+    const value = "[foo [bar]()]()";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(3, nodes.len);
+
+    try testing.expectEqual(
+        ast.NodeType.text,
+        @as(ast.NodeType, nodes[0].*),
+    );
+    try testing.expectEqualStrings("[foo ", nodes[0].text.value);
+
+    try testing.expectEqual(
+        ast.NodeType.link,
+        @as(ast.NodeType, nodes[1].*),
+    );
+
+    try testing.expectEqual(
+        ast.NodeType.text,
+        @as(ast.NodeType, nodes[2].*),
+    );
+    try testing.expectEqualStrings("]()", nodes[2].text.value);
 }
