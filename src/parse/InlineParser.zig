@@ -578,6 +578,7 @@ fn parseInlineCode(
 }
 
 // @ => link_text ()
+/// Parses an inline link.
 fn parseInlineLink(
     self: *Self,
     gpa: Allocator,
@@ -616,6 +617,8 @@ fn parseInlineLink(
     return inline_link;
 }
 
+/// Parses the link text component of an inline link. Returns a slice of inline
+/// AST nodes.
 fn parseLinkText(
     self: *Self,
     gpa: Allocator,
@@ -705,6 +708,7 @@ fn parseText(self: *Self, gpa: Allocator, arena: Allocator) Error!?*ast.Node {
 }
 
 // @ => .
+/// Catch-all for anything that fails to parse.
 fn parseTextFallback(
     self: *Self,
     gpa: Allocator,
@@ -754,6 +758,7 @@ fn backtrack(self: *Self, checkpoint_index: usize) void {
     self.token_index = checkpoint_index;
 }
 
+/// Resolve token to actual string content within an inline code node.
 fn inlineCodeValue(token: InlineToken) ![]const u8 {
     const value = switch (token.token_type) {
         .decimal_character_reference, .hexadecimal_character_reference,
@@ -771,6 +776,7 @@ fn inlineCodeValue(token: InlineToken) ![]const u8 {
     return value;
 }
 
+/// Resolve token to actual string content within a text node.
 fn inlineTextValue(arena: Allocator, token: InlineToken) ![]const u8 {
     const value = switch (token.token_type) {
         .decimal_character_reference, .hexadecimal_character_reference,

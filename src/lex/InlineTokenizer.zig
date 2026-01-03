@@ -6,6 +6,12 @@
 //! delimiter tokens). Since the token stream is meant to be consumed one token
 //! at a time, when we have multiple tokens we "stage" them in an array list
 //! until they can be consumed.
+//!
+//! Note on backslash-escaping: A backslash will be respected by the tokenizer,
+//! such that the next character will not have its usual meaning (and probably
+//! lead to a different token being emitted). The backslash stays present in
+//! the lexeme for the token though and needs to be stripped out later if the
+//! backslash is not supposed to appear in the final output.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -618,9 +624,11 @@ fn scan(self: *Self, alloc: Allocator) !?InlineToken {
 
             switch (self.in[lookahead_i]) {
                 '`' => {
+                    // Can't escape backticks
                     continue :fsm .text;
                 },
                 else => {
+                    // Skip character
                     lookahead_i += 1;
                     continue :fsm .text;
                 },
