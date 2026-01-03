@@ -12,6 +12,7 @@ const tokens = @import("../lex/tokens.zig");
 const InlineToken = tokens.InlineToken;
 const InlineTokenType = tokens.InlineTokenType;
 const InlineTokenizer = @import("../lex/InlineTokenizer.zig");
+const NodeList = @import("NodeList.zig");
 const escape = @import("escape.zig");
 const references = @import("references.zig");
 const safety = @import("../util/safety.zig");
@@ -39,71 +40,53 @@ pub fn init(tokenizer: *InlineTokenizer) Self {
 ///
 /// Returns a slice of AST nodes that the caller is responsible for freeing.
 pub fn parse(self: *Self, gpa: Allocator, arena: Allocator) Error![]*ast.Node {
-    var nodes: ArrayList(*ast.Node) = .empty;
+    var nodes = NodeList.init(gpa, arena, createTextNode);
     errdefer {
-        for (nodes.items) |node| {
+        for (nodes.items()) |node| {
             node.deinit(gpa);
         }
-        nodes.deinit(gpa);
+        nodes.deinit();
     }
-
-    // Text tokens get resolved to a string value and appended here until we can
-    // generate a text AST node holding the combined value.
-    var running_text = Io.Writer.Allocating.init(arena);
 
     for (0..safety.loop_bound) |_| { // could hit if we forget to consume tokens
         _ = try self.peek(arena) orelse break;
 
-        if (blk: {
-            if (try self.parseInlineCode(gpa, arena)) |code| {
-                break :blk code;
-            }
+        if (try self.parseInlineCode(gpa, arena)) |code| {
+            try nodes.append(code);
+            continue;
+        }
 
-            if (try self.parseInlineLink(gpa, arena)) |link| {
-                break :blk link;
-            }
+        if (try self.parseInlineLink(gpa, arena)) |link| {
+            try nodes.append(link);
+            continue;
+        }
 
-            if (try self.parseAnyEmphasis(gpa, arena)) |emph| {
-                break :blk emph;
-            }
+        if (try self.parseAnyEmphasis(gpa, arena)) |emph| {
+            try nodes.append(emph);
+            continue;
+        }
 
-            if (try self.parseAnyStrong(gpa, arena)) |strong| {
-                break :blk strong;
-            }
-
-            break :blk null;
-        }) |node| {
-            if (running_text.written().len > 0) {
-                const text = try createTextNode(gpa, running_text.written());
-                try nodes.append(gpa, text);
-                running_text.clearRetainingCapacity();
-            }
-
-            try nodes.append(gpa, node);
+        if (try self.parseAnyStrong(gpa, arena)) |strong| {
+            try nodes.append(strong);
             continue;
         }
 
         const text_value = try self.scanText(arena);
         if (text_value.len > 0) {
-            _ = try running_text.writer.write(text_value);
+            try nodes.appendText(text_value);
             continue;
         }
 
         const text_fallback_value = try self.scanTextFallback(arena);
         if (text_fallback_value.len > 0) {
-            _ = try running_text.writer.write(text_fallback_value);
+            try nodes.appendText(text_fallback_value);
             continue;
         }
 
         @panic("unable to parse inline token");
     } else @panic(safety.loop_bound_panic_msg);
 
-    if (running_text.written().len > 0) {
-        const text = try createTextNode(gpa, running_text.written());
-        try nodes.append(gpa, text);
-    }
-
-    return try nodes.toOwnedSlice(gpa);
+    return try nodes.toOwnedSlice();
 }
 
 // strong => open inner close
@@ -116,15 +99,15 @@ fn parseStarStrong(
     arena: Allocator,
 ) Error!?*ast.Node {
     var strong_node: ?*ast.Node = null;
-    var children: ArrayList(*ast.Node) = .empty;
+    var children = NodeList.init(gpa, arena, createTextNode);
     const checkpoint_index = self.checkpoint();
     defer {
         if (strong_node == null) {
             self.backtrack(checkpoint_index);
-            for (children.items) |child| {
+            for (children.items()) |child| {
                 child.deinit(gpa);
             }
-            children.deinit(gpa);
+            children.deinit();
         }
     }
 
@@ -137,33 +120,20 @@ fn parseStarStrong(
         .lr_delim_star,
     }) orelse return null;
 
-    var running_text = Io.Writer.Allocating.init(arena);
-
     for (0..safety.loop_bound) |_| {
-        if (blk: {
-            if (try self.parseAnyEmphasis(gpa, arena)) |emph| {
-                break :blk emph;
-            }
+        if (try self.parseAnyEmphasis(gpa, arena)) |emph| {
+            try children.append(emph);
+            continue;
+        }
 
-            if (try self.parseAnyStrong(gpa, arena)) |strong| {
-                break :blk strong;
-            }
-
-            break :blk null;
-        }) |node| {
-            if (running_text.written().len > 0) {
-                const text = try createTextNode(gpa, running_text.written());
-                try children.append(gpa, text);
-                running_text.clearRetainingCapacity();
-            }
-
-            try children.append(gpa, node);
+        if (try self.parseAnyStrong(gpa, arena)) |strong| {
+            try children.append(strong);
             continue;
         }
 
         const text_value = try self.scanText(arena);
         if (text_value.len > 0) {
-            _ = try running_text.writer.write(text_value);
+            try children.appendText(text_value);
             continue;
         }
 
@@ -183,19 +153,15 @@ fn parseStarStrong(
 
         const text_fallback_value = try self.scanTextFallback(arena);
         if (text_fallback_value.len > 0) {
-            _ = try running_text.writer.write(text_fallback_value);
+            try children.appendText(text_fallback_value);
             continue;
         }
 
         break;
     } else @panic(safety.loop_bound_panic_msg);
 
-    if (running_text.written().len > 0) {
-        const text = try createTextNode(gpa, running_text.written());
-        try children.append(gpa, text);
-    }
-
-    if (children.items.len == 0) {
+    try children.flush();
+    if (children.len() == 0) {
         return null;
     }
 
@@ -215,7 +181,7 @@ fn parseStarStrong(
     strong_node = try gpa.create(ast.Node);
     strong_node.?.* = .{
         .strong = .{
-            .children = try children.toOwnedSlice(gpa),
+            .children = try children.toOwnedSlice(),
         },
     };
     return strong_node;
@@ -236,15 +202,15 @@ fn parseStarEmphasis(
     arena: Allocator,
 ) Error!?*ast.Node {
     var emphasis_node: ?*ast.Node = null;
-    var children: ArrayList(*ast.Node) = .empty;
+    var children = NodeList.init(gpa, arena, createTextNode);
     const checkpoint_index = self.checkpoint();
     defer {
         if (emphasis_node == null) {
             self.backtrack(checkpoint_index);
-            for (children.items) |child| {
+            for (children.items()) |child| {
                 child.deinit(gpa);
             }
-            children.deinit(gpa);
+            children.deinit();
         }
     }
 
@@ -265,18 +231,26 @@ fn parseStarEmphasis(
                 break :blk strong;
             }
 
-            if (try self.parseText(gpa, arena)) |text| {
-                break :blk text;
-            }
-
             break :blk null;
         }) |node| {
             if (maybe_leading_emph) |emph| {
-                try children.append(gpa, emph);
+                try children.append(emph);
             }
-            try children.append(gpa, node);
+            try children.append(node);
             if (try self.parseStarEmphasis(gpa, arena)) |emph| {
-                try children.append(gpa, emph);
+                try children.append(emph);
+            }
+            continue;
+        }
+
+        const text_value = try self.scanText(arena);
+        if (text_value.len > 0) {
+            if (maybe_leading_emph) |emph| {
+                try children.append(emph);
+            }
+            try children.appendText(text_value);
+            if (try self.parseStarEmphasis(gpa, arena)) |emph| {
+                try children.append(emph);
             }
             continue;
         }
@@ -285,10 +259,26 @@ fn parseStarEmphasis(
         if (maybe_leading_emph) |emph| {
             emph.deinit(gpa);
         }
+
+        // Check for closing condition
+        if (try self.peek(arena)) |node| {
+            switch (node.token_type) {
+                .r_delim_star, .lr_delim_star => break,
+                else => {},
+            }
+        }
+
+        const text_fallback_value = try self.scanTextFallback(arena);
+        if (text_fallback_value.len > 0) {
+            try children.appendText(text_fallback_value);
+            continue;
+        }
+
         break;
     } else @panic(safety.loop_bound_panic_msg);
 
-    if (children.items.len == 0) {
+    try children.flush();
+    if (children.len() == 0) {
         return null;
     }
 
@@ -304,7 +294,7 @@ fn parseStarEmphasis(
     emphasis_node = try gpa.create(ast.Node);
     emphasis_node.?.* = .{
         .emphasis = .{
-            .children = try children.toOwnedSlice(gpa),
+            .children = try children.toOwnedSlice(),
         },
     };
     return emphasis_node;
@@ -320,15 +310,15 @@ fn parseUnderscoreStrong(
     arena: Allocator,
 ) Error!?*ast.Node {
     var strong_node: ?*ast.Node = null;
-    var children: ArrayList(*ast.Node) = .empty;
+    var children = NodeList.init(gpa, arena, createTextNode);
     const checkpoint_index = self.checkpoint();
     defer {
         if (strong_node == null) {
             self.backtrack(checkpoint_index);
-            for (children.items) |child| {
+            for (children.items()) |child| {
                 child.deinit(gpa);
             }
-            children.deinit(gpa);
+            children.deinit();
         }
     }
 
@@ -350,33 +340,20 @@ fn parseUnderscoreStrong(
         else => return null,
     }
 
-    var running_text = Io.Writer.Allocating.init(arena);
-
     for (0..safety.loop_bound) |_| {
-        if (blk: {
-            if (try self.parseAnyEmphasis(gpa, arena)) |emph| {
-                break :blk emph;
-            }
+        if (try self.parseAnyEmphasis(gpa, arena)) |emph| {
+            try children.append(emph);
+            continue;
+        }
 
-            if (try self.parseAnyStrong(gpa, arena)) |strong| {
-                break :blk strong;
-            }
-
-            break :blk null;
-        }) |node| {
-            if (running_text.written().len > 0) {
-                const text = try createTextNode(gpa, running_text.written());
-                try children.append(gpa, text);
-                running_text.clearRetainingCapacity();
-            }
-
-            try children.append(gpa, node);
+        if (try self.parseAnyStrong(gpa, arena)) |strong| {
+            try children.append(strong);
             continue;
         }
 
         const text_value = try self.scanText(arena);
         if (text_value.len > 0) {
-            _ = try running_text.writer.write(text_value);
+            try children.appendText(text_value);
             continue;
         }
 
@@ -396,19 +373,15 @@ fn parseUnderscoreStrong(
 
         const text_fallback_value = try self.scanTextFallback(arena);
         if (text_fallback_value.len > 0) {
-            _ = try running_text.writer.write(text_fallback_value);
+            try children.appendText(text_fallback_value);
             continue;
         }
 
         break;
     } else @panic(safety.loop_bound_panic_msg);
 
-    if (running_text.written().len > 0) {
-        const text = try createTextNode(gpa, running_text.written());
-        try children.append(gpa, text);
-    }
-
-    if (children.items.len == 0) {
+    try children.flush();
+    if (children.len() == 0) {
         return null;
     }
 
@@ -437,7 +410,7 @@ fn parseUnderscoreStrong(
     strong_node = try gpa.create(ast.Node);
     strong_node.?.* = .{
         .strong = .{
-            .children = try children.toOwnedSlice(gpa),
+            .children = try children.toOwnedSlice(),
         },
     };
     return strong_node;
@@ -458,15 +431,15 @@ fn parseUnderscoreEmphasis(
     arena: Allocator,
 ) Error!?*ast.Node {
     var emphasis_node: ?*ast.Node = null;
-    var children: ArrayList(*ast.Node) = .empty;
+    var children = NodeList.init(gpa, arena, createTextNode);
     const checkpoint_index = self.checkpoint();
     defer {
         if (emphasis_node == null) {
             self.backtrack(checkpoint_index);
-            for (children.items) |child| {
+            for (children.items()) |child| {
                 child.deinit(gpa);
             }
-            children.deinit(gpa);
+            children.deinit();
         }
     }
 
@@ -496,18 +469,26 @@ fn parseUnderscoreEmphasis(
                 break :blk strong;
             }
 
-            if (try self.parseText(gpa, arena)) |text| {
-                break :blk text;
-            }
-
             break :blk null;
         }) |node| {
             if (maybe_leading_emph) |emph| {
-                try children.append(gpa, emph);
+                try children.append(emph);
             }
-            try children.append(gpa, node);
+            try children.append(node);
             if (try self.parseUnderscoreEmphasis(gpa, arena)) |emph| {
-                try children.append(gpa, emph);
+                try children.append(emph);
+            }
+            continue;
+        }
+
+        const text_value = try self.scanText(arena);
+        if (text_value.len > 0) {
+            if (maybe_leading_emph) |emph| {
+                try children.append(emph);
+            }
+            try children.appendText(text_value);
+            if (try self.parseStarEmphasis(gpa, arena)) |emph| {
+                try children.append(emph);
             }
             continue;
         }
@@ -516,10 +497,26 @@ fn parseUnderscoreEmphasis(
         if (maybe_leading_emph) |emph| {
             emph.deinit(gpa);
         }
+
+        // Check for closing condition
+        if (try self.peek(arena)) |node| {
+            switch (node.token_type) {
+                .r_delim_underscore, .lr_delim_underscore => break,
+                else => {},
+            }
+        }
+
+        const text_fallback_value = try self.scanTextFallback(arena);
+        if (text_fallback_value.len > 0) {
+            try children.appendText(text_fallback_value);
+            continue;
+        }
+
         break;
     } else @panic(safety.loop_bound_panic_msg);
 
-    if (children.items.len == 0) {
+    try children.flush();
+    if (children.len() == 0) {
         return null;
     }
 
@@ -544,7 +541,7 @@ fn parseUnderscoreEmphasis(
     emphasis_node = try gpa.create(ast.Node);
     emphasis_node.?.* = .{
         .emphasis = .{
-            .children = try children.toOwnedSlice(gpa),
+            .children = try children.toOwnedSlice(),
         },
     };
     return emphasis_node;
@@ -1170,6 +1167,28 @@ test "unmatched nested emphasis no spacing" {
     );
 }
 
+test "unmatched nested underscore" {
+    const value = "*foo _bar*";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(
+        ast.NodeType.emphasis,
+        @as(ast.NodeType, nodes[0].*),
+    );
+    try testing.expectEqual(1, nodes[0].emphasis.children.len);
+
+    try testing.expectEqual(
+        ast.NodeType.text,
+        @as(ast.NodeType, nodes[0].emphasis.children[0].*),
+    );
+    try testing.expectEqualStrings(
+        "foo _bar",
+        nodes[0].emphasis.children[0].text.value,
+    );
+}
+
 test "triple underscore strong nested" {
     const value = "This is ___a strong in an emphasis___.";
     const nodes = try parseIntoNodes(value);
@@ -1331,7 +1350,7 @@ test "underscore emphasis after punctuation" {
 }
 
 test "underscore emphasis nested unmatched" {
-    const value = "*foo _bar*";
+    const value = "_foo *bar_";
     const nodes = try parseIntoNodes(value);
     defer freeNodes(nodes);
 
@@ -1347,7 +1366,7 @@ test "underscore emphasis nested unmatched" {
         @as(ast.NodeType, nodes[0].emphasis.children[0].*),
     );
     try testing.expectEqualStrings(
-        "foo _bar",
+        "foo *bar",
         nodes[0].emphasis.children[0].text.value,
     );
 }
