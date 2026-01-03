@@ -63,7 +63,7 @@ pub fn parse(self: *Self, perm: Allocator) Error!*ast.Node {
     for (0..safety.loop_bound) |_| { // could hit if we forget to consume tokens
         _ = try self.peek(scratch) orelse break;
 
-        const maybe_next = blk: {
+        if (blk: {
             if (try self.parseIndentedCode(perm, scratch)) |indent_code| {
                 break :blk indent_code;
             }
@@ -81,8 +81,7 @@ pub fn parse(self: *Self, perm: Allocator) Error!*ast.Node {
             }
 
             break :blk null;
-        };
-        if (maybe_next) |next| {
+        }) |next| {
             try children.append(perm, next);
             self.clear_consumed_tokens();
             continue;

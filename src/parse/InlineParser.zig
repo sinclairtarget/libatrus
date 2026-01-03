@@ -54,7 +54,7 @@ pub fn parse(self: *Self, gpa: Allocator, arena: Allocator) Error![]*ast.Node {
     for (0..safety.loop_bound) |_| { // could hit if we forget to consume tokens
         _ = try self.peek(arena) orelse break;
 
-        const maybe_node = blk: {
+        if (blk: {
             if (try self.parseInlineCode(gpa, arena)) |code| {
                 break :blk code;
             }
@@ -72,8 +72,7 @@ pub fn parse(self: *Self, gpa: Allocator, arena: Allocator) Error![]*ast.Node {
             }
 
             break :blk null;
-        };
-        if (maybe_node) |node| {
+        }) |node| {
             if (running_text.written().len > 0) {
                 const text = try createTextNode(gpa, running_text.written());
                 try nodes.append(gpa, text);
@@ -129,8 +128,6 @@ fn parseStarStrong(
         }
     }
 
-    var running_text = Io.Writer.Allocating.init(arena);
-
     const open_token = try self.consume(arena, &.{
         .l_delim_star,
         .lr_delim_star,
@@ -140,8 +137,10 @@ fn parseStarStrong(
         .lr_delim_star,
     }) orelse return null;
 
+    var running_text = Io.Writer.Allocating.init(arena);
+
     for (0..safety.loop_bound) |_| {
-        const maybe_node = blk: {
+        if (blk: {
             if (try self.parseAnyEmphasis(gpa, arena)) |emph| {
                 break :blk emph;
             }
@@ -151,8 +150,7 @@ fn parseStarStrong(
             }
 
             break :blk null;
-        };
-        if (maybe_node) |node| {
+        }) |node| {
             if (running_text.written().len > 0) {
                 const text = try createTextNode(gpa, running_text.written());
                 try children.append(gpa, text);
@@ -227,6 +225,11 @@ fn parseStarStrong(
 // open  => l_star | lr_star
 // close => r_star | lr_star
 // inner => (star_emph? (under_emph | strong | text) star_emph?)+
+//
+/// Parse emphasis using star delimiters.
+///
+/// We don't allow star-delimited emphasis to nest immediately inside each
+/// other. (That should get parsed as strong.)
 fn parseStarEmphasis(
     self: *Self,
     gpa: Allocator,
@@ -347,24 +350,63 @@ fn parseUnderscoreStrong(
         else => return null,
     }
 
+    var running_text = Io.Writer.Allocating.init(arena);
+
     for (0..safety.loop_bound) |_| {
-        if (try self.parseAnyEmphasis(gpa, arena)) |emph| {
-            try children.append(gpa, emph);
+        if (blk: {
+            if (try self.parseAnyEmphasis(gpa, arena)) |emph| {
+                break :blk emph;
+            }
+
+            if (try self.parseAnyStrong(gpa, arena)) |strong| {
+                break :blk strong;
+            }
+
+            break :blk null;
+        }) |node| {
+            if (running_text.written().len > 0) {
+                const text = try createTextNode(gpa, running_text.written());
+                try children.append(gpa, text);
+                running_text.clearRetainingCapacity();
+            }
+
+            try children.append(gpa, node);
             continue;
         }
 
-        if (try self.parseAnyStrong(gpa, arena)) |strong| {
-            try children.append(gpa, strong);
+        const text_value = try self.scanText(arena);
+        if (text_value.len > 0) {
+            _ = try running_text.writer.write(text_value);
             continue;
         }
 
-        if (try self.parseText(gpa, arena)) |text| {
-            try children.append(gpa, text);
+        // Check for closing condition
+        if (try self.peek(arena)) |node| {
+            switch (node.token_type) {
+                .r_delim_underscore, .lr_delim_underscore => |t| {
+                    if (try self.peekAhead(arena, 2)) |next_node| {
+                        if (next_node.token_type == t) {
+                            break;
+                        }
+                    }
+                },
+                else => {},
+            }
+        }
+
+        const text_fallback_value = try self.scanTextFallback(arena);
+        if (text_fallback_value.len > 0) {
+            _ = try running_text.writer.write(text_fallback_value);
             continue;
         }
 
         break;
     } else @panic(safety.loop_bound_panic_msg);
+
+    if (running_text.written().len > 0) {
+        const text = try createTextNode(gpa, running_text.written());
+        try children.append(gpa, text);
+    }
 
     if (children.items.len == 0) {
         return null;
@@ -405,6 +447,11 @@ fn parseUnderscoreStrong(
 // open  => l_underscore | lr_underscore
 // close => r_underscore | lr_underscore
 // inner => (under_emph? (star_emph | strong | text) under_emph?)+
+//
+/// Parse underscore-delimited emphasis.
+///
+/// We don't allow underscore-delimited emphasis to nest immediately inside each
+/// other. (That should get parsed as strong.)
 fn parseUnderscoreEmphasis(
     self: *Self,
     gpa: Allocator,
@@ -1283,6 +1330,28 @@ test "underscore emphasis after punctuation" {
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
 }
 
+test "underscore emphasis nested unmatched" {
+    const value = "*foo _bar*";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(
+        ast.NodeType.emphasis,
+        @as(ast.NodeType, nodes[0].*),
+    );
+    try testing.expectEqual(1, nodes[0].emphasis.children.len);
+
+    try testing.expectEqual(
+        ast.NodeType.text,
+        @as(ast.NodeType, nodes[0].emphasis.children[0].*),
+    );
+    try testing.expectEqualStrings(
+        "foo _bar",
+        nodes[0].emphasis.children[0].text.value,
+    );
+}
+
 test "underscore strong" {
     const value = "This is __strongly emphasized__.";
     const nodes = try parseIntoNodes(value);
@@ -1298,6 +1367,25 @@ test "underscore strong" {
     );
 
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
+}
+
+test "underscore strong with nested unmatched" {
+    const value = "__foo*bar__";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.strong, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqual(1, nodes[0].strong.children.len);
+
+    try testing.expectEqual(
+        ast.NodeType.text,
+        @as(ast.NodeType, nodes[0].strong.children[0].*),
+    );
+    try testing.expectEqualStrings(
+        "foo*bar",
+        nodes[0].strong.children[0].text.value,
+    );
 }
 
 test "nesting feast of insanity" {
