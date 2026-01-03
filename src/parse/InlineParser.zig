@@ -129,6 +129,8 @@ fn parseStarStrong(
         }
     }
 
+    var running_text = Io.Writer.Allocating.init(arena);
+
     const open_token = try self.consume(arena, &.{
         .l_delim_star,
         .lr_delim_star,
@@ -139,23 +141,61 @@ fn parseStarStrong(
     }) orelse return null;
 
     for (0..safety.loop_bound) |_| {
-        if (try self.parseAnyEmphasis(gpa, arena)) |emph| {
-            try children.append(gpa, emph);
+        const maybe_node = blk: {
+            if (try self.parseAnyEmphasis(gpa, arena)) |emph| {
+                break :blk emph;
+            }
+
+            if (try self.parseAnyStrong(gpa, arena)) |strong| {
+                break :blk strong;
+            }
+
+            break :blk null;
+        };
+        if (maybe_node) |node| {
+            if (running_text.written().len > 0) {
+                const text = try createTextNode(gpa, running_text.written());
+                try children.append(gpa, text);
+                running_text.clearRetainingCapacity();
+            }
+
+            try children.append(gpa, node);
             continue;
         }
 
-        if (try self.parseAnyStrong(gpa, arena)) |strong| {
-            try children.append(gpa, strong);
+        const text_value = try self.scanText(arena);
+        if (text_value.len > 0) {
+            _ = try running_text.writer.write(text_value);
             continue;
         }
 
-        if (try self.parseText(gpa, arena)) |text| {
-            try children.append(gpa, text);
+        // Check for closing condition
+        if (try self.peek(arena)) |node| {
+            switch (node.token_type) {
+                .r_delim_star, .lr_delim_star => |t| {
+                    if (try self.peekAhead(arena, 2)) |next_node| {
+                        if (next_node.token_type == t) {
+                            break;
+                        }
+                    }
+                },
+                else => {},
+            }
+        }
+
+        const text_fallback_value = try self.scanTextFallback(arena);
+        if (text_fallback_value.len > 0) {
+            _ = try running_text.writer.write(text_fallback_value);
             continue;
         }
 
         break;
     } else @panic(safety.loop_bound_panic_msg);
+
+    if (running_text.written().len > 0) {
+        const text = try createTextNode(gpa, running_text.written());
+        try children.append(gpa, text);
+    }
 
     if (children.items.len == 0) {
         return null;
@@ -838,16 +878,18 @@ fn createTextNode(gpa: Allocator, value: []const u8) !*ast.Node {
 }
 
 fn peek(self: *Self, arena: Allocator) !?InlineToken {
-    if (self.token_index >= self.line.items.len) {
-        const next = try self.tokenizer.next(arena);
-        if (next == null) {
-            return null; // end of input
-        }
+    return self.peekAhead(arena, 1);
+}
 
-        try self.line.append(arena, next.?);
+fn peekAhead(self: *Self, arena: Allocator, count: u16) !?InlineToken {
+    const index = self.token_index + (count - 1);
+    while (index >= self.line.items.len) {
+        // Returning null here means end of token stream
+        const next = try self.tokenizer.next(arena) orelse return null;
+        try self.line.append(arena, next);
     }
 
-    return self.line.items[self.token_index];
+    return self.line.items[index];
 }
 
 fn consume(
@@ -1058,6 +1100,25 @@ test "unmatched nested emphasis" {
     );
     try testing.expectEqualStrings(
         "strong * with asterisk",
+        nodes[0].strong.children[0].text.value,
+    );
+}
+
+test "unmatched nested emphasis no spacing" {
+    const value = "**foo*bar**";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.strong, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqual(1, nodes[0].strong.children.len);
+
+    try testing.expectEqual(
+        ast.NodeType.text,
+        @as(ast.NodeType, nodes[0].strong.children[0].*),
+    );
+    try testing.expectEqualStrings(
+        "foo*bar",
         nodes[0].strong.children[0].text.value,
     );
 }
