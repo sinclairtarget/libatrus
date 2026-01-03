@@ -5,6 +5,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
+const Io = std.Io;
 
 const ast = @import("ast.zig");
 const tokens = @import("../lex/tokens.zig");
@@ -16,9 +17,9 @@ const references = @import("references.zig");
 const safety = @import("../util/safety.zig");
 const strings = @import("../util/strings.zig");
 
-pub const Error = (
-    references.CharacterReferenceError || Allocator.Error
-);
+pub const Error = error{
+    WriteFailed,
+} || references.CharacterReferenceError || Allocator.Error;
 
 tokenizer: *InlineTokenizer,
 line: ArrayList(InlineToken),
@@ -39,51 +40,71 @@ pub fn init(tokenizer: *InlineTokenizer) Self {
 /// Returns a slice of AST nodes that the caller is responsible for freeing.
 pub fn parse(self: *Self, gpa: Allocator, arena: Allocator) Error![]*ast.Node {
     var nodes: ArrayList(*ast.Node) = .empty;
-    defer nodes.deinit(gpa);
     errdefer {
         for (nodes.items) |node| {
             node.deinit(gpa);
         }
+        nodes.deinit(gpa);
     }
+
+    // Text tokens get resolved to a string value and appended here until we can
+    // generate a text AST node holding the combined value.
+    var running_text = Io.Writer.Allocating.init(arena);
 
     for (0..safety.loop_bound) |_| { // could hit if we forget to consume tokens
         _ = try self.peek(arena) orelse break;
 
-        if (try self.parseInlineCode(gpa, arena)) |code| {
-            try nodes.append(gpa, code);
+        const maybe_node = blk: {
+            if (try self.parseInlineCode(gpa, arena)) |code| {
+                break :blk code;
+            }
+
+            if (try self.parseInlineLink(gpa, arena)) |link| {
+                break :blk link;
+            }
+
+            if (try self.parseAnyEmphasis(gpa, arena)) |emph| {
+                break :blk emph;
+            }
+
+            if (try self.parseAnyStrong(gpa, arena)) |strong| {
+                break :blk strong;
+            }
+
+            break :blk null;
+        };
+        if (maybe_node) |node| {
+            if (running_text.written().len > 0) {
+                const text = try createTextNode(gpa, running_text.written());
+                try nodes.append(gpa, text);
+                running_text.clearRetainingCapacity();
+            }
+
+            try nodes.append(gpa, node);
             continue;
         }
 
-        if (try self.parseInlineLink(gpa, arena)) |link| {
-            try nodes.append(gpa, link);
+        const text_value = try self.scanText(arena);
+        if (text_value.len > 0) {
+            _ = try running_text.writer.write(text_value);
             continue;
         }
 
-        if (try self.parseAnyEmphasis(gpa, arena)) |emph| {
-            try nodes.append(gpa, emph);
-            continue;
-        }
-
-        if (try self.parseAnyStrong(gpa, arena)) |strong| {
-            try nodes.append(gpa, strong);
-            continue;
-        }
-
-        if (try self.parseText(gpa, arena)) |text| {
-            try nodes.append(gpa, text);
-            continue;
-        }
-
-        if (try self.parseTextFallback(gpa, arena)) |text| {
-            try nodes.append(gpa, text);
+        const text_fallback_value = try self.scanTextFallback(arena);
+        if (text_fallback_value.len > 0) {
+            _ = try running_text.writer.write(text_fallback_value);
             continue;
         }
 
         @panic("unable to parse inline token");
     } else @panic(safety.loop_bound_panic_msg);
 
-    const joined_nodes = try joinSiblingTextNodes(gpa, nodes.items);
-    return joined_nodes;
+    if (running_text.written().len > 0) {
+        const text = try createTextNode(gpa, running_text.written());
+        try nodes.append(gpa, text);
+    }
+
+    return try nodes.toOwnedSlice(gpa);
 }
 
 // strong => open inner close
@@ -540,13 +561,13 @@ fn parseInlineCode(
                     break;
                 }
 
-                const value = try inlineCodeValue(token);
+                const value = try resolveInlineCode(token);
                 try values.append(arena, value);
             },
             else => |t| {
                 _ = try self.consume(arena, &.{t});
 
-                const value = try inlineCodeValue(token);
+                const value = try resolveInlineCode(token);
                 try values.append(arena, value);
             }
         }
@@ -672,7 +693,31 @@ fn parseLinkText(
 // @       => allowed+
 // allowed => ref10 | ref16 | ref& | \n | text | lr_delim_underscore
 fn parseText(self: *Self, gpa: Allocator, arena: Allocator) Error!?*ast.Node {
-    var values: ArrayList([]const u8) = .empty;
+    const value = try self.scanText(arena);
+    if (value.len == 0) {
+        return null;
+    }
+
+    return try createTextNode(gpa, value);
+}
+
+// @ => .
+/// Catch-all for anything that fails to parse.
+fn parseTextFallback(
+    self: *Self,
+    gpa: Allocator,
+    arena: Allocator,
+) Error!?*ast.Node {
+    const text_value = try self.scanTextFallback(arena);
+    if (text_value.len == 0) {
+        return null;
+    }
+
+    return try createTextNode(gpa, text_value);
+}
+
+fn scanText(self: *Self, arena: Allocator) ![]const u8 {
+    var running_text = Io.Writer.Allocating.init(arena);
 
     while (try self.peek(arena)) |token| {
         switch (token.token_type) {
@@ -680,8 +725,8 @@ fn parseText(self: *Self, gpa: Allocator, arena: Allocator) Error!?*ast.Node {
             .entity_reference, .newline, .text => |t| {
                 _ = try self.consume(arena, &.{t});
 
-                const value = try inlineTextValue(arena, token);
-                try values.append(arena, value);
+                const value = try resolveInlineText(arena, token);
+                _ = try running_text.writer.write(value);
             },
             .lr_delim_underscore => {
                 // Only allowed if cannot start or stop emphasis
@@ -693,73 +738,26 @@ fn parseText(self: *Self, gpa: Allocator, arena: Allocator) Error!?*ast.Node {
                 }
                 _ = try self.consume(arena, &.{.lr_delim_underscore});
 
-                const value = try inlineTextValue(arena, token);
-                try values.append(arena, value);
+                const value = try resolveInlineText(arena, token);
+                _ = try running_text.writer.write(value);
             },
             else => break,
         }
     }
 
-    if (values.items.len == 0) {
-        return null;
-    }
-
-    return try createTextNode(gpa, values.items);
+    return try running_text.toOwnedSlice();
 }
 
-// @ => .
-/// Catch-all for anything that fails to parse.
-fn parseTextFallback(
-    self: *Self,
-    gpa: Allocator,
-    arena: Allocator,
-) Error!?*ast.Node {
-    const token = try self.peek(arena) orelse return null;
+fn scanTextFallback(self: *Self, arena: Allocator) ![]const u8 {
+    const token = try self.peek(arena) orelse return "";
     _ = try self.consume(arena, &.{token.token_type});
 
-    const text_value = try inlineTextValue(arena, token);
-    return try createTextNode(gpa, &.{ text_value });
-}
-
-fn peek(self: *Self, arena: Allocator) !?InlineToken {
-    if (self.token_index >= self.line.items.len) {
-        const next = try self.tokenizer.next(arena);
-        if (next == null) {
-            return null; // end of input
-        }
-
-        try self.line.append(arena, next.?);
-    }
-
-    return self.line.items[self.token_index];
-}
-
-fn consume(
-    self: *Self,
-    arena: Allocator,
-    token_types: []const InlineTokenType,
-) !?InlineToken {
-    const current = try self.peek(arena) orelse return null;
-    for (token_types) |token_type| {
-        if (current.token_type == token_type) {
-            self.token_index += 1;
-            return current;
-        }
-    }
-
-    return null;
-}
-
-fn checkpoint(self: *Self) usize {
-    return self.token_index;
-}
-
-fn backtrack(self: *Self, checkpoint_index: usize) void {
-    self.token_index = checkpoint_index;
+    const text_value = try resolveInlineText(arena, token);
+    return text_value;
 }
 
 /// Resolve token to actual string content within an inline code node.
-fn inlineCodeValue(token: InlineToken) ![]const u8 {
+fn resolveInlineCode(token: InlineToken) ![]const u8 {
     const value = switch (token.token_type) {
         .decimal_character_reference, .hexadecimal_character_reference,
         .entity_reference, .backtick, .text => token.lexeme,
@@ -777,7 +775,7 @@ fn inlineCodeValue(token: InlineToken) ![]const u8 {
 }
 
 /// Resolve token to actual string content within a text node.
-fn inlineTextValue(arena: Allocator, token: InlineToken) ![]const u8 {
+fn resolveInlineText(arena: Allocator, token: InlineToken) ![]const u8 {
     const value = switch (token.token_type) {
         .decimal_character_reference, .hexadecimal_character_reference,
         .entity_reference => blk: {
@@ -825,62 +823,55 @@ fn resolveCharacterEntityRef(arena: Allocator, token: InlineToken) ![]const u8 {
     }
 }
 
-/// Merge adjacent text siblings.
-fn joinSiblingTextNodes(gpa: Allocator, nodes: []*ast.Node) ![]*ast.Node {
-    var joined: ArrayList(*ast.Node) = .empty;
-
-    var siblings: ArrayList(*ast.Node) = .empty;
-    defer siblings.deinit(gpa);
-    for (nodes) |node| {
-        if (node.* == ast.NodeType.text) {
-            try siblings.append(gpa, node);
-            continue;
-        }
-
-        if (siblings.items.len > 0) {
-            var values: ArrayList([]const u8) = .empty;
-            defer values.deinit(gpa);
-            for (siblings.items) |sibling| {
-                try values.append(gpa, sibling.text.value);
-            }
-            const text_node = try createTextNode(gpa, values.items);
-            try joined.append(gpa, text_node);
-
-            for (siblings.items) |sibling| {
-                sibling.deinit(gpa);
-            }
-            siblings.clearRetainingCapacity();
-        }
-
-        try joined.append(gpa, node);
-    }
-
-    if (siblings.items.len > 0) {
-        var values: ArrayList([]const u8) = .empty;
-        defer values.deinit(gpa);
-        for (siblings.items) |sibling| {
-            try values.append(gpa, sibling.text.value);
-        }
-        const text_node = try createTextNode(gpa, values.items);
-        try joined.append(gpa, text_node);
-
-        for (siblings.items) |sibling| {
-            sibling.deinit(gpa);
-        }
-        siblings.clearRetainingCapacity();
-    }
-
-    return joined.toOwnedSlice(gpa);
-}
-
-fn createTextNode(gpa: Allocator, values: []const []const u8) !*ast.Node {
+/// Create a new AST text node.
+///
+/// The string value passed in gets copied to a new location in memory owned by
+/// the returned text node.
+fn createTextNode(gpa: Allocator, value: []const u8) !*ast.Node {
     const node = try gpa.create(ast.Node);
     node.* = .{
         .text = .{
-            .value = try std.mem.join(gpa, "", values),
+            .value = try gpa.dupe(u8, value),
         },
     };
     return node;
+}
+
+fn peek(self: *Self, arena: Allocator) !?InlineToken {
+    if (self.token_index >= self.line.items.len) {
+        const next = try self.tokenizer.next(arena);
+        if (next == null) {
+            return null; // end of input
+        }
+
+        try self.line.append(arena, next.?);
+    }
+
+    return self.line.items[self.token_index];
+}
+
+fn consume(
+    self: *Self,
+    arena: Allocator,
+    token_types: []const InlineTokenType,
+) !?InlineToken {
+    const current = try self.peek(arena) orelse return null;
+    for (token_types) |token_type| {
+        if (current.token_type == token_type) {
+            self.token_index += 1;
+            return current;
+        }
+    }
+
+    return null;
+}
+
+fn checkpoint(self: *Self) usize {
+    return self.token_index;
+}
+
+fn backtrack(self: *Self, checkpoint_index: usize) void {
+    self.token_index = checkpoint_index;
 }
 
 // ----------------------------------------------------------------------------
@@ -1050,6 +1041,25 @@ test "triple star strong nested" {
 
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
     try testing.expectEqualStrings(".", nodes[2].text.value);
+}
+
+test "unmatched nested emphasis" {
+    const value = "**strong * with asterisk**";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.strong, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqual(1, nodes[0].strong.children.len);
+
+    try testing.expectEqual(
+        ast.NodeType.text,
+        @as(ast.NodeType, nodes[0].strong.children[0].*),
+    );
+    try testing.expectEqualStrings(
+        "strong * with asterisk",
+        nodes[0].strong.children[0].text.value,
+    );
 }
 
 test "triple underscore strong nested" {
