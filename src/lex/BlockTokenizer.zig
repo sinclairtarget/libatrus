@@ -296,6 +296,8 @@ fn evaluate_lexeme(
     token_type: BlockTokenType,
     lookahead_i: usize,
 ) ![]const u8 {
+    std.debug.assert(lookahead_i - self.i > 0);
+
     switch (token_type) {
         .newline, .indent, .rule_star, .rule_underline,
         .rule_dash_with_whitespace => {

@@ -45,6 +45,8 @@ pub const Context = union {
     empty: void,
     delim_star: DelimStarContext,
     delim_underscore: DelimUnderscoreContext,
+
+    pub const default: Context = .{ .empty = {} };
 };
 
 pub const DelimStarContext = struct {

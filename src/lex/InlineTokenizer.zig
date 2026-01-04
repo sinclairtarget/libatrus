@@ -16,45 +16,33 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
+const Io = std.Io;
 
 const InlineToken = @import("tokens.zig").InlineToken;
 const InlineTokenType = @import("tokens.zig").InlineTokenType;
 const Context = @import("tokens.zig").Context;
 const strings = @import("../util/strings.zig");
 
-pub const Error = Allocator.Error;
+pub const Error = error{
+    WriteFailed,
+} || Allocator.Error;
 
-/// States for the tokenizer FSM.
-const State = enum {
-    start,
-    start_punct,                     // preceded by punctuation
-    text,
-    text_escaped,
-    text_whitespace,
-    text_punct,                      // preceded by punctuation
-    entity_reference,
-    decimal_character_reference,
-    hexadecimal_character_reference,
-    l_delim_star_run,
-    r_delim_star_run,
-    r_delim_star_punct_run,          // preceded by punctuation
-    l_delim_underscore_run,
-    r_delim_underscore_run,
-    r_delim_underscore_punct_run,    // preceded by punctuation
-    backtick_run,
-    done,
+/// Overall state for the tokenizer.
+const TopLevelState = enum {
+    normal,
+    punct,      // Last token ended in punctuation
+    whitespace, // Last token ended in whitespace
 };
 
-/// Emitted by the tokenizer FSM when a character sequence is accepted.
-const FSMResult = struct {
-    token_type: InlineTokenType,
-    context: Context = .{ .empty = {} },
-    next_state: State = .start,
+const TokenizeResult = struct {
+    tokens: []const InlineToken,
+    next_i: usize,
+    next_state: TopLevelState = .normal,
 };
 
 in: []const u8,
 i: usize,
-state: State,
+state: TopLevelState,
 staged: ArrayList(InlineToken),
 
 const Self = @This();
@@ -63,7 +51,7 @@ pub fn init(in: []const u8) Self {
     return .{
         .in = in,
         .i = 0,
-        .state = .start,
+        .state = .whitespace, // Beginning of line treated as whitespace
         .staged = .empty,
     };
 }
@@ -76,359 +64,512 @@ pub fn next(self: *Self, scratch: Allocator) Error!?InlineToken {
         return token;
     }
 
-    if (self.state == .done) {
+    if (self.i >= self.in.len) {
         return null;
     }
 
-    return try self.scan(scratch);
+    return try self.tokenize(scratch);
 }
 
-fn scan(self: *Self, scratch: Allocator) !?InlineToken {
+fn tokenize(self: *Self, scratch: Allocator) !InlineToken {
+    std.debug.assert(self.i < self.in.len);
+
+    var running_text = Io.Writer.Allocating.init(scratch);
+
+    const result: ?TokenizeResult = while (self.i < self.in.len) {
+        // First, try regular tokens
+        const regular_result: ?TokenizeResult = blk: {
+            if (try self.tokenizeSingleCharTokens(scratch)) |result| {
+                break :blk result;
+            }
+
+            if (try self.tokenizeDecimalCharacterReference(scratch)) |result| {
+                break :blk result;
+            }
+
+            if (try self.tokenizeHexCharacterReference(scratch)) |result| {
+                break :blk result;
+            }
+
+            if (try self.tokenizeEntityReference(scratch)) |result| {
+                break :blk result;
+            }
+
+            if (try self.tokenizeBackticks(scratch)) |result| {
+                break :blk result;
+            }
+
+            if (try self.tokenizeDelimStarRun(scratch, self.state)) |result| {
+                break :blk result;
+            }
+
+            if (try self.tokenizeDelimUnderRun(scratch, self.state)) |result| {
+                break :blk result;
+            }
+
+            break :blk null;
+        };
+
+        if (regular_result) |r| {
+            self.i = r.next_i;
+            self.state = r.next_state;
+            break r;
+        }
+
+        // Didn't successfully scan a regular token. Handle fallback
+        const fallback_result = blk: {
+            if (try self.tokenizeText(scratch)) |result| {
+                break :blk result;
+            }
+
+            @panic("could not tokenize remaining inline content");
+        };
+
+        // To ensure we don't yield sibling text tokens, we write the lexeme
+        // to a buffer to be concatenated with the next text token's lexeme
+        // if there is one.
+        std.debug.assert(fallback_result.tokens.len == 1);
+        _ = try running_text.writer.write(
+            fallback_result.tokens[0].lexeme,
+        );
+
+        self.i = fallback_result.next_i;
+        self.state = fallback_result.next_state;
+    } else null;
+
+    if (result) |r| {
+        std.debug.assert(r.tokens.len > 0);
+
+        // Add tokens to staged in reverse order
+        var i = r.tokens.len;
+        while (i > 0) {
+            try self.staged.append(scratch, r.tokens[i - 1]);
+            i -= 1;
+        }
+    }
+
+    // Add text token if one is pending
+    if (running_text.written().len > 0) {
+        const token = (try evaluateTokens(
+            scratch,
+            .text,
+            .default,
+            running_text.written(),
+        ))[0];
+        try self.staged.append(scratch, token);
+    }
+
+    return self.staged.pop().?;
+}
+
+fn tokenizeSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
+    const result: struct {
+        InlineTokenType,
+        TopLevelState,
+    } = switch (self.in[self.i]) {
+            '\n' => .{ .newline, .whitespace },
+            '[' => .{ .l_square_bracket, .punct },
+            ']' => .{ .r_square_bracket, .punct },
+            '<' => .{ .l_angle_bracket, .punct },
+            '>' => .{ .r_angle_bracket, .punct },
+            '(' => .{ .l_paren, .punct },
+            ')' => .{ .r_paren, .punct },
+            else => return null,
+    };
+
+    const token_type, const next_state = result;
+    const tokens = try evaluateTokens(
+        scratch,
+        token_type,
+        .default,
+        self.in[self.i..self.i + 1],
+    );
+    return .{
+        .tokens = tokens,
+        .next_i = self.i + 1,
+        .next_state = next_state,
+    };
+}
+
+fn tokenizeEntityReference(self: Self, scratch: Allocator) !?TokenizeResult {
     var lookahead_i = self.i;
-    const result: FSMResult = fsm: switch (self.state) {
-        .start => {
+
+    const State = enum { started, rest };
+    fsm: switch (State.started) {
+        .started => {
             switch (self.in[lookahead_i]) {
-                '\n' => {
-                    lookahead_i += 1;
-                    break :fsm .{ .token_type = .newline };
-                },
                 '&' => {
                     lookahead_i += 1;
-                    if (lookahead_i >= self.in.len) {
-                        break :fsm .{ .token_type = .text };
-                    }
-
-                    switch (self.in[lookahead_i]) {
-                        '#' => {
-                            lookahead_i += 1;
-                            continue :fsm .decimal_character_reference;
-                        },
-                        'a'...'z', 'A'...'Z', '0'...'9' => {
-                            continue :fsm .entity_reference;
-                        },
-                        else => {
-                            continue :fsm .text_punct;
-                        },
-                    }
+                    continue :fsm .rest;
                 },
-                '*' => {
-                    lookahead_i += 1;
-                    continue :fsm .l_delim_star_run;
-                },
-                '_' => {
-                    lookahead_i += 1;
-                    continue :fsm .l_delim_underscore_run;
-                },
-                '`' => {
-                    lookahead_i += 1;
-                    continue :fsm .backtick_run;
-                },
-                '[' => {
-                    lookahead_i += 1;
-                    break :fsm .{
-                        .token_type = .l_square_bracket,
-                        .next_state = .start_punct,
-                    };
-                },
-                ']' => {
-                    lookahead_i += 1;
-                    break :fsm .{
-                        .token_type = .r_square_bracket,
-                        .next_state = .start_punct,
-                    };
-                },
-                '<' => {
-                    lookahead_i += 1;
-                    break :fsm .{
-                        .token_type = .l_angle_bracket,
-                        .next_state = .start_punct,
-                    };
-                },
-                '>' => {
-                    lookahead_i += 1;
-                    break :fsm .{
-                        .token_type = .r_angle_bracket,
-                        .next_state = .start_punct,
-                    };
-                },
-                '(' => {
-                    lookahead_i += 1;
-                    break :fsm .{
-                        .token_type = .l_paren,
-                        .next_state = .start_punct,
-                    };
-                },
-                ')' => {
-                    lookahead_i += 1;
-                    break :fsm .{
-                        .token_type = .r_paren,
-                        .next_state = .start_punct,
-                    };
-                },
-                else => {
-                    continue :fsm .text;
-                },
+                else => return null,
             }
         },
-        .start_punct => {
-            switch (self.in[lookahead_i]) {
-                '*' => {
-                    lookahead_i += 1;
-                    continue :fsm .r_delim_star_punct_run;
-                },
-                '_' => {
-                    lookahead_i += 1;
-                    continue :fsm .r_delim_underscore_punct_run;
-                },
-                else => {
-                    continue :fsm .start;
-                },
-            }
-        },
-        .decimal_character_reference => {
-            var num_digits: u8 = 0;
-            while (num_digits < 8 and lookahead_i < self.in.len) {
-                switch (self.in[lookahead_i]) {
-                    '0'...'9' => {
-                        lookahead_i += 1;
-                        num_digits += 1;
-                    },
-                    ';' => {
-                        lookahead_i += 1;
-
-                        if (num_digits > 0) {
-                            break :fsm .{
-                                .token_type = .decimal_character_reference,
-                            };
-                        } else {
-                            continue :fsm .text_punct;
-                        }
-                    },
-                    'x', 'X' => {
-                        lookahead_i += 1;
-                        continue :fsm .hexadecimal_character_reference;
-                    },
-                    else => {
-                        continue :fsm .text;
-                    },
-                }
-            }
-
-            continue :fsm .text;
-        },
-        .hexadecimal_character_reference => {
-            var num_digits: u8 = 0;
-            while (num_digits < 7 and lookahead_i < self.in.len) {
-                switch (self.in[lookahead_i]) {
-                    '0'...'9', 'a'...'f', 'A'...'F' => {
-                        lookahead_i += 1;
-                        num_digits += 1;
-                    },
-                    ';' => {
-                        lookahead_i += 1;
-
-                        if (num_digits > 0) {
-                            break :fsm .{
-                                .token_type = .hexadecimal_character_reference,
-                            };
-                        } else {
-                            continue :fsm .text_punct;
-                        }
-                    },
-                    else => {
-                        continue :fsm .text;
-                    },
-                }
-            }
-
-            continue :fsm .text;
-        },
-        .entity_reference => {
+        .rest => {
             if (lookahead_i >= self.in.len) {
-                break :fsm .{ .token_type = .text };
+                return null;
             }
 
             switch (self.in[lookahead_i]) {
                 'a'...'z', 'A'...'Z', '0'...'9' => {
                     lookahead_i += 1;
-                    continue :fsm .entity_reference;
+                    continue :fsm .rest;
                 },
                 ';' => {
                     lookahead_i += 1;
-                    break :fsm .{ .token_type = .entity_reference };
+                    break :fsm;
                 },
-                else => {
-                    continue :fsm .text;
-                },
+                else => return null,
             }
         },
-        .l_delim_star_run => {
+    }
+
+    const tokens = try evaluateTokens(
+        scratch,
+        .entity_reference,
+        .default,
+        self.in[self.i..lookahead_i],
+    );
+    return .{
+        .tokens = tokens,
+        .next_i = lookahead_i,
+    };
+}
+
+fn tokenizeDecimalCharacterReference(
+    self: Self,
+    scratch: Allocator,
+) !?TokenizeResult {
+    var lookahead_i = self.i;
+
+    const State = enum { started, pound, rest };
+    var num_digits: u8 = 0;
+    fsm: switch (State.started) {
+        .started => {
+            switch (self.in[lookahead_i]) {
+                '&' => {
+                    lookahead_i += 1;
+                    continue :fsm .pound;
+                },
+                else => return null,
+            }
+        },
+        .pound => {
             if (lookahead_i >= self.in.len) {
-                break :fsm .{ .token_type = .text };
+                return null;
+            }
+
+            switch (self.in[lookahead_i]) {
+                '#' => {
+                    lookahead_i += 1;
+                    continue :fsm .rest;
+                },
+                else => return null,
+            }
+        },
+        .rest => {
+            if (lookahead_i >= self.in.len) {
+                return null;
+            }
+
+            switch (self.in[lookahead_i]) {
+                '0'...'9' => {
+                    lookahead_i += 1;
+                    num_digits += 1;
+                    continue :fsm .rest;
+                },
+                ';' => {
+                    lookahead_i += 1;
+                    break :fsm;
+                },
+                else => return null,
+            }
+        },
+    }
+
+    if (num_digits < 1 or num_digits > 7) {
+        return null;
+    }
+
+    const tokens = try evaluateTokens(
+        scratch,
+        .decimal_character_reference,
+        .default,
+        self.in[self.i..lookahead_i],
+    );
+    return .{
+        .tokens = tokens,
+        .next_i = lookahead_i,
+    };
+}
+
+fn tokenizeHexCharacterReference(
+    self: Self,
+    scratch: Allocator,
+) !?TokenizeResult {
+    var lookahead_i = self.i;
+
+    const State = enum { started, pound, base, rest };
+    var num_digits: u8 = 0;
+    fsm: switch (State.started) {
+        .started => {
+            switch (self.in[lookahead_i]) {
+                '&' => {
+                    lookahead_i += 1;
+                    continue :fsm .pound;
+                },
+                else => return null,
+            }
+        },
+        .pound => {
+            if (lookahead_i >= self.in.len) {
+                return null;
+            }
+
+            switch (self.in[lookahead_i]) {
+                '#' => {
+                    lookahead_i += 1;
+                    continue :fsm .base;
+                },
+                else => return null,
+            }
+        },
+        .base => {
+            if (lookahead_i >= self.in.len) {
+                return null;
+            }
+
+            switch (self.in[lookahead_i]) {
+                'x', 'X' => {
+                    lookahead_i += 1;
+                    continue :fsm .rest;
+                },
+                else => return null,
+            }
+        },
+        .rest => {
+            if (lookahead_i >= self.in.len) {
+                return null;
+            }
+
+            switch (self.in[lookahead_i]) {
+                '0'...'9', 'a'...'f', 'A'...'F' => {
+                    lookahead_i += 1;
+                    num_digits += 1;
+                    continue :fsm .rest;
+                },
+                ';' => {
+                    lookahead_i += 1;
+                    break :fsm;
+                },
+                else => return null,
+            }
+        },
+    }
+
+    if (num_digits < 1 or num_digits > 6) {
+        return null;
+    }
+
+    const tokens = try evaluateTokens(
+        scratch,
+        .hexadecimal_character_reference,
+        .default,
+        self.in[self.i..lookahead_i],
+    );
+    return .{
+        .tokens = tokens,
+        .next_i = lookahead_i,
+    };
+}
+
+fn tokenizeBackticks(self: Self, scratch: Allocator) !?TokenizeResult {
+    var lookahead_i = self.i;
+
+    const State = enum { start, rest };
+    fsm: switch (State.start) {
+        .start => {
+            switch (self.in[lookahead_i]) {
+                '`' => {
+                    lookahead_i += 1;
+                    continue :fsm .rest;
+                },
+                else => return null,
+            }
+        },
+        .rest => {
+            if (lookahead_i >= self.in.len) {
+                break :fsm;
+            }
+
+            switch (self.in[lookahead_i]) {
+                '`' => {
+                    lookahead_i += 1;
+                    continue :fsm .rest;
+                },
+                else => break :fsm,
+            }
+        },
+    }
+
+    const range = self.in[self.i..lookahead_i];
+    const tokens = try evaluateTokens(scratch, .backtick, .default, range);
+    return .{
+        .tokens = tokens,
+        .next_i = lookahead_i,
+        .next_state = .punct,
+    };
+}
+
+fn tokenizeDelimStarRun(
+    self: Self,
+    scratch: Allocator,
+    top_level_state: TopLevelState,
+) !?TokenizeResult {
+    var lookahead_i = self.i;
+
+    const State = enum {
+        start,
+        l_delim_run,
+        r_delim_run,
+        r_delim_punct_run,
+    };
+    const token_type: InlineTokenType = fsm: switch (State.start) {
+        .start => {
+            switch (self.in[lookahead_i]) {
+                '*' => {
+                    lookahead_i += 1;
+                    switch (top_level_state) {
+                        .whitespace => continue :fsm .l_delim_run,
+                        .normal => continue :fsm .r_delim_run,
+                        .punct => continue :fsm .r_delim_punct_run,
+                    }
+                },
+                else => return null,
+            }
+        },
+        .l_delim_run => {
+            if (lookahead_i >= self.in.len) {
+                return null; // Can't precede end of line
             }
 
             switch (self.in[lookahead_i]) {
                 '*' => {
                     lookahead_i += 1;
-                    continue :fsm .l_delim_star_run;
+                    continue :fsm .l_delim_run;
                 },
-                '_' => {
-                    break :fsm .{
-                        .token_type = .l_delim_star,
-                        .context = evaluateDelimStarContext(
-                            self.in[self.i..lookahead_i],
-                        ),
-                        .next_state = .r_delim_underscore_punct_run,
-                    };
+                ' ', '\t', '\n' => return null,
+                else => break :fsm .l_delim_star,
+            }
+        },
+        .r_delim_run => {
+            if (lookahead_i >= self.in.len) {
+                break :fsm .r_delim_star;
+            }
+
+            switch (self.in[lookahead_i]) {
+                '*' => {
+                    lookahead_i += 1;
+                    continue :fsm .r_delim_run;
                 },
-                ' ', '\t', '\n' => {
-                    continue :fsm .text;
+                ' ', '\t', '\n', '_', '!'...'%', '\''...')', '+'...'/',
+                ':'...'@', '[', ']', '^', '`', '}'...'~' => {
+                    // Following punctuation (or whitespace) means this can't
+                    // be left-delimiting
+                    break :fsm .r_delim_star;
+                },
+                else => break :fsm .lr_delim_star,
+            }
+        },
+        .r_delim_punct_run => {
+            if (lookahead_i >= self.in.len) {
+                break :fsm .r_delim_star;
+            }
+
+            switch (self.in[lookahead_i]) {
+                '*' => {
+                    lookahead_i += 1;
+                    continue :fsm .r_delim_punct_run;
+                },
+                ' ', '\t', '\n' => break :fsm .r_delim_star,
+                '_', '!'...'%', '\''...')', '+'...'/', ':'...'@', '[', ']', '^',
+                '`', '}'...'~' => {
+                    break :fsm .lr_delim_star;
                 },
                 else => {
-                    break :fsm .{
-                        .token_type = .l_delim_star,
-                        .context = evaluateDelimStarContext(
-                            self.in[self.i..lookahead_i],
-                        ),
-                    };
+                    // Since this run started after punctuation, if it is not
+                    // followed by punctuation it cannot be right-delimiting
+                    break :fsm .l_delim_star;
                 }
             }
         },
-        .r_delim_star_run => {
-            if (lookahead_i >= self.in.len) {
-                break :fsm .{
-                    .token_type = .r_delim_star,
-                    .context = evaluateDelimStarContext(
-                        self.in[self.i..lookahead_i],
-                    ),
-                };
-            }
+    };
 
+    const range = self.in[self.i..lookahead_i];
+    const context = evaluateDelimStarContext(range);
+    const tokens = try evaluateTokens(scratch, token_type, context, range);
+    return .{
+        .tokens = tokens,
+        .next_i = lookahead_i,
+        .next_state = .punct,
+    };
+}
+
+fn tokenizeDelimUnderRun(
+    self: Self,
+    scratch: Allocator,
+    top_level_state: TopLevelState,
+) !?TokenizeResult {
+    var lookahead_i = self.i;
+
+    const State = enum {
+        start,
+        l_delim_run,
+        r_delim_run,
+        r_delim_punct_run,
+    };
+    const token_type: InlineTokenType, const context = fsm: switch (State.start) {
+        .start => {
             switch (self.in[lookahead_i]) {
-                '*' => {
-                    lookahead_i += 1;
-                    continue :fsm .r_delim_star_run;
-                },
                 '_' => {
-                    break :fsm .{
-                        .token_type = .r_delim_star,
-                        .context = evaluateDelimStarContext(
-                            self.in[self.i..lookahead_i],
-                        ),
-                        .next_state = .r_delim_underscore_punct_run,
-                    };
+                    lookahead_i += 1;
+                    switch (top_level_state) {
+                        .whitespace => continue :fsm .l_delim_run,
+                        .normal => continue :fsm .r_delim_run,
+                        .punct => continue :fsm .r_delim_punct_run,
+                    }
                 },
-                ' ', '\t', '\n', '!'...'%', '\''...')', '+'...'/', ':'...'@',
-                '[', ']', '^', '`', '}'...'~' => {
-                    break :fsm .{
-                        .token_type = .r_delim_star,
-                        .context = evaluateDelimStarContext(
-                            self.in[self.i..lookahead_i],
-                        ),
-                    };
-                },
-                else => {
-                    break :fsm .{
-                        .token_type = .lr_delim_star,
-                        .context = evaluateDelimStarContext(
-                            self.in[self.i..lookahead_i],
-                        ),
-                    };
-                }
+                else => return null,
             }
         },
-        .r_delim_star_punct_run => {
+        .l_delim_run => {
             if (lookahead_i >= self.in.len) {
-                break :fsm .{
-                    .token_type = .r_delim_star,
-                    .context = evaluateDelimStarContext(
-                        self.in[self.i..lookahead_i],
-                    ),
-                };
-            }
-
-            switch (self.in[lookahead_i]) {
-                '*' => {
-                    lookahead_i += 1;
-                    continue :fsm .r_delim_star_punct_run;
-                },
-                ' ', '\t', '\n' => {
-                    break :fsm .{
-                        .token_type = .r_delim_star,
-                        .context = evaluateDelimStarContext(
-                            self.in[self.i..lookahead_i],
-                        ),
-                    };
-                },
-                '_' => {
-                    break :fsm .{
-                        .token_type = .lr_delim_star,
-                        .context = evaluateDelimStarContext(
-                            self.in[self.i..lookahead_i],
-                        ),
-                        .next_state = .r_delim_underscore_punct_run,
-                    };
-                },
-                '!'...'%', '\''...')', '+'...'/', ':'...'@', '[', ']', '^', '`',
-                '}'...'~' => {
-                    break :fsm .{
-                        .token_type = .lr_delim_star,
-                        .context = evaluateDelimStarContext(
-                            self.in[self.i..lookahead_i],
-                        ),
-                    };
-                },
-                else => {
-                    break :fsm .{
-                        .token_type = .l_delim_star,
-                        .context = evaluateDelimStarContext(
-                            self.in[self.i..lookahead_i],
-                        ),
-                    };
-                }
-            }
-        },
-        .l_delim_underscore_run => {
-            if (lookahead_i >= self.in.len) {
-                break :fsm .{ .token_type = .text };
+                return null; // Can't precede end of line
             }
 
             switch (self.in[lookahead_i]) {
                 '_' => {
                     lookahead_i += 1;
-                    continue :fsm .l_delim_underscore_run;
+                    continue :fsm .l_delim_run;
                 },
-                '*' => {
-                    break :fsm .{
-                        .token_type = .l_delim_underscore,
-                        .context = evaluateDelimUnderscoreContext(
-                            self.in[self.i..lookahead_i],
-                            false,
-                            true,
-                        ),
-                        .next_state = .r_delim_star_punct_run,
-                    };
-                },
-                ' ', '\t', '\n' => {
-                    continue :fsm .text;
-                },
+                ' ', '\t', '\n' => return null,
                 else => |b| {
                     break :fsm .{
-                        .token_type = .l_delim_underscore,
-                        .context = evaluateDelimUnderscoreContext(
+                        .l_delim_underscore,
+                        evaluateDelimUnderscoreContext(
                             self.in[self.i..lookahead_i],
                             false,
                             strings.isPunctuation(&.{ b }),
                         ),
                     };
-                }
+                },
             }
         },
-        .r_delim_underscore_run => {
+        .r_delim_run => {
             if (lookahead_i >= self.in.len) {
                 break :fsm .{
-                    .token_type = .r_delim_underscore,
-                    .context = evaluateDelimUnderscoreContext(
+                    .r_delim_underscore,
+                    evaluateDelimUnderscoreContext(
                         self.in[self.i..lookahead_i],
                         false,
                         false,
@@ -439,24 +580,15 @@ fn scan(self: *Self, scratch: Allocator) !?InlineToken {
             switch (self.in[lookahead_i]) {
                 '_' => {
                     lookahead_i += 1;
-                    continue :fsm .r_delim_underscore_run;
+                    continue :fsm .r_delim_run;
                 },
-                '*' => {
+                ' ', '\t', '\n', '*', '!'...'%', '\''...')', '+'...'/',
+                ':'...'@', '[', ']', '^', '`', '}'...'~' => |b| {
+                    // Following punctuation (or whitespace) means this can't
+                    // be left-delimiting
                     break :fsm .{
-                        .token_type = .r_delim_underscore,
-                        .context = evaluateDelimUnderscoreContext(
-                            self.in[self.i..lookahead_i],
-                            false,
-                            true,
-                        ),
-                        .next_state = .r_delim_star_punct_run,
-                    };
-                },
-                ' ', '\t', '\n', '!'...'%', '\''...')', '+'...'/', ':'...'@',
-                '[', ']', '^', '`', '}'...'~' => |b| {
-                    break :fsm .{
-                        .token_type = .r_delim_underscore,
-                        .context = evaluateDelimUnderscoreContext(
+                        .r_delim_underscore,
+                        evaluateDelimUnderscoreContext(
                             self.in[self.i..lookahead_i],
                             false,
                             strings.isPunctuation(&.{b}),
@@ -465,21 +597,21 @@ fn scan(self: *Self, scratch: Allocator) !?InlineToken {
                 },
                 else => |b| {
                     break :fsm .{
-                        .token_type = .lr_delim_underscore,
-                        .context = evaluateDelimUnderscoreContext(
+                        .lr_delim_underscore,
+                        evaluateDelimUnderscoreContext(
                             self.in[self.i..lookahead_i],
                             false,
                             strings.isPunctuation(&.{b}),
                         ),
                     };
-                }
+                },
             }
         },
-        .r_delim_underscore_punct_run => {
+        .r_delim_punct_run => {
             if (lookahead_i >= self.in.len) {
                 break :fsm .{
-                    .token_type = .r_delim_underscore,
-                    .context = evaluateDelimUnderscoreContext(
+                    .r_delim_underscore,
+                    evaluateDelimUnderscoreContext(
                         self.in[self.i..lookahead_i],
                         true,
                         false,
@@ -490,34 +622,23 @@ fn scan(self: *Self, scratch: Allocator) !?InlineToken {
             switch (self.in[lookahead_i]) {
                 '_' => {
                     lookahead_i += 1;
-                    continue :fsm .r_delim_underscore_punct_run;
+                    continue :fsm .r_delim_punct_run;
                 },
                 ' ', '\t', '\n' => {
                     break :fsm .{
-                        .token_type = .r_delim_underscore,
-                        .context = evaluateDelimUnderscoreContext(
+                        .r_delim_underscore,
+                        evaluateDelimUnderscoreContext(
                             self.in[self.i..lookahead_i],
                             true,
                             false,
                         ),
                     };
                 },
-                '*' => {
+                '*', '!'...'%', '\''...')', '+'...'/', ':'...'@', '[', ']', '^',
+                '`', '}'...'~' => {
                     break :fsm .{
-                        .token_type = .lr_delim_underscore,
-                        .context = evaluateDelimUnderscoreContext(
-                            self.in[self.i..lookahead_i],
-                            true,
-                            true,
-                        ),
-                        .next_state = .r_delim_star_punct_run,
-                    };
-                },
-                '!'...'%', '\''...')', '+'...'/', ':'...'@', '[', ']', '^', '`',
-                '}'...'~' => {
-                    break :fsm .{
-                        .token_type = .lr_delim_underscore,
-                        .context = evaluateDelimUnderscoreContext(
+                        .lr_delim_underscore,
+                        evaluateDelimUnderscoreContext(
                             self.in[self.i..lookahead_i],
                             true,
                             true,
@@ -525,9 +646,11 @@ fn scan(self: *Self, scratch: Allocator) !?InlineToken {
                     };
                 },
                 else => |b| {
+                    // Since this run started after punctuation, if it is not
+                    // followed by punctuation it cannot be right-delimiting
                     break :fsm .{
-                        .token_type = .l_delim_underscore,
-                        .context = evaluateDelimUnderscoreContext(
+                        .l_delim_underscore,
+                        evaluateDelimUnderscoreContext(
                             self.in[self.i..lookahead_i],
                             true,
                             strings.isPunctuation(&.{b}),
@@ -536,151 +659,139 @@ fn scan(self: *Self, scratch: Allocator) !?InlineToken {
                 }
             }
         },
-        .backtick_run => {
-            if (lookahead_i >= self.in.len) {
-                break :fsm .{ .token_type = .backtick };
-            }
+    };
 
+    const range = self.in[self.i..lookahead_i];
+    const tokens = try evaluateTokens(scratch, token_type, context, range);
+    return .{
+        .tokens = tokens,
+        .next_i = lookahead_i,
+        .next_state = .punct,
+    };
+}
+
+fn tokenizeText(self: Self, scratch: Allocator) !?TokenizeResult {
+    var lookahead_i = self.i;
+
+    const State = enum { start, normal, whitespace, escaped, punct };
+    const next_state: TopLevelState = fsm: switch (State.start) {
+        .start => {
+            // Allow the first character to be something that later we will
+            // break on.
             switch (self.in[lookahead_i]) {
-                '`' => {
+                '&', '`', '[', ']', '<', '>', '(', ')', '*', '_' => {
                     lookahead_i += 1;
-                    continue :fsm .backtick_run;
+                    continue :fsm .punct;
                 },
-                else => {
-                    break :fsm .{ .token_type = .backtick };
+                '\n' => {
+                    lookahead_i += 1;
+                    continue :fsm .whitespace;
                 },
+                else => continue :fsm .normal,
             }
         },
-        .text => {
+        .normal => {
             if (lookahead_i >= self.in.len) {
-                break :fsm .{ .token_type = .text };
+                break :fsm .normal;
             }
 
             switch (self.in[lookahead_i]) {
-                '\n', '&', '`', '[', ']', '<', '>', '(', ')' => {
-                    break :fsm .{ .token_type = .text };
+                '\n', '&', '`', '[', ']', '<', '>', '(', ')', '*', '_' => {
+                    break :fsm .normal;
                 },
-                '*' => {
-                    break :fsm .{
-                        .token_type = .text,
-                        .next_state = .r_delim_star_run,
-                    };
-                },
-                '_' => {
-                    break :fsm .{
-                        .token_type = .text,
-                        .next_state = .r_delim_underscore_run,
-                    };
+                ' ', '\t' => {
+                    continue :fsm .whitespace;
                 },
                 '\\' => {
                     lookahead_i += 1;
-                    continue :fsm .text_escaped;
-                },
-                ' ', '\t' => {
-                    continue :fsm .text_whitespace;
+                    continue :fsm .escaped;
                 },
                 '!'...'%', '\'', '+'...'/', ':', ';', '=', '?', '@', '^',
                 '{'...'~' => {
-                    lookahead_i += 1;
-                    continue :fsm .text_punct;
+                    continue :fsm .punct;
                 },
                 else => {
                     lookahead_i += 1;
-                    continue :fsm .text;
+                    continue :fsm .normal;
                 },
             }
         },
-        .text_whitespace => {
+        .whitespace => {
             if (lookahead_i >= self.in.len) {
-                break :fsm .{ .token_type = .text };
+                break :fsm .whitespace;
             }
 
             switch (self.in[lookahead_i]) {
-                '*' => {
-                    break :fsm .{
-                        .token_type = .text,
-                        .next_state = .l_delim_star_run,
-                    };
-                },
-                '_' => {
-                    break :fsm .{
-                        .token_type = .text,
-                        .next_state = .l_delim_underscore_run,
-                    };
+                '\n', '&', '`', '[', ']', '<', '>', '(', ')', '*', '_' => {
+                    break :fsm .whitespace;
                 },
                 ' ', '\t' => {
                     lookahead_i += 1;
-                    continue :fsm .text_whitespace;
+                    continue :fsm .whitespace;
                 },
-                else => {
-                    continue :fsm .text;
-                },
+                else => continue :fsm .normal,
             }
         },
-        .text_escaped => {
+        .escaped => {
             if (lookahead_i >= self.in.len) {
-                continue :fsm .text;
+                break :fsm .normal;
             }
 
             switch (self.in[lookahead_i]) {
                 '`' => {
                     // Can't escape backticks
-                    continue :fsm .text;
+                    continue :fsm .normal;
+                },
+                '&', '[', ']', '<', '>', '(', ')', '*', '_',
+                '!'...'%', '\'', '+'...'/', ':', ';', '=', '?', '@', '^',
+                '{'...'~' => {
+                    lookahead_i += 1;
+                    continue :fsm .punct;
+                },
+                ' ', '\t' => {
+                    lookahead_i += 1;
+                    continue :fsm .whitespace;
                 },
                 else => {
-                    // Skip character
-                    lookahead_i += 1;
-                    continue :fsm .text;
+                    lookahead_i += 1; // skip escaped character
+                    continue :fsm .normal;
                 },
             }
         },
-        .text_punct => {
+        .punct => {
             if (lookahead_i >= self.in.len) {
-                break :fsm .{ .token_type = .text };
+                break :fsm .punct;
             }
 
             switch (self.in[lookahead_i]) {
-                '*' => {
-                    break :fsm .{
-                        .token_type = .text,
-                        .next_state = .r_delim_star_punct_run,
-                    };
+                '\n', '&', '`', '[', ']', '<', '>', '(', ')', '*', '_' => {
+                    break :fsm .punct;
                 },
-                '_' => {
-                    break :fsm .{
-                        .token_type = .text,
-                        .next_state = .r_delim_underscore_punct_run,
-                    };
+                '!'...'%', '\'', '+'...'/', ':', ';', '=', '?', '@', '^',
+                '{'...'~' => {
+                    lookahead_i += 1;
+                    continue :fsm .punct;
                 },
-                else => {
-                    continue :fsm .text;
+                ' ', '\t' => {
+                    lookahead_i += 1;
+                    continue :fsm .whitespace;
                 },
+                else => continue :fsm .normal,
             }
         },
-        .done => unreachable,
     };
 
     const tokens = try evaluateTokens(
         scratch,
-        result.token_type,
-        result.context,
+        .text,
+        .default,
         self.in[self.i..lookahead_i],
     );
-
-    self.i = lookahead_i;
-    self.state = result.next_state;
-    if (self.i >= self.in.len) {
-        self.state = .done;
-    }
-
-    if (tokens.len > 1) {
-        var i = tokens.len - 1;
-        while (i > 0) {
-            try self.staged.append(scratch, tokens[i]);
-            i -= 1;
-        }
-    }
-    return tokens[0];
+    return .{
+        .tokens = tokens,
+        .next_i = lookahead_i,
+        .next_state = next_state,
+    };
 }
 
 fn evaluateDelimStarContext(range: []const u8) Context {
@@ -711,6 +822,8 @@ fn evaluateTokens(
     context: Context,
     range: []const u8,
 ) ![]InlineToken {
+    std.debug.assert(range.len > 0);
+
     var tokens: ArrayList(InlineToken) = .empty;
 
     switch (token_type) {
@@ -742,10 +855,27 @@ fn evaluateTokens(
 // ----------------------------------------------------------------------------
 const testing = std.testing;
 
-test "tokenize mixed delimiter runs" {
-    const line = "*_foo_*_*bar*_";
+fn expectEqualTokens(
+    expected: []const InlineTokenType,
+    line: []const u8,
+) !void {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const scratch = arena.allocator();
 
-    const expected = [_]InlineTokenType{
+    var tokenizer = Self.init(line);
+
+    for (expected) |exp| {
+        const token = try tokenizer.next(scratch);
+        try std.testing.expectEqual(exp, token.?.token_type);
+    }
+
+    try std.testing.expect(try tokenizer.next(scratch) == null);
+}
+
+test "mixed delimiter runs" {
+    const line = "*_foo_*_*bar*_";
+    try expectEqualTokens(&.{
         .l_delim_star,
         .l_delim_underscore,
         .text,
@@ -756,25 +886,10 @@ test "tokenize mixed delimiter runs" {
         .text,
         .r_delim_star,
         .r_delim_underscore,
-    };
-
-    var tokenizer = Self.init(line);
-
-    var arena_impl = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena_impl.deinit();
-    const arena = arena_impl.allocator();
-
-    for (expected) |exp| {
-        const token = try tokenizer.next(arena);
-        try testing.expectEqual(exp, token.?.token_type);
-    }
-
-    try testing.expect(try tokenizer.next(arena) == null);
+    }, line);
 }
 
-// We should record the run length of the delimiter runs as context for the
-// delimiter tokens.
-test "tokenize delim star context" {
+test "delim star context" {
     const line = "**foo**";
 
     const expected = [_]InlineTokenType{
@@ -785,25 +900,26 @@ test "tokenize delim star context" {
         .r_delim_star,
     };
 
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const scratch = arena.allocator();
+
     var tokenizer = Self.init(line);
 
-    var arena_impl = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena_impl.deinit();
-    const arena = arena_impl.allocator();
-
     for (expected) |exp| {
-        const token = (try tokenizer.next(arena)).?;
-        try testing.expectEqual(exp, token.token_type);
+        const token = (try tokenizer.next(scratch)).?;
+        try std.testing.expectEqual(exp, token.token_type);
 
-        if (
-            token.token_type == .l_delim_star
-            or token.token_type == .r_delim_star
-        ) {
+        if (token.token_type == .l_delim_star) {
+            try testing.expectEqual(2, token.context.delim_star.run_len);
+        }
+
+        if (token.token_type == .r_delim_star) {
             try testing.expectEqual(2, token.context.delim_star.run_len);
         }
     }
 
-    try testing.expect(try tokenizer.next(arena) == null);
+    try std.testing.expect(try tokenizer.next(scratch) == null);
 }
 
 // We should record the run length of the delimiter runs as context for the
@@ -811,7 +927,7 @@ test "tokenize delim star context" {
 //
 // Additionally, for underscore delimiter tokens, we want to attach whether the
 // delimiter run is preceded by punctuation or followed by punctuation.
-test "tokenize delim underscore context" {
+test "delim underscore context" {
     const line = "(__foo__)";
 
     const expected = [_]InlineTokenType{
@@ -826,12 +942,12 @@ test "tokenize delim underscore context" {
 
     var tokenizer = Self.init(line);
 
-    var arena_impl = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena_impl.deinit();
-    const arena = arena_impl.allocator();
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const scratch = arena.allocator();
 
     for (expected) |exp| {
-        const token = (try tokenizer.next(arena)).?;
+        const token = (try tokenizer.next(scratch)).?;
         try testing.expectEqual(exp, token.token_type);
 
         if (token.token_type == .l_delim_underscore) {
@@ -859,5 +975,33 @@ test "tokenize delim underscore context" {
         }
     }
 
-    try testing.expect(try tokenizer.next(arena) == null);
+    try testing.expect(try tokenizer.next(scratch) == null);
+}
+
+test "entity reference" {
+    const line = "&amp;";
+    try expectEqualTokens(&.{.entity_reference}, line);
+}
+
+test "character reference" {
+    const line = "&#42; &#; &#xaf;";
+    try expectEqualTokens(&.{
+        .decimal_character_reference,
+        .text,
+        .hexadecimal_character_reference,
+    }, line);
+}
+
+test "regular text" {
+    const line = "hello foo bar";
+    try expectEqualTokens(&.{.text}, line);
+}
+
+test "backtick run" {
+    const line = "``foobar``";
+    try expectEqualTokens(&.{
+        .backtick,
+        .text,
+        .backtick,
+    }, line);
 }
