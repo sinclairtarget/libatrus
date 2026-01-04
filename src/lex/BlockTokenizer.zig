@@ -15,6 +15,7 @@ const ArrayList = std.ArrayList;
 const BlockToken = @import("tokens.zig").BlockToken;
 const BlockTokenType = @import("tokens.zig").BlockTokenType;
 const LineReader = @import("LineReader.zig");
+const safety = @import("../util/safety.zig");
 
 pub const Error = error{
     /// Input reader did not have a large enough buffer to read a whole line.
@@ -23,14 +24,9 @@ pub const Error = error{
     ReadFailed,
 } || Allocator.Error;
 
-/// Possible states for the FSM.
-const State = enum {
-    start,
-    indent,
-    pound,
-    text,
-    text_whitespace,
-    rule,
+const TokenizeResult = struct {
+    token: BlockToken,
+    next_i: usize,
 };
 
 reader: LineReader,
@@ -58,146 +54,190 @@ pub fn next(self: *Self, scratch: Allocator) Error!?BlockToken {
         self.i = 0;
     }
 
-    return try self.scan(scratch);
+    return try self.tokenize(scratch);
 }
 
 /// Returns the next token starting at the current index.
-fn scan(self: *Self, scratch: Allocator) !BlockToken {
+fn tokenize(self: *Self, scratch: Allocator) !BlockToken {
+    const result: TokenizeResult = blk: {
+        if (try self.tokenizePound(scratch)) |result| {
+            break :blk result;
+        }
+
+        if (try self.tokenizeNewline(scratch)) |result| {
+            break :blk result;
+        }
+
+        if (try self.tokenizeIndent(scratch)) |result| {
+            break :blk result;
+        }
+
+        if (try self.tokenizeRule(scratch)) |result| {
+            break :blk result;
+        }
+
+        break :blk try self.tokenizeText(scratch);
+    };
+
+    self.i = result.next_i;
+    return result.token;
+}
+
+fn tokenizePound(self: Self, scratch: Allocator) !?TokenizeResult {
     var lookahead_i = self.i;
-    const state: State = .start;
-    const token_type: BlockTokenType = fsm: switch (state) {
+
+    const State = enum { start, rest };
+    fsm: switch (State.start) {
         .start => {
             switch (self.line[lookahead_i]) {
                 '#' => {
-                    continue :fsm .pound;
-                },
-                '\n' => {
                     lookahead_i += 1;
-                    break :fsm .newline;
+                    continue :fsm .rest;
                 },
-                ' ', '\t' => {
-                    if (lookahead_i == 0) { // indent only at beginning of line
-                        continue :fsm .indent;
-                    }
-
-                    continue :fsm .text;
-                },
-                '*', '-', '_', '=' => {
-                    if (lookahead_i == 0) {
-                        continue :fsm .rule;
-                    }
-
-                    continue :fsm .text;
-                },
-                else => {
-                    continue :fsm .text;
-                },
+                else => return null,
             }
         },
-        .indent => {
-            switch (self.line[lookahead_i]) {
-                '\t' => {
-                    lookahead_i += 1;
-                    break :fsm .indent;
-                },
-                ' ' => {
-                    lookahead_i += 1;
-                    if (lookahead_i - self.i == 4) {
-                        break :fsm .indent;
-                    }
-
-                    continue :fsm .indent;
-                },
-                '#' => continue :fsm .pound,
-                '*', '-', '_', '=' => continue :fsm .rule,
-                else => continue :fsm .text,
-            }
-        },
-        .pound => {
+        .rest => {
             switch (self.line[lookahead_i]) {
                 '#' => {
                     lookahead_i += 1;
-                    continue :fsm .pound;
+                    continue :fsm .rest;
                 },
-                ' ', '\t', '\n' => {
-                    break :fsm .pound;
-                },
-                else => {
-                    continue :fsm .text;
-                },
+                ' ', '\t', '\n' => break :fsm,
+                else => return null,
             }
         },
-        .rule => {
-            const char = self.line[lookahead_i];
-            var num_chars: u32 = 0;
-            var contains_whitespace = false;
+    }
 
-            while (self.line[lookahead_i] != '\n') {
-                if (self.line[lookahead_i] != char) {
-                    if (self.line[lookahead_i] != ' ' and self.line[lookahead_i] != '\t') {
-                        continue :fsm .text;
-                    }
+    const lexeme = try evaluate_lexeme(self, scratch, .pound, lookahead_i);
+    const token = BlockToken{
+        .token_type = .pound,
+        .lexeme = lexeme,
+    };
+    return .{
+        .token = token,
+        .next_i = lookahead_i,
+    };
+}
 
-                    contains_whitespace = true;
+fn tokenizeNewline(self: Self, scratch: Allocator) !?TokenizeResult {
+    if (self.line[self.i] != '\n') {
+        return null;
+    }
+
+    const lexeme = try evaluate_lexeme(self, scratch, .newline, self.i + 1);
+    const token = BlockToken{
+        .token_type = .newline,
+        .lexeme = lexeme,
+    };
+    return .{
+        .token = token,
+        .next_i = self.i + 1,
+    };
+}
+
+fn tokenizeIndent(self: Self, scratch: Allocator) !?TokenizeResult {
+    if (self.i > 0) {
+        // valid only at beginning of line
+        return null;
+    }
+
+    var lookahead_i = self.i;
+    loop: for (0..safety.loop_bound) |_| {
+        switch (self.line[lookahead_i]) {
+            '\t' => {
+                lookahead_i += 1;
+                break :loop;
+            },
+            ' ' => {
+                lookahead_i += 1;
+                if (lookahead_i - self.i == 4) {
+                    break :loop;
                 }
 
-                num_chars += 1;
+                continue :loop;
+            },
+            else => return null,
+        }
+    } else @panic(safety.loop_bound_panic_msg);
+
+    const lexeme = try evaluate_lexeme(self, scratch, .indent, lookahead_i);
+    const token = BlockToken{
+        .token_type = .indent,
+        .lexeme = lexeme,
+    };
+    return .{
+        .token = token,
+        .next_i = lookahead_i,
+    };
+}
+
+/// Tokenize a rule line (later parsed into setext headings or thematic
+/// breaks).
+fn tokenizeRule(self: Self, scratch: Allocator) !?TokenizeResult {
+    if (self.i > 0) {
+        // valid only at beginning of line
+        return null;
+    }
+
+    var lookahead_i = self.i;
+
+    // Up to three leading spaces allowed
+    loop: for (0..safety.loop_bound) |_| {
+        switch (self.line[lookahead_i]) {
+            ' ' => {
                 lookahead_i += 1;
+            },
+            else => break :loop,
+        }
+    } else @panic(safety.loop_bound_panic_msg);
+    if (lookahead_i > 3) {
+        return null;
+    }
+
+    const start_char = self.line[lookahead_i];
+    var num_chars: u32 = 0;
+    var contains_whitespace = false;
+
+    while (self.line[lookahead_i] != '\n') {
+        if (self.line[lookahead_i] == start_char) {
+            num_chars += 1;
+        } else {
+            if (
+                self.line[lookahead_i] != ' '
+                and self.line[lookahead_i] != '\t'
+            ) {
+                return null;
             }
 
-            if (char != '-' and char != '=' and num_chars < 3) {
-                continue :fsm .text;
-            }
+            contains_whitespace = true;
+        }
 
-            switch (char) {
-                '*' => break :fsm .rule_star,
-                '_' => break :fsm .rule_underline,
-                '-' => {
-                    if (contains_whitespace) {
-                        break :fsm .rule_dash_with_whitespace;
-                    } else {
-                        break :fsm .rule_dash;
-                    }
-                },
-                '=' => {
-                    if (contains_whitespace) {
-                        continue :fsm .text;
-                    } else {
-                        break :fsm .rule_equals;
-                    }
-                },
-                else => unreachable,
+        lookahead_i += 1;
+    }
+
+    if (start_char != '-' and start_char != '=' and num_chars < 3) {
+        return null;
+    }
+
+    const token_type: BlockTokenType = switch (start_char) {
+        '*' => .rule_star,
+        '_' => .rule_underline,
+        '-' => blk: {
+            if (contains_whitespace) {
+                break :blk .rule_dash_with_whitespace;
+            } else {
+                break :blk .rule_dash;
             }
         },
-        .text => {
-            switch (self.line[lookahead_i]) {
-                '\n' => {
-                    break :fsm .text;
-                },
-                ' ', '\t' => {
-                    continue :fsm .text_whitespace;
-                },
-                else => {
-                    lookahead_i += 1;
-                    continue :fsm .text;
-                },
+        '=' => blk: {
+            if (contains_whitespace) {
+                return null;
+            } else {
+                break :blk .rule_equals;
             }
         },
-        .text_whitespace => {
-            switch (self.line[lookahead_i]) {
-                '\n', '#' => {
-                    break :fsm .text;
-                },
-                ' ', '\t' => {
-                    lookahead_i += 1;
-                    continue :fsm .text_whitespace;
-                },
-                else => {
-                    lookahead_i += 1;
-                    continue :fsm .text;
-                },
-            }
-        },
+        else => return null,
     };
 
     const lexeme = try evaluate_lexeme(self, scratch, token_type, lookahead_i);
@@ -205,14 +245,53 @@ fn scan(self: *Self, scratch: Allocator) !BlockToken {
         .token_type = token_type,
         .lexeme = lexeme,
     };
+    return .{
+        .token = token,
+        .next_i = lookahead_i,
+    };
+}
 
-    self.i = lookahead_i;
-    return token;
+fn tokenizeText(self: Self, scratch: Allocator) !TokenizeResult {
+    var lookahead_i = self.i;
+
+    const State = enum { start, whitespace };
+    fsm: switch (State.start) {
+        .start => {
+            switch (self.line[lookahead_i]) {
+                '\n' => break :fsm,
+                ' ', '\t' => continue :fsm .whitespace,
+                else => {
+                    lookahead_i += 1;
+                    continue :fsm .start;
+                },
+            }
+        },
+        .whitespace => {
+            switch (self.line[lookahead_i]) {
+                '\n', '#' => break :fsm,
+                ' ', '\t' => {
+                    lookahead_i += 1;
+                    continue :fsm .whitespace;
+                },
+                else => continue :fsm .start,
+            }
+        },
+    }
+
+    const lexeme = try evaluate_lexeme(self, scratch, .text, lookahead_i);
+    const token = BlockToken{
+        .token_type = .text,
+        .lexeme = lexeme,
+    };
+    return .{
+        .token = token,
+        .next_i = lookahead_i,
+    };
 }
 
 /// Constructs the lexeme given the token type and what we have scanned over.
 fn evaluate_lexeme(
-    self: *Self,
+    self: Self,
     scratch: Allocator,
     token_type: BlockTokenType,
     lookahead_i: usize,
@@ -238,7 +317,25 @@ fn evaluate_lexeme(
 // ----------------------------------------------------------------------------
 // Unit Tests
 // ----------------------------------------------------------------------------
-test "can tokenize" {
+fn expectEqualTokens(expected: []const BlockTokenType, md: []const u8) !void {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const scratch = arena.allocator();
+
+    var reader: Io.Reader = .fixed(md);
+    var buf: [512]u8 = undefined;
+    const line_reader: LineReader = .{ .in = &reader, .buf = &buf };
+    var tokenizer = Self.init(line_reader);
+
+    for (expected) |exp| {
+        const token = try tokenizer.next(scratch);
+        try std.testing.expectEqual(exp, token.?.token_type);
+    }
+
+    try std.testing.expect(try tokenizer.next(scratch) == null);
+}
+
+test "pound paragraph" {
     const md =
         \\# Header
         \\## Subheader
@@ -249,35 +346,48 @@ test "can tokenize" {
         \\
     ;
 
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const scratch = arena.allocator();
+    try expectEqualTokens(&.{
+        .pound, .text, .newline,
+        .pound, .text, .newline,
+        .text, .newline,
+        .text, .newline,
+        .newline,
+        .text, .newline,
+    }, md);
+}
 
-    var reader: Io.Reader = .fixed(md);
-    var buf: [512]u8 = undefined;
-    const line_reader: LineReader = .{ .in = &reader, .buf = &buf };
-    var tokenizer = Self.init(line_reader);
+test "rule" {
+    const md =
+        \\***
+        \\---
+        \\___
+        \\ ---
+        \\  ---
+        \\   ---
+        \\==
+        \\ -- --
+        \\
+    ;
 
-    const expected = [_]BlockTokenType{
-        .pound,
-        .text,
-        .newline,
-        .pound,
-        .text,
-        .newline,
-        .text,
-        .newline,
-        .text,
-        .newline,
-        .newline,
-        .text,
-        .newline,
-    };
+    try expectEqualTokens(&.{
+        .rule_star, .newline,
+        .rule_dash, .newline,
+        .rule_underline, .newline,
+        .rule_dash, .newline,
+        .rule_dash, .newline,
+        .rule_dash, .newline,
+        .rule_equals, .newline,
+        .rule_dash_with_whitespace, .newline,
+    }, md);
+}
 
-    for (expected) |exp| {
-        const token = try tokenizer.next(scratch);
-        try std.testing.expectEqual(exp, token.?.token_type);
-    }
-
-    try std.testing.expect(try tokenizer.next(scratch) == null);
+test "indent" {
+    // Can't use \t in multiline string literal
+    const md = "    a simple\n      space-indented block\n\n\ttab indent\n";
+    try expectEqualTokens(&.{
+        .indent, .text, .newline,
+        .indent, .text, .newline,
+        .newline,
+        .indent, .text, .newline,
+    }, md);
 }
