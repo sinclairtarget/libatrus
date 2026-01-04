@@ -2,15 +2,20 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const ArenaAllocator = std.heap.ArenaAllocator;
 
 const ast = @import("../parse/ast.zig");
 const post = @import("post.zig");
 const @"inline" = @import("inline.zig");
 
-pub fn postProcess(gpa: Allocator, root: *ast.Node) !*ast.Node {
-    return try post.transform(gpa, root);
+pub fn postProcess(alloc: Allocator, root: *ast.Node) !*ast.Node {
+    return try post.transform(alloc, root);
 }
 
-pub fn parseInline(gpa: Allocator, root: *ast.Node) !*ast.Node {
-    return try @"inline".transform(gpa, root);
+pub fn parseInlines(
+    alloc: Allocator,
+    scratch_arena: *ArenaAllocator,
+    root: *ast.Node,
+) !*ast.Node {
+    return try @"inline".transform(alloc, scratch_arena, root);
 }

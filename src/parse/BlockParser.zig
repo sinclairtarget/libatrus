@@ -46,43 +46,42 @@ pub fn init(tokenizer: *BlockTokenizer) Self {
 /// unparsed inline text.
 ///
 /// Caller owns the returned AST.
-pub fn parse(self: *Self, perm: Allocator) Error!*ast.Node {
-    // Arena used for tokenization / scratch
-    var arena = std.heap.ArenaAllocator.init(perm);
-    defer arena.deinit();
-    const scratch = arena.allocator();
-
+pub fn parse(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) Error!*ast.Node {
     var children: ArrayList(*ast.Node) = .empty;
     errdefer {
         for (children.items) |child| {
-            child.deinit(perm);
+            child.deinit(alloc);
         }
-        children.deinit(perm);
+        children.deinit(alloc);
     }
 
     for (0..safety.loop_bound) |_| { // could hit if we forget to consume tokens
         _ = try self.peek(scratch) orelse break;
 
         if (blk: {
-            if (try self.parseIndentedCode(perm, scratch)) |indent_code| {
+            if (try self.parseIndentedCode(alloc, scratch)) |indent_code| {
                 break :blk indent_code;
             }
 
-            if (try self.parseATXHeading(perm, scratch)) |heading| {
+            if (try self.parseATXHeading(alloc, scratch)) |heading| {
                 break :blk heading;
             }
 
-            if (try self.parseThematicBreak(perm, scratch)) |thematic_break| {
+            if (try self.parseThematicBreak(alloc, scratch)) |thematic_break| {
                 break :blk thematic_break;
             }
 
-            if (try self.parseParagraph(perm, scratch)) |paragraph| {
+            if (try self.parseParagraph(alloc, scratch)) |paragraph| {
                 break :blk paragraph;
             }
 
             break :blk null;
         }) |next| {
-            try children.append(perm, next);
+            try children.append(alloc, next);
             self.clear_consumed_tokens();
             continue;
         }
@@ -95,10 +94,10 @@ pub fn parse(self: *Self, perm: Allocator) Error!*ast.Node {
         @panic("unable to parse block token");
     } else @panic(safety.loop_bound_panic_msg);
 
-    const node = try perm.create(ast.Node);
+    const node = try alloc.create(ast.Node);
     node.* = .{
         .root = .{
-            .children = try children.toOwnedSlice(perm),
+            .children = try children.toOwnedSlice(alloc),
         },
     };
     return node;
@@ -109,7 +108,7 @@ pub fn parse(self: *Self, perm: Allocator) Error!*ast.Node {
 // end   => pound newline | newline
 fn parseATXHeading(
     self: *Self,
-    perm: Allocator,
+    alloc: Allocator,
     scratch: Allocator,
 ) !?*ast.Node {
     // Just peek, don't consume until we know the depth is valid
@@ -152,15 +151,15 @@ fn parseATXHeading(
         if (trimmed_inner.len == 0) {
             break :blk &.{};
         }
-        const text_node = try createTextNode(perm, trimmed_inner);
+        const text_node = try createTextNode(alloc, trimmed_inner);
         break :blk &.{ text_node };
     };
 
-    const node = try perm.create(ast.Node);
+    const node = try alloc.create(ast.Node);
     node.* = .{
         .heading = .{
             .depth = @truncate(depth),
-            .children = try perm.dupe(*ast.Node, children),
+            .children = try alloc.dupe(*ast.Node, children),
         },
     };
     return node;
@@ -168,7 +167,7 @@ fn parseATXHeading(
 
 fn parseThematicBreak(
     self: *Self,
-    perm: Allocator,
+    alloc: Allocator,
     scratch: Allocator,
 ) !?*ast.Node {
     const token = try self.peek(scratch) orelse return null;
@@ -188,14 +187,14 @@ fn parseThematicBreak(
 
     _ = try self.consume(scratch, &.{.newline});
 
-    const node = try perm.create(ast.Node);
+    const node = try alloc.create(ast.Node);
     node.* = .{ .thematic_break = .{} };
     return node;
 }
 
 fn parseIndentedCode(
     self: *Self,
-    perm: Allocator,
+    alloc: Allocator,
     scratch: Allocator,
 ) !?*ast.Node {
     // Block has to start with an indent.
@@ -275,10 +274,10 @@ fn parseIndentedCode(
         "\n",
         lines.items[start_index..end_index],
     );
-    const node = try perm.create(ast.Node);
+    const node = try alloc.create(ast.Node);
     node.* = .{
         .code = .{
-            .value = try perm.dupe(u8, buf),
+            .value = try alloc.dupe(u8, buf),
             .lang = "",
         },
     };
@@ -287,7 +286,7 @@ fn parseIndentedCode(
 
 fn parseParagraph(
     self: *Self,
-    perm: Allocator,
+    alloc: Allocator,
     scratch: Allocator,
 ) !?*ast.Node {
     var lines: ArrayList([]const u8) = .empty;
@@ -313,12 +312,12 @@ fn parseParagraph(
 
     // Join lines by putting a newline between them
     const buf = try std.mem.join(scratch, "\n", lines.items);
-    const text_node = try createTextNode(perm, buf);
+    const text_node = try createTextNode(alloc, buf);
 
-    const node = try perm.create(ast.Node);
+    const node = try alloc.create(ast.Node);
     node.* = .{
         .paragraph = .{
-            .children = try perm.dupe(*ast.Node, &.{ text_node }),
+            .children = try alloc.dupe(*ast.Node, &.{ text_node }),
         },
     };
     return node;
@@ -359,11 +358,11 @@ fn scanTextStart(self: *Self, scratch: Allocator) !?[]const u8 {
     }
 }
 
-fn createTextNode(perm: Allocator, value: []const u8) !*ast.Node {
-    const node = try perm.create(ast.Node);
+fn createTextNode(alloc: Allocator, value: []const u8) !*ast.Node {
+    const node = try alloc.create(ast.Node);
     node.* = .{
         .text = .{
-            .value = try perm.dupe(u8, value),
+            .value = try alloc.dupe(u8, value),
         },
     };
     return node;
@@ -434,7 +433,11 @@ test "ATX heading and paragraphs" {
     var tokenizer = BlockTokenizer.init(line_reader);
     var parser = Self.init(&tokenizer);
 
-    const root = try parser.parse(std.testing.allocator);
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const scratch = arena.allocator();
+
+    const root = try parser.parse(std.testing.allocator, scratch);
     defer root.deinit(std.testing.allocator);
 
     try std.testing.expectEqual(.root, @as(ast.NodeType, root.*));

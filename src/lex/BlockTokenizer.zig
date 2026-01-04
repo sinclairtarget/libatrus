@@ -51,18 +51,18 @@ pub fn init(reader: LineReader) Self {
 ///
 /// Caller is responsible for freeing memory associated with each returned
 /// token. (The returned tokens own the memory used to store their lexemes.)
-pub fn next(self: *Self, alloc: Allocator) Error!?BlockToken {
+pub fn next(self: *Self, scratch: Allocator) Error!?BlockToken {
     // Load new input line when needed
     if (self.i >= self.line.len) {
         self.line = try self.reader.next() orelse return null;
         self.i = 0;
     }
 
-    return try self.scan(alloc);
+    return try self.scan(scratch);
 }
 
 /// Returns the next token starting at the current index.
-fn scan(self: *Self, alloc: Allocator) !BlockToken {
+fn scan(self: *Self, scratch: Allocator) !BlockToken {
     var lookahead_i = self.i;
     const state: State = .start;
     const token_type: BlockTokenType = fsm: switch (state) {
@@ -200,7 +200,7 @@ fn scan(self: *Self, alloc: Allocator) !BlockToken {
         },
     };
 
-    const lexeme = try evaluate_lexeme(self, alloc, token_type, lookahead_i);
+    const lexeme = try evaluate_lexeme(self, scratch, token_type, lookahead_i);
     const token = BlockToken{
         .token_type = token_type,
         .lexeme = lexeme,
@@ -213,7 +213,7 @@ fn scan(self: *Self, alloc: Allocator) !BlockToken {
 /// Constructs the lexeme given the token type and what we have scanned over.
 fn evaluate_lexeme(
     self: *Self,
-    alloc: Allocator,
+    scratch: Allocator,
     token_type: BlockTokenType,
     lookahead_i: usize,
 ) ![]const u8 {
@@ -223,14 +223,14 @@ fn evaluate_lexeme(
             return ""; // no lexeme
         },
         .pound => {
-            const lexeme = try alloc.dupe(
+            const lexeme = try scratch.dupe(
                 u8,
                 std.mem.trim(u8, self.line[self.i..lookahead_i], " \t"),
             );
             return lexeme;
         },
         else => {
-            return try alloc.dupe(u8, self.line[self.i..lookahead_i]);
+            return try scratch.dupe(u8, self.line[self.i..lookahead_i]);
         },
     }
 }
@@ -249,9 +249,9 @@ test "can tokenize" {
         \\
     ;
 
-    var arena_impl = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena_impl.deinit();
-    const arena = arena_impl.allocator();
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const scratch = arena.allocator();
 
     var reader: Io.Reader = .fixed(md);
     var buf: [512]u8 = undefined;
@@ -275,9 +275,9 @@ test "can tokenize" {
     };
 
     for (expected) |exp| {
-        const token = try tokenizer.next(arena);
+        const token = try tokenizer.next(scratch);
         try std.testing.expectEqual(exp, token.?.token_type);
     }
 
-    try std.testing.expect(try tokenizer.next(arena) == null);
+    try std.testing.expect(try tokenizer.next(scratch) == null);
 }

@@ -14,7 +14,7 @@ const CreateTextNodeFunc = *const fn (
     value: []const u8,
 ) Allocator.Error!*ast.Node;
 
-perm_allocator: Allocator,
+allocator: Allocator,
 list: ArrayList(*ast.Node),
 running_text: Io.Writer.Allocating,
 create_text_node: CreateTextNodeFunc,
@@ -25,7 +25,7 @@ pub fn init(
     create_text_node: CreateTextNodeFunc,
 ) Self {
     return .{
-        .perm_allocator = perm,
+        .allocator = perm,
         .list = .empty,
         .running_text = Io.Writer.Allocating.init(scratch),
         .create_text_node = create_text_node,
@@ -33,7 +33,7 @@ pub fn init(
 }
 
 pub fn deinit(self: *Self) void {
-    self.list.deinit(self.perm_allocator);
+    self.list.deinit(self.allocator);
     self.running_text.deinit();
 }
 
@@ -51,7 +51,7 @@ pub fn items(self: Self) []*ast.Node {
 
 pub fn append(self: *Self, node: *ast.Node) !void {
     try self.checkAppendCollected();
-    try self.list.append(self.perm_allocator, node);
+    try self.list.append(self.allocator, node);
 }
 
 pub fn appendText(self: *Self, value: []const u8) !void {
@@ -68,7 +68,7 @@ pub fn flush(self: *Self) !void {
 /// allocators used for the NodeList.
 pub fn toOwnedSlice(self: *Self) ![]*ast.Node {
     try self.checkAppendCollected();
-    return try self.list.toOwnedSlice(self.perm_allocator);
+    return try self.list.toOwnedSlice(self.allocator);
 }
 
 fn checkAppendCollected(self: *Self) !void {
@@ -77,9 +77,9 @@ fn checkAppendCollected(self: *Self) !void {
     }
 
     const text = try self.create_text_node(
-        self.perm_allocator,
+        self.allocator,
         self.running_text.written(),
     );
-    try self.list.append(self.perm_allocator, text);
+    try self.list.append(self.allocator, text);
     self.running_text.clearRetainingCapacity();
 }

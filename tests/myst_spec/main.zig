@@ -114,11 +114,11 @@ pub fn main() !void {
     }
     const gpa = debug_allocator.allocator();
 
-    var arena_impl = ArenaAllocator.init(gpa);
-    defer arena_impl.deinit();
-    const arena = arena_impl.allocator();
+    var arena = ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    const scratch = arena.allocator();
 
-    const args = try std.process.argsAlloc(arena);
+    const args = try std.process.argsAlloc(scratch);
     if (args.len < 2) {
         return error.NotEnoughArgs;
     }
@@ -129,28 +129,28 @@ pub fn main() !void {
         filter = args[2];
     }
 
-    const tests = gatherTests(arena, path, filter) catch |err| {
+    const tests = gatherTests(scratch, path, filter) catch |err| {
         std.debug.print("failed to gather tests\n", .{});
         return err;
     };
 
     if (tests.len == 1) {
         const t = tests[0];
-        try t.func(arena, .{ .verbose = true });
+        try t.func(scratch, .{ .verbose = true });
         return;
     }
 
-    var map = AutoHashMap(anyerror, u16).init(arena);
+    var map = AutoHashMap(anyerror, u16).init(scratch);
     defer map.deinit();
 
-    var per_test_arena_impl = ArenaAllocator.init(gpa);
-    defer per_test_arena_impl.deinit();
+    var per_test_arena = ArenaAllocator.init(gpa);
+    defer per_test_arena.deinit();
 
     var num_succeeded: u32 = 0;
     var num_failed: u32 = 0;
     for (tests, 1..) |t, i| {
-        defer _ = per_test_arena_impl.reset(.retain_capacity);
-        t.func(per_test_arena_impl.allocator(), .{}) catch |err| {
+        defer _ = per_test_arena.reset(.retain_capacity);
+        t.func(per_test_arena.allocator(), .{}) catch |err| {
             std.debug.print(
                 "{d}/{d} \x1b[31m{any}: {s}\x1b[0m\n",
                 .{ i, tests.len, err, t.case.title },

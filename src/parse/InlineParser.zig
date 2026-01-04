@@ -39,45 +39,49 @@ pub fn init(tokenizer: *InlineTokenizer) Self {
 /// Parse inline tokens from the token stream.
 ///
 /// Returns a slice of AST nodes that the caller is responsible for freeing.
-pub fn parse(self: *Self, gpa: Allocator, arena: Allocator) Error![]*ast.Node {
-    var nodes = NodeList.init(gpa, arena, createTextNode);
+pub fn parse(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) Error![]*ast.Node {
+    var nodes = NodeList.init(alloc, scratch, createTextNode);
     errdefer {
         for (nodes.items()) |node| {
-            node.deinit(gpa);
+            node.deinit(alloc);
         }
         nodes.deinit();
     }
 
     for (0..safety.loop_bound) |_| { // could hit if we forget to consume tokens
-        _ = try self.peek(arena) orelse break;
+        _ = try self.peek(scratch) orelse break;
 
-        if (try self.parseInlineCode(gpa, arena)) |code| {
+        if (try self.parseInlineCode(alloc, scratch)) |code| {
             try nodes.append(code);
             continue;
         }
 
-        if (try self.parseInlineLink(gpa, arena)) |link| {
+        if (try self.parseInlineLink(alloc, scratch)) |link| {
             try nodes.append(link);
             continue;
         }
 
-        if (try self.parseAnyEmphasis(gpa, arena)) |emph| {
+        if (try self.parseAnyEmphasis(alloc, scratch)) |emph| {
             try nodes.append(emph);
             continue;
         }
 
-        if (try self.parseAnyStrong(gpa, arena)) |strong| {
+        if (try self.parseAnyStrong(alloc, scratch)) |strong| {
             try nodes.append(strong);
             continue;
         }
 
-        const text_value = try self.scanText(arena);
+        const text_value = try self.scanText(scratch);
         if (text_value.len > 0) {
             try nodes.appendText(text_value);
             continue;
         }
 
-        const text_fallback_value = try self.scanTextFallback(arena);
+        const text_fallback_value = try self.scanTextFallback(scratch);
         if (text_fallback_value.len > 0) {
             try nodes.appendText(text_fallback_value);
             continue;
@@ -95,63 +99,63 @@ pub fn parse(self: *Self, gpa: Allocator, arena: Allocator) Error![]*ast.Node {
 // inner  => (link | emph | strong | text)+
 fn parseStarStrong(
     self: *Self,
-    gpa: Allocator,
-    arena: Allocator,
+    alloc: Allocator,
+    scratch: Allocator,
 ) Error!?*ast.Node {
     var strong_node: ?*ast.Node = null;
-    var children = NodeList.init(gpa, arena, createTextNode);
+    var children = NodeList.init(alloc, scratch, createTextNode);
     const checkpoint_index = self.checkpoint();
     defer {
         if (strong_node == null) {
             self.backtrack(checkpoint_index);
             for (children.items()) |child| {
-                child.deinit(gpa);
+                child.deinit(alloc);
             }
             children.deinit();
         }
     }
 
-    const open_token = try self.consume(arena, &.{
+    const open_token = try self.consume(scratch, &.{
         .l_delim_star,
         .lr_delim_star,
     }) orelse return null;
-    _ = try self.consume(arena, &.{
+    _ = try self.consume(scratch, &.{
         .l_delim_star,
         .lr_delim_star,
     }) orelse return null;
 
     for (0..safety.loop_bound) |_| {
-        if (try self.parseInlineCode(gpa, arena)) |code| {
+        if (try self.parseInlineCode(alloc, scratch)) |code| {
             try children.append(code);
             continue;
         }
 
-        if (try self.parseInlineLink(gpa, arena)) |link| {
+        if (try self.parseInlineLink(alloc, scratch)) |link| {
             try children.append(link);
             continue;
         }
 
-        if (try self.parseAnyEmphasis(gpa, arena)) |emph| {
+        if (try self.parseAnyEmphasis(alloc, scratch)) |emph| {
             try children.append(emph);
             continue;
         }
 
-        if (try self.parseAnyStrong(gpa, arena)) |strong| {
+        if (try self.parseAnyStrong(alloc, scratch)) |strong| {
             try children.append(strong);
             continue;
         }
 
-        const text_value = try self.scanText(arena);
+        const text_value = try self.scanText(scratch);
         if (text_value.len > 0) {
             try children.appendText(text_value);
             continue;
         }
 
         // Check for closing condition
-        if (try self.peek(arena)) |node| {
+        if (try self.peek(scratch)) |node| {
             switch (node.token_type) {
                 .r_delim_star, .lr_delim_star => |t| {
-                    if (try self.peekAhead(arena, 2)) |next_node| {
+                    if (try self.peekAhead(scratch, 2)) |next_node| {
                         if (next_node.token_type == t) {
                             break;
                         }
@@ -161,7 +165,7 @@ fn parseStarStrong(
             }
         }
 
-        const text_fallback_value = try self.scanTextFallback(arena);
+        const text_fallback_value = try self.scanTextFallback(scratch);
         if (text_fallback_value.len > 0) {
             try children.appendText(text_fallback_value);
             continue;
@@ -175,11 +179,11 @@ fn parseStarStrong(
         return null;
     }
 
-    const close_token = try self.consume(arena, &.{
+    const close_token = try self.consume(scratch, &.{
         .r_delim_star,
         .lr_delim_star,
     }) orelse return null;
-    _ = try self.consume(arena, &.{
+    _ = try self.consume(scratch, &.{
         .r_delim_star,
         .lr_delim_star,
     }) orelse return null;
@@ -188,7 +192,7 @@ fn parseStarStrong(
         return null;
     }
 
-    strong_node = try gpa.create(ast.Node);
+    strong_node = try alloc.create(ast.Node);
     strong_node.?.* = .{
         .strong = .{
             .children = try children.toOwnedSlice(),
@@ -208,44 +212,44 @@ fn parseStarStrong(
 /// other. (That should get parsed as strong.)
 fn parseStarEmphasis(
     self: *Self,
-    gpa: Allocator,
-    arena: Allocator,
+    alloc: Allocator,
+    scratch: Allocator,
 ) Error!?*ast.Node {
     var emphasis_node: ?*ast.Node = null;
-    var children = NodeList.init(gpa, arena, createTextNode);
+    var children = NodeList.init(alloc, scratch, createTextNode);
     const checkpoint_index = self.checkpoint();
     defer {
         if (emphasis_node == null) {
             self.backtrack(checkpoint_index);
             for (children.items()) |child| {
-                child.deinit(gpa);
+                child.deinit(alloc);
             }
             children.deinit();
         }
     }
 
-    const open_token = try self.consume(arena, &.{
+    const open_token = try self.consume(scratch, &.{
         .l_delim_star,
         .lr_delim_star,
     }) orelse return null;
 
     for (0..safety.loop_bound) |_| {
-        const maybe_leading_emph = try self.parseStarEmphasis(gpa, arena);
+        const maybe_leading_emph = try self.parseStarEmphasis(alloc, scratch);
 
         if (blk: {
-            if (try self.parseInlineCode(gpa, arena)) |code| {
+            if (try self.parseInlineCode(alloc, scratch)) |code| {
                 break :blk code;
             }
 
-            if (try self.parseInlineLink(gpa, arena)) |link| {
+            if (try self.parseInlineLink(alloc, scratch)) |link| {
                 break :blk link;
             }
 
-            if (try self.parseUnderscoreEmphasis(gpa, arena)) |emph| {
+            if (try self.parseUnderscoreEmphasis(alloc, scratch)) |emph| {
                 break :blk emph;
             }
 
-            if (try self.parseAnyStrong(gpa, arena)) |strong| {
+            if (try self.parseAnyStrong(alloc, scratch)) |strong| {
                 break :blk strong;
             }
 
@@ -255,19 +259,19 @@ fn parseStarEmphasis(
                 try children.append(emph);
             }
             try children.append(node);
-            if (try self.parseStarEmphasis(gpa, arena)) |emph| {
+            if (try self.parseStarEmphasis(alloc, scratch)) |emph| {
                 try children.append(emph);
             }
             continue;
         }
 
-        const text_value = try self.scanText(arena);
+        const text_value = try self.scanText(scratch);
         if (text_value.len > 0) {
             if (maybe_leading_emph) |emph| {
                 try children.append(emph);
             }
             try children.appendText(text_value);
-            if (try self.parseStarEmphasis(gpa, arena)) |emph| {
+            if (try self.parseStarEmphasis(alloc, scratch)) |emph| {
                 try children.append(emph);
             }
             continue;
@@ -275,18 +279,18 @@ fn parseStarEmphasis(
 
         // failed to parse anything
         if (maybe_leading_emph) |emph| {
-            emph.deinit(gpa);
+            emph.deinit(alloc);
         }
 
         // Check for closing condition
-        if (try self.peek(arena)) |node| {
+        if (try self.peek(scratch)) |node| {
             switch (node.token_type) {
                 .r_delim_star, .lr_delim_star => break,
                 else => {},
             }
         }
 
-        const text_fallback_value = try self.scanTextFallback(arena);
+        const text_fallback_value = try self.scanTextFallback(scratch);
         if (text_fallback_value.len > 0) {
             try children.appendText(text_fallback_value);
             continue;
@@ -300,7 +304,7 @@ fn parseStarEmphasis(
         return null;
     }
 
-    const close_token = try self.consume(arena, &.{
+    const close_token = try self.consume(scratch, &.{
         .r_delim_star,
         .lr_delim_star,
     }) orelse return null;
@@ -309,7 +313,7 @@ fn parseStarEmphasis(
         return null;
     }
 
-    emphasis_node = try gpa.create(ast.Node);
+    emphasis_node = try alloc.create(ast.Node);
     emphasis_node.?.* = .{
         .emphasis = .{
             .children = try children.toOwnedSlice(),
@@ -324,27 +328,27 @@ fn parseStarEmphasis(
 // inner  => (link | emph | strong | text)+
 fn parseUnderscoreStrong(
     self: *Self,
-    gpa: Allocator,
-    arena: Allocator,
+    alloc: Allocator,
+    scratch: Allocator,
 ) Error!?*ast.Node {
     var strong_node: ?*ast.Node = null;
-    var children = NodeList.init(gpa, arena, createTextNode);
+    var children = NodeList.init(alloc, scratch, createTextNode);
     const checkpoint_index = self.checkpoint();
     defer {
         if (strong_node == null) {
             self.backtrack(checkpoint_index);
             for (children.items()) |child| {
-                child.deinit(gpa);
+                child.deinit(alloc);
             }
             children.deinit();
         }
     }
 
-    const open_token = try self.peek(arena) orelse return null;
+    const open_token = try self.peek(scratch) orelse return null;
     switch (open_token.token_type) {
         .l_delim_underscore => |t| {
-            _ = try self.consume(arena, &.{t});
-            _ = try self.consume(arena, &.{t}) orelse return null;
+            _ = try self.consume(scratch, &.{t});
+            _ = try self.consume(scratch, &.{t}) orelse return null;
         },
         .lr_delim_underscore => |t| {
             // Can only open strong if delimiter run follows punctuation
@@ -352,44 +356,44 @@ fn parseUnderscoreStrong(
                 return null;
             }
 
-            _ = try self.consume(arena, &.{t});
-            _ = try self.consume(arena, &.{t}) orelse return null;
+            _ = try self.consume(scratch, &.{t});
+            _ = try self.consume(scratch, &.{t}) orelse return null;
         },
         else => return null,
     }
 
     for (0..safety.loop_bound) |_| {
-        if (try self.parseInlineCode(gpa, arena)) |code| {
+        if (try self.parseInlineCode(alloc, scratch)) |code| {
             try children.append(code);
             continue;
         }
 
-        if (try self.parseInlineLink(gpa, arena)) |link| {
+        if (try self.parseInlineLink(alloc, scratch)) |link| {
             try children.append(link);
             continue;
         }
 
-        if (try self.parseAnyEmphasis(gpa, arena)) |emph| {
+        if (try self.parseAnyEmphasis(alloc, scratch)) |emph| {
             try children.append(emph);
             continue;
         }
 
-        if (try self.parseAnyStrong(gpa, arena)) |strong| {
+        if (try self.parseAnyStrong(alloc, scratch)) |strong| {
             try children.append(strong);
             continue;
         }
 
-        const text_value = try self.scanText(arena);
+        const text_value = try self.scanText(scratch);
         if (text_value.len > 0) {
             try children.appendText(text_value);
             continue;
         }
 
         // Check for closing condition
-        if (try self.peek(arena)) |node| {
+        if (try self.peek(scratch)) |node| {
             switch (node.token_type) {
                 .r_delim_underscore, .lr_delim_underscore => |t| {
-                    if (try self.peekAhead(arena, 2)) |next_node| {
+                    if (try self.peekAhead(scratch, 2)) |next_node| {
                         if (next_node.token_type == t) {
                             break;
                         }
@@ -399,7 +403,7 @@ fn parseUnderscoreStrong(
             }
         }
 
-        const text_fallback_value = try self.scanTextFallback(arena);
+        const text_fallback_value = try self.scanTextFallback(scratch);
         if (text_fallback_value.len > 0) {
             try children.appendText(text_fallback_value);
             continue;
@@ -413,11 +417,11 @@ fn parseUnderscoreStrong(
         return null;
     }
 
-    const close_token = try self.peek(arena) orelse return null;
+    const close_token = try self.peek(scratch) orelse return null;
     switch (close_token.token_type) {
         .r_delim_underscore => |t| {
-            _ = try self.consume(arena, &.{t});
-            _ = try self.consume(arena, &.{t}) orelse return null;
+            _ = try self.consume(scratch, &.{t});
+            _ = try self.consume(scratch, &.{t}) orelse return null;
         },
         .lr_delim_underscore => |t| {
             // Can only close strong if delimiter run is followed by punctuation
@@ -425,8 +429,8 @@ fn parseUnderscoreStrong(
                 return null;
             }
 
-            _ = try self.consume(arena, &.{t});
-            _ = try self.consume(arena, &.{t}) orelse return null;
+            _ = try self.consume(scratch, &.{t});
+            _ = try self.consume(scratch, &.{t}) orelse return null;
         },
         else => return null,
     }
@@ -435,7 +439,7 @@ fn parseUnderscoreStrong(
         return null;
     }
 
-    strong_node = try gpa.create(ast.Node);
+    strong_node = try alloc.create(ast.Node);
     strong_node.?.* = .{
         .strong = .{
             .children = try children.toOwnedSlice(),
@@ -455,53 +459,53 @@ fn parseUnderscoreStrong(
 /// other. (That should get parsed as strong.)
 fn parseUnderscoreEmphasis(
     self: *Self,
-    gpa: Allocator,
-    arena: Allocator,
+    alloc: Allocator,
+    scratch: Allocator,
 ) Error!?*ast.Node {
     var emphasis_node: ?*ast.Node = null;
-    var children = NodeList.init(gpa, arena, createTextNode);
+    var children = NodeList.init(alloc, scratch, createTextNode);
     const checkpoint_index = self.checkpoint();
     defer {
         if (emphasis_node == null) {
             self.backtrack(checkpoint_index);
             for (children.items()) |child| {
-                child.deinit(gpa);
+                child.deinit(alloc);
             }
             children.deinit();
         }
     }
 
-    const open_token = try self.peek(arena) orelse return null;
+    const open_token = try self.peek(scratch) orelse return null;
     switch (open_token.token_type) {
-        .l_delim_underscore => _ = try self.consume(arena, &.{.l_delim_underscore}),
+        .l_delim_underscore => _ = try self.consume(scratch, &.{.l_delim_underscore}),
         .lr_delim_underscore => {
             // Can only open emphasis if delimiter run follows punctuation
             if (!open_token.context.delim_underscore.preceded_by_punct) {
                 return null;
             }
 
-            _ = try self.consume(arena, &.{.lr_delim_underscore});
+            _ = try self.consume(scratch, &.{.lr_delim_underscore});
         },
         else => return null,
     }
 
     for (0..safety.loop_bound) |_| {
-        const maybe_leading_emph = try self.parseUnderscoreEmphasis(gpa, arena);
+        const maybe_leading_emph = try self.parseUnderscoreEmphasis(alloc, scratch);
 
         if (blk: {
-            if (try self.parseInlineCode(gpa, arena)) |code| {
+            if (try self.parseInlineCode(alloc, scratch)) |code| {
                 break :blk code;
             }
 
-            if (try self.parseInlineLink(gpa, arena)) |link| {
+            if (try self.parseInlineLink(alloc, scratch)) |link| {
                 break :blk link;
             }
 
-            if (try self.parseStarEmphasis(gpa, arena)) |emph| {
+            if (try self.parseStarEmphasis(alloc, scratch)) |emph| {
                 break :blk emph;
             }
 
-            if (try self.parseAnyStrong(gpa, arena)) |strong| {
+            if (try self.parseAnyStrong(alloc, scratch)) |strong| {
                 break :blk strong;
             }
 
@@ -511,19 +515,19 @@ fn parseUnderscoreEmphasis(
                 try children.append(emph);
             }
             try children.append(node);
-            if (try self.parseUnderscoreEmphasis(gpa, arena)) |emph| {
+            if (try self.parseUnderscoreEmphasis(alloc, scratch)) |emph| {
                 try children.append(emph);
             }
             continue;
         }
 
-        const text_value = try self.scanText(arena);
+        const text_value = try self.scanText(scratch);
         if (text_value.len > 0) {
             if (maybe_leading_emph) |emph| {
                 try children.append(emph);
             }
             try children.appendText(text_value);
-            if (try self.parseStarEmphasis(gpa, arena)) |emph| {
+            if (try self.parseStarEmphasis(alloc, scratch)) |emph| {
                 try children.append(emph);
             }
             continue;
@@ -531,18 +535,18 @@ fn parseUnderscoreEmphasis(
 
         // failed to parse anything
         if (maybe_leading_emph) |emph| {
-            emph.deinit(gpa);
+            emph.deinit(alloc);
         }
 
         // Check for closing condition
-        if (try self.peek(arena)) |node| {
+        if (try self.peek(scratch)) |node| {
             switch (node.token_type) {
                 .r_delim_underscore, .lr_delim_underscore => break,
                 else => {},
             }
         }
 
-        const text_fallback_value = try self.scanTextFallback(arena);
+        const text_fallback_value = try self.scanTextFallback(scratch);
         if (text_fallback_value.len > 0) {
             try children.appendText(text_fallback_value);
             continue;
@@ -556,16 +560,16 @@ fn parseUnderscoreEmphasis(
         return null;
     }
 
-    const close_token = try self.peek(arena) orelse return null;
+    const close_token = try self.peek(scratch) orelse return null;
     switch (close_token.token_type) {
-        .r_delim_underscore => _ = try self.consume(arena, &.{.r_delim_underscore}),
+        .r_delim_underscore => _ = try self.consume(scratch, &.{.r_delim_underscore}),
         .lr_delim_underscore => {
             // Can only close emphasis if delimiter run is followed by punctuation
             if (!close_token.context.delim_underscore.followed_by_punct) {
                 return null;
             }
 
-            _ = try self.consume(arena, &.{.lr_delim_underscore});
+            _ = try self.consume(scratch, &.{.lr_delim_underscore});
         },
         else => return null,
     }
@@ -574,7 +578,7 @@ fn parseUnderscoreEmphasis(
         return null;
     }
 
-    emphasis_node = try gpa.create(ast.Node);
+    emphasis_node = try alloc.create(ast.Node);
     emphasis_node.?.* = .{
         .emphasis = .{
             .children = try children.toOwnedSlice(),
@@ -625,14 +629,14 @@ fn isValidBySumOfLengthsRule(open: InlineToken, close: InlineToken) bool {
 
 fn parseAnyEmphasis(
     self: *Self,
-    gpa: Allocator,
-    arena: Allocator,
+    alloc: Allocator,
+    scratch: Allocator,
 ) Error!?*ast.Node {
-    if (try self.parseStarEmphasis(gpa, arena)) |emph| {
+    if (try self.parseStarEmphasis(alloc, scratch)) |emph| {
         return emph;
     }
 
-    if (try self.parseUnderscoreEmphasis(gpa, arena)) |emph| {
+    if (try self.parseUnderscoreEmphasis(alloc, scratch)) |emph| {
         return emph;
     }
 
@@ -641,14 +645,14 @@ fn parseAnyEmphasis(
 
 fn parseAnyStrong(
     self: *Self,
-    gpa: Allocator,
-    arena: Allocator,
+    alloc: Allocator,
+    scratch: Allocator,
 ) Error!?*ast.Node {
-    if (try self.parseStarStrong(gpa, arena)) |strong| {
+    if (try self.parseStarStrong(alloc, scratch)) |strong| {
         return strong;
     }
 
-    if (try self.parseUnderscoreStrong(gpa, arena)) |strong| {
+    if (try self.parseUnderscoreStrong(alloc, scratch)) |strong| {
         return strong;
     }
 
@@ -658,8 +662,8 @@ fn parseAnyStrong(
 // @ => backtick(n) .+ backtick(n)
 fn parseInlineCode(
     self: *Self,
-    gpa: Allocator,
-    arena: Allocator,
+    alloc: Allocator,
+    scratch: Allocator,
 ) Error!?*ast.Node {
     var inline_code_node: ?*ast.Node = null;
     const checkpoint_index = self.checkpoint();
@@ -669,26 +673,26 @@ fn parseInlineCode(
         }
     }
 
-    const open = try self.consume(arena, &.{ .backtick }) orelse return null;
+    const open = try self.consume(scratch, &.{ .backtick }) orelse return null;
 
     var values: ArrayList([]const u8) = .empty;
     for (0..safety.loop_bound) |_| {
-        const token = try self.peek(arena) orelse return null;
+        const token = try self.peek(scratch) orelse return null;
         switch (token.token_type) {
             .backtick => {
-                _ = try self.consume(arena, &.{ .backtick });
+                _ = try self.consume(scratch, &.{ .backtick });
                 if (token.lexeme.len == open.lexeme.len) {
                     break;
                 }
 
                 const value = try resolveInlineCode(token);
-                try values.append(arena, value);
+                try values.append(scratch, value);
             },
             else => |t| {
-                _ = try self.consume(arena, &.{t});
+                _ = try self.consume(scratch, &.{t});
 
                 const value = try resolveInlineCode(token);
-                try values.append(arena, value);
+                try values.append(scratch, value);
             }
         }
     } else @panic(safety.loop_bound_panic_msg);
@@ -697,19 +701,19 @@ fn parseInlineCode(
         return null;
     }
 
-    var value = try std.mem.join(gpa, "", values.items);
+    var value = try std.mem.join(alloc, "", values.items);
 
     // Special case for stripping single leading and following space
     if (value.len > 1 and !strings.containsOnly(value, " ")) {
         if (value[0] == ' ' and value[value.len - 1] == ' ') {
             // TODO: Do we have to allocate here?
-            const new = try gpa.dupe(u8, value[1..value.len - 1]);
-            gpa.free(value);
+            const new = try alloc.dupe(u8, value[1..value.len - 1]);
+            alloc.free(value);
             value = new;
         }
     }
 
-    inline_code_node = try gpa.create(ast.Node);
+    inline_code_node = try alloc.create(ast.Node);
     inline_code_node.?.* = .{
         .inline_code = .{
             .value = value,
@@ -722,8 +726,8 @@ fn parseInlineCode(
 /// Parses an inline link.
 fn parseInlineLink(
     self: *Self,
-    gpa: Allocator,
-    arena: Allocator,
+    alloc: Allocator,
+    scratch: Allocator,
 ) Error!?*ast.Node {
     var inline_link: ?*ast.Node = null;
     const checkpoint_index = self.checkpoint();
@@ -734,20 +738,20 @@ fn parseInlineLink(
     }
 
     const link_text_nodes = (
-        try self.parseLinkText(gpa, arena) orelse return null
+        try self.parseLinkText(alloc, scratch) orelse return null
     );
     defer {
         if (inline_link == null) {
             for (link_text_nodes) |node| {
-                node.deinit(gpa);
+                node.deinit(alloc);
             }
-            gpa.free(link_text_nodes);
+            alloc.free(link_text_nodes);
         }
     }
-    _ = try self.consume(arena, &.{.l_paren}) orelse return null;
-    _ = try self.consume(arena, &.{.r_paren}) orelse return null;
+    _ = try self.consume(scratch, &.{.l_paren}) orelse return null;
+    _ = try self.consume(scratch, &.{.r_paren}) orelse return null;
 
-    inline_link = try gpa.create(ast.Node);
+    inline_link = try alloc.create(ast.Node);
     inline_link.?.* = .{
         .link = .{
             .url = "",
@@ -762,39 +766,39 @@ fn parseInlineLink(
 /// AST nodes.
 fn parseLinkText(
     self: *Self,
-    gpa: Allocator,
-    arena: Allocator,
+    alloc: Allocator,
+    scratch: Allocator,
 ) Error!?[]*ast.Node {
-    var nodes = NodeList.init(gpa, arena, createTextNode);
+    var nodes = NodeList.init(alloc, scratch, createTextNode);
     var did_parse_successfully = false;
     const checkpoint_index = self.checkpoint();
     defer {
         if (!did_parse_successfully) {
             self.backtrack(checkpoint_index);
             for (nodes.items()) |node| {
-                node.deinit(gpa);
+                node.deinit(alloc);
             }
             nodes.deinit();
         }
     }
 
-    _ = try self.consume(arena, &.{.l_square_bracket}) orelse return null;
+    _ = try self.consume(scratch, &.{.l_square_bracket}) orelse return null;
 
     var bracket_depth: u32 = 0;
     loop: for (0..safety.loop_bound) |_| {
-        if (try self.parseInlineLink(gpa, arena)) |link| {
+        if (try self.parseInlineLink(alloc, scratch)) |link| {
             try nodes.append(link); // ensure it gets cleaned up
             return null; // nested links are not allowed!
         }
 
-        if (try self.parseInlineCode(gpa, arena)) |code| {
+        if (try self.parseInlineCode(alloc, scratch)) |code| {
             try nodes.append(code);
             continue;
         }
 
         // Handle square brackets, which are only allowed if they are balanced
         const allowed_bracket: []const u8 = blk: {
-            const token = try self.peek(arena) orelse return null;
+            const token = try self.peek(scratch) orelse return null;
             switch (token.token_type) {
                 .l_square_bracket => {
                     bracket_depth += 1;
@@ -810,8 +814,8 @@ fn parseLinkText(
                 else => break :blk "",
             }
 
-            _ = try self.consume(arena, &.{token.token_type});
-            const value = try resolveInlineText(arena, token);
+            _ = try self.consume(scratch, &.{token.token_type});
+            const value = try resolveInlineText(scratch, token);
             break :blk value;
         };
         if (allowed_bracket.len > 0) {
@@ -819,23 +823,23 @@ fn parseLinkText(
             continue;
         }
 
-        if (try self.parseAnyEmphasis(gpa, arena)) |emph| {
+        if (try self.parseAnyEmphasis(alloc, scratch)) |emph| {
             try nodes.append(emph);
             continue;
         }
 
-        if (try self.parseAnyStrong(gpa, arena)) |strong| {
+        if (try self.parseAnyStrong(alloc, scratch)) |strong| {
             try nodes.append(strong);
             continue;
         }
 
-        const text_value = try self.scanText(arena);
+        const text_value = try self.scanText(scratch);
         if (text_value.len > 0) {
             try nodes.appendText(text_value);
             continue;
         }
 
-        const text_fallback_value = try self.scanTextFallback(arena);
+        const text_fallback_value = try self.scanTextFallback(scratch);
         if (text_fallback_value.len > 0) {
             try nodes.appendText(text_fallback_value);
             continue;
@@ -844,7 +848,7 @@ fn parseLinkText(
         break;
     } else @panic(safety.loop_bound_panic_msg);
 
-    _ = try self.consume(arena, &.{.r_square_bracket}) orelse return null;
+    _ = try self.consume(scratch, &.{.r_square_bracket}) orelse return null;
 
     if (bracket_depth > 0) {
         return null; // contained unbalanced brackets
@@ -854,16 +858,16 @@ fn parseLinkText(
     return try nodes.toOwnedSlice();
 }
 
-fn scanText(self: *Self, arena: Allocator) ![]const u8 {
-    var running_text = Io.Writer.Allocating.init(arena);
+fn scanText(self: *Self, scratch: Allocator) ![]const u8 {
+    var running_text = Io.Writer.Allocating.init(scratch);
 
-    while (try self.peek(arena)) |token| {
+    while (try self.peek(scratch)) |token| {
         switch (token.token_type) {
             .decimal_character_reference, .hexadecimal_character_reference,
             .entity_reference, .newline, .text => |t| {
-                _ = try self.consume(arena, &.{t});
+                _ = try self.consume(scratch, &.{t});
 
-                const value = try resolveInlineText(arena, token);
+                const value = try resolveInlineText(scratch, token);
                 _ = try running_text.writer.write(value);
             },
             .lr_delim_underscore => {
@@ -874,9 +878,9 @@ fn scanText(self: *Self, arena: Allocator) ![]const u8 {
                 ) {
                     break;
                 }
-                _ = try self.consume(arena, &.{.lr_delim_underscore});
+                _ = try self.consume(scratch, &.{.lr_delim_underscore});
 
-                const value = try resolveInlineText(arena, token);
+                const value = try resolveInlineText(scratch, token);
                 _ = try running_text.writer.write(value);
             },
             else => break,
@@ -886,11 +890,11 @@ fn scanText(self: *Self, arena: Allocator) ![]const u8 {
     return try running_text.toOwnedSlice();
 }
 
-fn scanTextFallback(self: *Self, arena: Allocator) ![]const u8 {
-    const token = try self.peek(arena) orelse return "";
-    _ = try self.consume(arena, &.{token.token_type});
+fn scanTextFallback(self: *Self, scratch: Allocator) ![]const u8 {
+    const token = try self.peek(scratch) orelse return "";
+    _ = try self.consume(scratch, &.{token.token_type});
 
-    const text_value = try resolveInlineText(arena, token);
+    const text_value = try resolveInlineText(scratch, token);
     return text_value;
 }
 
@@ -913,17 +917,17 @@ fn resolveInlineCode(token: InlineToken) ![]const u8 {
 }
 
 /// Resolve token to actual string content within a text node.
-fn resolveInlineText(arena: Allocator, token: InlineToken) ![]const u8 {
+fn resolveInlineText(scratch: Allocator, token: InlineToken) ![]const u8 {
     const value = switch (token.token_type) {
         .decimal_character_reference, .hexadecimal_character_reference,
         .entity_reference => blk: {
-            break :blk try resolveCharacterEntityRef(arena, token);
+            break :blk try resolveCharacterEntityRef(scratch, token);
         },
         .newline => "\n",
         .backtick => token.lexeme,
         .l_delim_star, .r_delim_star, .lr_delim_star => "*",
         .l_delim_underscore, .r_delim_underscore, .lr_delim_underscore => "_",
-        .text => try escape.copyEscape(arena, token.lexeme),
+        .text => try escape.copyEscape(scratch, token.lexeme),
         .l_square_bracket => "[",
         .r_square_bracket => "]",
         .l_angle_bracket => "<",
@@ -934,11 +938,11 @@ fn resolveInlineText(arena: Allocator, token: InlineToken) ![]const u8 {
     return value;
 }
 
-fn resolveCharacterEntityRef(arena: Allocator, token: InlineToken) ![]const u8 {
+fn resolveCharacterEntityRef(scratch: Allocator, token: InlineToken) ![]const u8 {
     switch (token.token_type) {
         .decimal_character_reference => {
             const value = try references.resolveCharacter(
-                arena,
+                scratch,
                 token.lexeme[2..token.lexeme.len - 1],
                 10, // base
             );
@@ -946,7 +950,7 @@ fn resolveCharacterEntityRef(arena: Allocator, token: InlineToken) ![]const u8 {
         },
         .hexadecimal_character_reference => {
             const value = try references.resolveCharacter(
-                arena,
+                scratch,
                 token.lexeme[3..token.lexeme.len - 1],
                 16, // base
             );
@@ -965,26 +969,26 @@ fn resolveCharacterEntityRef(arena: Allocator, token: InlineToken) ![]const u8 {
 ///
 /// The string value passed in gets copied to a new location in memory owned by
 /// the returned text node.
-fn createTextNode(gpa: Allocator, value: []const u8) !*ast.Node {
-    const node = try gpa.create(ast.Node);
+fn createTextNode(alloc: Allocator, value: []const u8) !*ast.Node {
+    const node = try alloc.create(ast.Node);
     node.* = .{
         .text = .{
-            .value = try gpa.dupe(u8, value),
+            .value = try alloc.dupe(u8, value),
         },
     };
     return node;
 }
 
-fn peek(self: *Self, arena: Allocator) !?InlineToken {
-    return self.peekAhead(arena, 1);
+fn peek(self: *Self, scratch: Allocator) !?InlineToken {
+    return self.peekAhead(scratch, 1);
 }
 
-fn peekAhead(self: *Self, arena: Allocator, count: u16) !?InlineToken {
+fn peekAhead(self: *Self, scratch: Allocator, count: u16) !?InlineToken {
     const index = self.token_index + (count - 1);
     while (index >= self.line.items.len) {
         // Returning null here means end of token stream
-        const next = try self.tokenizer.next(arena) orelse return null;
-        try self.line.append(arena, next);
+        const next = try self.tokenizer.next(scratch) orelse return null;
+        try self.line.append(scratch, next);
     }
 
     return self.line.items[index];
@@ -992,10 +996,10 @@ fn peekAhead(self: *Self, arena: Allocator, count: u16) !?InlineToken {
 
 fn consume(
     self: *Self,
-    arena: Allocator,
+    scratch: Allocator,
     token_types: []const InlineTokenType,
 ) !?InlineToken {
-    const current = try self.peek(arena) orelse return null;
+    const current = try self.peek(scratch) orelse return null;
     for (token_types) |token_type| {
         if (current.token_type == token_type) {
             self.token_index += 1;
@@ -1020,13 +1024,13 @@ fn backtrack(self: *Self, checkpoint_index: usize) void {
 const testing = std.testing;
 
 fn parseIntoNodes(value: []const u8) ![]*ast.Node {
-    var arena_impl = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena_impl.deinit();
-    const arena = arena_impl.allocator();
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const scratch = arena.allocator();
 
     var tokenizer = InlineTokenizer.init(value);
     var parser = Self.init(&tokenizer);
-    return try parser.parse(testing.allocator, arena);
+    return try parser.parse(testing.allocator, scratch);
 }
 
 fn freeNodes(nodes: []*ast.Node) void {

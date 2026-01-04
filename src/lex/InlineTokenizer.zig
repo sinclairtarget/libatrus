@@ -71,7 +71,7 @@ pub fn init(in: []const u8) Self {
 /// Returns the next token in the stream, or null if the stream is exhausted.
 ///
 /// Caller owns the returned token.
-pub fn next(self: *Self, alloc: Allocator) Error!?InlineToken {
+pub fn next(self: *Self, scratch: Allocator) Error!?InlineToken {
     if (self.staged.pop()) |token| {
         return token;
     }
@@ -80,10 +80,10 @@ pub fn next(self: *Self, alloc: Allocator) Error!?InlineToken {
         return null;
     }
 
-    return try self.scan(alloc);
+    return try self.scan(scratch);
 }
 
-fn scan(self: *Self, alloc: Allocator) !?InlineToken {
+fn scan(self: *Self, scratch: Allocator) !?InlineToken {
     var lookahead_i = self.i;
     const result: FSMResult = fsm: switch (self.state) {
         .start => {
@@ -661,7 +661,7 @@ fn scan(self: *Self, alloc: Allocator) !?InlineToken {
     };
 
     const tokens = try evaluateTokens(
-        alloc,
+        scratch,
         result.token_type,
         result.context,
         self.in[self.i..lookahead_i],
@@ -676,7 +676,7 @@ fn scan(self: *Self, alloc: Allocator) !?InlineToken {
     if (tokens.len > 1) {
         var i = tokens.len - 1;
         while (i > 0) {
-            try self.staged.append(alloc, tokens[i]);
+            try self.staged.append(scratch, tokens[i]);
             i -= 1;
         }
     }
@@ -706,7 +706,7 @@ fn evaluateDelimUnderscoreContext(
 }
 
 fn evaluateTokens(
-    alloc: Allocator,
+    scratch: Allocator,
     token_type: InlineTokenType,
     context: Context,
     range: []const u8,
@@ -715,26 +715,26 @@ fn evaluateTokens(
 
     switch (token_type) {
         .newline => {
-            try tokens.append(alloc, InlineToken{ .token_type = .newline });
+            try tokens.append(scratch, InlineToken{ .token_type = .newline });
         },
         .l_delim_star, .r_delim_star, .lr_delim_star, .l_delim_underscore,
         .r_delim_underscore, .lr_delim_underscore => {
             for (0..range.len) |_| {
-                try tokens.append(alloc, InlineToken{
+                try tokens.append(scratch, InlineToken{
                     .token_type = token_type,
                     .context = context,
                 });
             }
         },
         else => {
-            try tokens.append(alloc, InlineToken{
+            try tokens.append(scratch, InlineToken{
                 .token_type = token_type,
-                .lexeme = try alloc.dupe(u8, range),
+                .lexeme = try scratch.dupe(u8, range),
             });
         },
     }
 
-    return try tokens.toOwnedSlice(alloc);
+    return try tokens.toOwnedSlice(scratch);
 }
 
 // ----------------------------------------------------------------------------

@@ -6,6 +6,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const config = @import("config");
 const Allocator = std.mem.Allocator;
+const ArenaAllocator = std.heap.ArenaAllocator;
 const Io = std.Io;
 const ArrayList = std.ArrayList;
 const time = std.time;
@@ -37,10 +38,17 @@ pub const ParseError = error{
 
 pub const ParseOptions = struct {
     parse_level: enum {
-        block, // Only parse blocks
-        pre,   // Parse blocks and inline content
-        post,  // Resolve internal references, finalize AST etc.
+        /// Only parse blocks.
+        block,
+        /// Parse blocks and inline content.
+        pre,
+        /// Parse everything, but also resolve internal references, finalize
+        /// AST etc.
+        post,
     } = .post,
+    /// Optional scratch allocator. If one is not given, then an internal
+    /// arena allocator will be created from the main `alloc` Allocator.
+    scratch_arena: ?ArenaAllocator = null,
 };
 
 /// Parses the input string (containing MyST markdown) into a MyST AST. Returns
@@ -52,8 +60,14 @@ pub fn parse(
     in: []const u8,
     options: ParseOptions,
 ) ParseError!*ast.Node {
-    var reader: Io.Reader = .fixed(in);
+    // Set up internal scratch allocator. We default to an arena allocator but
+    // allow the user to pass in something else specifically for scratch
+    // allocations.
+    var arena = options.scratch_arena orelse ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const scratch = arena.allocator();
 
+    var reader: Io.Reader = .fixed(in);
     var line_buf: [max_line_len]u8 = undefined;
     const line_reader: LineReader = .{ .in = &reader, .buf = &line_buf };
 
@@ -62,7 +76,7 @@ pub fn parse(
     logger.debug("Beginning block parsing...", .{});
     var block_tokenizer = BlockTokenizer.init(line_reader);
     var block_parser = BlockParser.init(&block_tokenizer);
-    var root = try block_parser.parse(alloc);
+    var root = try block_parser.parse(alloc, scratch);
     logger.debug("Done in {D}.", .{timer.read()});
 
     if (options.parse_level == .block) {
@@ -72,19 +86,23 @@ pub fn parse(
     errdefer root.deinit(alloc);
 
     // second stage; parse inline elements
+    _ = arena.reset(.retain_capacity);
     timer.reset();
     logger.debug("Beginning inline parsing...", .{});
-    root = try transform.parseInline(alloc, root);
+    root = try transform.parseInlines(alloc, &arena, root);
     logger.debug("Done in {D}.", .{timer.read()});
+
     if (options.parse_level == .pre) {
         return root;
     }
 
     // third stage; MyST-specific transforms
+    _ = arena.reset(.retain_capacity);
     timer.reset();
     logger.debug("Beginning post-processing...", .{});
     root = try transform.postProcess(alloc, root);
     logger.debug("Done in {D}.", .{timer.read()});
+
     return root;
 }
 
