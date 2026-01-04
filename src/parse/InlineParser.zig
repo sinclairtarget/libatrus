@@ -121,6 +121,11 @@ fn parseStarStrong(
     }) orelse return null;
 
     for (0..safety.loop_bound) |_| {
+        if (try self.parseInlineCode(gpa, arena)) |code| {
+            try children.append(code);
+            continue;
+        }
+
         if (try self.parseInlineLink(gpa, arena)) |link| {
             try children.append(link);
             continue;
@@ -228,6 +233,10 @@ fn parseStarEmphasis(
         const maybe_leading_emph = try self.parseStarEmphasis(gpa, arena);
 
         if (blk: {
+            if (try self.parseInlineCode(gpa, arena)) |code| {
+                break :blk code;
+            }
+
             if (try self.parseInlineLink(gpa, arena)) |link| {
                 break :blk link;
             }
@@ -350,6 +359,11 @@ fn parseUnderscoreStrong(
     }
 
     for (0..safety.loop_bound) |_| {
+        if (try self.parseInlineCode(gpa, arena)) |code| {
+            try children.append(code);
+            continue;
+        }
+
         if (try self.parseInlineLink(gpa, arena)) |link| {
             try children.append(link);
             continue;
@@ -475,6 +489,10 @@ fn parseUnderscoreEmphasis(
         const maybe_leading_emph = try self.parseUnderscoreEmphasis(gpa, arena);
 
         if (blk: {
+            if (try self.parseInlineCode(gpa, arena)) |code| {
+                break :blk code;
+            }
+
             if (try self.parseInlineLink(gpa, arena)) |link| {
                 break :blk link;
             }
@@ -769,6 +787,11 @@ fn parseLinkText(
             return null; // nested links are not allowed!
         }
 
+        if (try self.parseInlineCode(gpa, arena)) |code| {
+            try nodes.append(code);
+            continue;
+        }
+
         // Handle square brackets, which are only allowed if they are balanced
         const allowed_bracket: []const u8 = blk: {
             const token = try self.peek(arena) orelse return null;
@@ -793,11 +816,6 @@ fn parseLinkText(
         };
         if (allowed_bracket.len > 0) {
             try nodes.appendText(allowed_bracket);
-            continue;
-        }
-
-        if (try self.parseInlineCode(gpa, arena)) |code| {
-            try nodes.append(code);
             continue;
         }
 
@@ -834,32 +852,6 @@ fn parseLinkText(
 
     did_parse_successfully = true;
     return try nodes.toOwnedSlice();
-}
-
-// @       => allowed+
-// allowed => ref10 | ref16 | ref& | \n | text | lr_delim_underscore
-fn parseText(self: *Self, gpa: Allocator, arena: Allocator) Error!?*ast.Node {
-    const value = try self.scanText(arena);
-    if (value.len == 0) {
-        return null;
-    }
-
-    return try createTextNode(gpa, value);
-}
-
-// @ => .
-/// Catch-all for anything that fails to parse.
-fn parseTextFallback(
-    self: *Self,
-    gpa: Allocator,
-    arena: Allocator,
-) Error!?*ast.Node {
-    const text_value = try self.scanTextFallback(arena);
-    if (text_value.len == 0) {
-        return null;
-    }
-
-    return try createTextNode(gpa, text_value);
 }
 
 fn scanText(self: *Self, arena: Allocator) ![]const u8 {
