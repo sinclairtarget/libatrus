@@ -107,6 +107,10 @@ fn tokenize(self: *Self, scratch: Allocator) !InlineToken {
                 break :blk result;
             }
 
+            if (try self.tokenizeWhitespace(scratch)) |result| {
+                break :blk result;
+            }
+
             break :blk null;
         };
 
@@ -670,10 +674,41 @@ fn tokenizeDelimUnderRun(
     };
 }
 
+fn tokenizeWhitespace(self: Self, scratch: Allocator) !?TokenizeResult {
+    var lookahead_i = self.i;
+    while (lookahead_i < self.in.len) {
+        switch (self.in[lookahead_i]) {
+            ' ', '\t' => {
+                lookahead_i += 1;
+            },
+            else => break,
+        }
+    }
+
+    if (lookahead_i == self.i) {
+        return null;
+    }
+
+    const tokens = try evaluateTokens(
+        scratch,
+        .whitespace,
+        .default,
+        self.in[self.i..lookahead_i],
+    );
+    return .{
+        .tokens = tokens,
+        .next_i = lookahead_i,
+        .next_state = .whitespace,
+    };
+}
+
+/// Tokenize basic text.
+///
+/// This is basically anything that wasn't already tokenized as something else.
 fn tokenizeText(self: Self, scratch: Allocator) !?TokenizeResult {
     var lookahead_i = self.i;
 
-    const State = enum { start, normal, whitespace, escaped, punct };
+    const State = enum { start, normal, escaped, punct };
     const next_state: TopLevelState = fsm: switch (State.start) {
         .start => {
             // Allow the first character to be something that later we will
@@ -683,9 +718,9 @@ fn tokenizeText(self: Self, scratch: Allocator) !?TokenizeResult {
                     lookahead_i += 1;
                     continue :fsm .punct;
                 },
-                '\n' => {
+                '\n', ' ', '\t' => {
                     lookahead_i += 1;
-                    continue :fsm .whitespace;
+                    continue :fsm .normal;
                 },
                 else => continue :fsm .normal,
             }
@@ -696,11 +731,9 @@ fn tokenizeText(self: Self, scratch: Allocator) !?TokenizeResult {
             }
 
             switch (self.in[lookahead_i]) {
-                '\n', '&', '`', '[', ']', '<', '>', '(', ')', '*', '_' => {
+                '\n', ' ', '\t', '&', '`', '[', ']', '<', '>', '(', ')', '*',
+                '_' => {
                     break :fsm .normal;
-                },
-                ' ', '\t' => {
-                    continue :fsm .whitespace;
                 },
                 '\\' => {
                     lookahead_i += 1;
@@ -716,22 +749,6 @@ fn tokenizeText(self: Self, scratch: Allocator) !?TokenizeResult {
                 },
             }
         },
-        .whitespace => {
-            if (lookahead_i >= self.in.len) {
-                break :fsm .whitespace;
-            }
-
-            switch (self.in[lookahead_i]) {
-                '\n', '&', '`', '[', ']', '<', '>', '(', ')', '*', '_' => {
-                    break :fsm .whitespace;
-                },
-                ' ', '\t' => {
-                    lookahead_i += 1;
-                    continue :fsm .whitespace;
-                },
-                else => continue :fsm .normal,
-            }
-        },
         .escaped => {
             if (lookahead_i >= self.in.len) {
                 break :fsm .normal;
@@ -745,12 +762,11 @@ fn tokenizeText(self: Self, scratch: Allocator) !?TokenizeResult {
                 '&', '[', ']', '<', '>', '(', ')', '*', '_',
                 '!'...'%', '\'', '+'...'/', ':', ';', '=', '?', '@', '^',
                 '{'...'~' => {
-                    lookahead_i += 1;
+                    lookahead_i += 1; // skip escaped character
                     continue :fsm .punct;
                 },
                 ' ', '\t' => {
-                    lookahead_i += 1;
-                    continue :fsm .whitespace;
+                    break :fsm .normal;
                 },
                 else => {
                     lookahead_i += 1; // skip escaped character
@@ -764,17 +780,14 @@ fn tokenizeText(self: Self, scratch: Allocator) !?TokenizeResult {
             }
 
             switch (self.in[lookahead_i]) {
-                '\n', '&', '`', '[', ']', '<', '>', '(', ')', '*', '_' => {
+                '\n', ' ', '\t' ,'&', '`', '[', ']', '<', '>', '(', ')', '*',
+                '_' => {
                     break :fsm .punct;
                 },
                 '!'...'%', '\'', '+'...'/', ':', ';', '=', '?', '@', '^',
                 '{'...'~' => {
                     lookahead_i += 1;
                     continue :fsm .punct;
-                },
-                ' ', '\t' => {
-                    lookahead_i += 1;
-                    continue :fsm .whitespace;
                 },
                 else => continue :fsm .normal,
             }
@@ -867,6 +880,7 @@ fn expectEqualTokens(
 
     for (expected) |exp| {
         const token = try tokenizer.next(scratch);
+        try std.testing.expect(token != null);
         try std.testing.expectEqual(exp, token.?.token_type);
     }
 
@@ -987,14 +1001,22 @@ test "character reference" {
     const line = "&#42; &#; &#xaf;";
     try expectEqualTokens(&.{
         .decimal_character_reference,
+        .whitespace,
         .text,
+        .whitespace,
         .hexadecimal_character_reference,
     }, line);
 }
 
 test "regular text" {
     const line = "hello foo bar";
-    try expectEqualTokens(&.{.text}, line);
+    try expectEqualTokens(&.{
+        .text,
+        .whitespace,
+        .text,
+        .whitespace,
+        .text,
+    }, line);
 }
 
 test "backtick run" {
