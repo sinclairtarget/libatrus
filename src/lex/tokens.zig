@@ -30,6 +30,8 @@ pub const InlineTokenType = enum {
     r_delim_underscore,
     lr_delim_underscore,
     backtick,                           // one or more consecutive backticks
+    single_quote,
+    double_quote,
     l_square_bracket,
     r_square_bracket,
     l_angle_bracket,

@@ -172,12 +172,14 @@ fn tokenizeSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
         TopLevelState,
     } = switch (self.in[self.i]) {
             '\n' => .{ .newline, .whitespace },
-            '[' => .{ .l_square_bracket, .punct },
-            ']' => .{ .r_square_bracket, .punct },
-            '<' => .{ .l_angle_bracket, .punct },
-            '>' => .{ .r_angle_bracket, .punct },
-            '(' => .{ .l_paren, .punct },
-            ')' => .{ .r_paren, .punct },
+            '['  => .{ .l_square_bracket, .punct },
+            ']'  => .{ .r_square_bracket, .punct },
+            '<'  => .{ .l_angle_bracket, .punct },
+            '>'  => .{ .r_angle_bracket, .punct },
+            '('  => .{ .l_paren, .punct },
+            ')'  => .{ .r_paren, .punct },
+            '\'' => .{ .single_quote, .punct },
+            '"'  => .{ .double_quote, .punct },
             else => return null,
     };
 
@@ -714,7 +716,7 @@ fn tokenizeText(self: Self, scratch: Allocator) !?TokenizeResult {
             // Allow the first character to be something that later we will
             // break on.
             switch (self.in[lookahead_i]) {
-                '&', '`', '[', ']', '<', '>', '(', ')', '*', '_' => {
+                '&', '`', '[', ']', '<', '>', '(', ')', '*', '_', '\'', '"' => {
                     lookahead_i += 1;
                     continue :fsm .punct;
                 },
@@ -732,14 +734,14 @@ fn tokenizeText(self: Self, scratch: Allocator) !?TokenizeResult {
 
             switch (self.in[lookahead_i]) {
                 '\n', ' ', '\t', '&', '`', '[', ']', '<', '>', '(', ')', '*',
-                '_' => {
+                '_', '\'', '"' => {
                     break :fsm .normal;
                 },
                 '\\' => {
                     lookahead_i += 1;
                     continue :fsm .escaped;
                 },
-                '!'...'%', '\'', '+'...'/', ':', ';', '=', '?', '@', '^',
+                '!', '#'...'%', '+'...'/', ':', ';', '=', '?', '@', '^',
                 '{'...'~' => {
                     continue :fsm .punct;
                 },
@@ -760,7 +762,7 @@ fn tokenizeText(self: Self, scratch: Allocator) !?TokenizeResult {
                     continue :fsm .normal;
                 },
                 '&', '[', ']', '<', '>', '(', ')', '*', '_',
-                '!'...'%', '\'', '+'...'/', ':', ';', '=', '?', '@', '^',
+                '!', '#'...'%', '+'...'/', ':', ';', '=', '?', '@', '^',
                 '{'...'~' => {
                     lookahead_i += 1; // skip escaped character
                     continue :fsm .punct;
@@ -781,10 +783,10 @@ fn tokenizeText(self: Self, scratch: Allocator) !?TokenizeResult {
 
             switch (self.in[lookahead_i]) {
                 '\n', ' ', '\t' ,'&', '`', '[', ']', '<', '>', '(', ')', '*',
-                '_' => {
+                '_', '\'', '"' => {
                     break :fsm .punct;
                 },
-                '!'...'%', '\'', '+'...'/', ':', ';', '=', '?', '@', '^',
+                '!', '#'...'%', '+'...'/', ':', ';', '=', '?', '@', '^',
                 '{'...'~' => {
                     lookahead_i += 1;
                     continue :fsm .punct;
@@ -1025,5 +1027,18 @@ test "backtick run" {
         .backtick,
         .text,
         .backtick,
+    }, line);
+}
+
+test "quotes" {
+    const line = "\"hello\" 'friend'";
+    try expectEqualTokens(&.{
+        .double_quote,
+        .text,
+        .double_quote,
+        .whitespace,
+        .single_quote,
+        .text,
+        .single_quote,
     }, line);
 }

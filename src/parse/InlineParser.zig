@@ -1041,6 +1041,8 @@ fn resolveInlineCode(token: InlineToken) ![]const u8 {
         .r_angle_bracket => ">",
         .l_paren => "(",
         .r_paren => ")",
+        .single_quote => "'",
+        .double_quote => "\"",
     };
     return value;
 }
@@ -1063,6 +1065,8 @@ fn resolveInlineText(scratch: Allocator, token: InlineToken) ![]const u8 {
         .r_angle_bracket => ">",
         .l_paren => "(",
         .r_paren => ")",
+        .single_quote => "'",
+        .double_quote => "\"",
     };
     return value;
 }
