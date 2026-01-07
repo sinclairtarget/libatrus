@@ -952,12 +952,17 @@ fn scanLinkTitle(self: *Self, scratch: Allocator) ![]const u8 {
         }
     }
 
-    _ = try self.consume(scratch, &.{.l_paren}) orelse return "";
+    const open = try self.consume(
+        scratch,
+        &.{.l_paren, .single_quote, .double_quote},
+    ) orelse return "";
+
+    const open_t = open.token_type;
+    const close_t = if (open_t == .l_paren) .r_paren else open_t;
 
     var blank_line_so_far = false;
     while (try self.peek(scratch)) |token| {
         switch (token.token_type) {
-            .r_paren => break,
             .newline => {
                 if (blank_line_so_far) {
                     return ""; // link title cannot contain blank line
@@ -974,6 +979,10 @@ fn scanLinkTitle(self: *Self, scratch: Allocator) ![]const u8 {
                 _ = try running_text.writer.write(value);
             },
             else => |t| {
+                if (t == close_t) {
+                    break;
+                }
+
                 _ = try self.consume(scratch, &.{t});
                 const value = try resolveInlineText(scratch, token);
                 _ = try running_text.writer.write(value);
@@ -981,7 +990,7 @@ fn scanLinkTitle(self: *Self, scratch: Allocator) ![]const u8 {
             },
         }
     }
-    _ = try self.consume(scratch, &.{.r_paren}) orelse return "";
+    _ = try self.consume(scratch, &.{close_t}) orelse return "";
 
     did_parse_successfully = true;
     return try running_text.toOwnedSlice();
