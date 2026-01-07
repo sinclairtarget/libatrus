@@ -722,7 +722,7 @@ fn parseInlineCode(
     return inline_code_node;
 }
 
-// @ => link_text ()
+// @ => link_text l_paren (link_dest link_title?)? r_paren
 /// Parses an inline link.
 fn parseInlineLink(
     self: *Self,
@@ -737,6 +737,7 @@ fn parseInlineLink(
         }
     }
 
+    // handle link text
     const link_text_nodes = (
         try self.parseLinkText(alloc, scratch) orelse return null
     );
@@ -748,15 +749,29 @@ fn parseInlineLink(
             alloc.free(link_text_nodes);
         }
     }
+
     _ = try self.consume(scratch, &.{.l_paren}) orelse return null;
+
+    // link destination
     const url = try self.scanLinkDestination(scratch);
+
+    const title = blk: {
+        // link title, if present, must be separated from destination by
+        // whitespace
+        if (try self.consume(scratch, &.{.newline, .whitespace})) |_| {
+            break :blk try self.scanLinkTitle(scratch);
+        }
+
+        break :blk "";
+    };
+
     _ = try self.consume(scratch, &.{.r_paren}) orelse return null;
 
     inline_link = try alloc.create(ast.Node);
     inline_link.?.* = .{
         .link = .{
             .url = try alloc.dupe(u8, url),
-            .title = "",
+            .title = try alloc.dupe(u8, title),
             .children = link_text_nodes,
         },
     };
@@ -909,6 +924,7 @@ fn scanLinkDestination(self: *Self, scratch: Allocator) ![]const u8 {
 
                     paren_depth -= 1;
                 },
+                .whitespace => break,
                 else => |t| {
                     _ = try self.consume(scratch, &.{t});
                     const value = try resolveInlineText(scratch, token);
@@ -917,6 +933,55 @@ fn scanLinkDestination(self: *Self, scratch: Allocator) ![]const u8 {
             }
         }
     }
+
+    did_parse_successfully = true;
+    return try running_text.toOwnedSlice();
+}
+
+// Title part of an inline link.
+//
+// Should be enclosed in () or "" or ''. Can span multiple lines but cannot
+// contain a blank line.
+fn scanLinkTitle(self: *Self, scratch: Allocator) ![]const u8 {
+    var running_text = Io.Writer.Allocating.init(scratch);
+    var did_parse_successfully = false;
+    const checkpoint_index = self.checkpoint();
+    defer {
+        if (!did_parse_successfully) {
+            self.backtrack(checkpoint_index);
+        }
+    }
+
+    _ = try self.consume(scratch, &.{.l_paren}) orelse return "";
+
+    var blank_line_so_far = false;
+    while (try self.peek(scratch)) |token| {
+        switch (token.token_type) {
+            .r_paren => break,
+            .newline => {
+                if (blank_line_so_far) {
+                    return ""; // link title cannot contain blank line
+                }
+                _ = try self.consume(scratch, &.{.newline});
+                const value = try resolveInlineText(scratch, token);
+                _ = try running_text.writer.write(value);
+
+                blank_line_so_far = true;
+            },
+            .whitespace => {
+                _ = try self.consume(scratch, &.{.whitespace});
+                const value = try resolveInlineText(scratch, token);
+                _ = try running_text.writer.write(value);
+            },
+            else => |t| {
+                _ = try self.consume(scratch, &.{t});
+                const value = try resolveInlineText(scratch, token);
+                _ = try running_text.writer.write(value);
+                blank_line_so_far = false;
+            },
+        }
+    }
+    _ = try self.consume(scratch, &.{.r_paren}) orelse return "";
 
     did_parse_successfully = true;
     return try running_text.toOwnedSlice();
@@ -1765,14 +1830,14 @@ test "inline link destination no angle brackets" {
     try testing.expectEqualStrings(nodes[0].link.url, "bar");
 }
 
-// test "inline link with destination and title" {
-//     const value = "[foo](bar baz)";
-//     const nodes = try parseIntoNodes(value);
-//     defer freeNodes(nodes);
-//
-//     try testing.expectEqual(1, nodes.len);
-//     try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[0].*));
-//
-//     try testing.expectEqualStrings("bar", nodes[0].link.url);
-//     try testing.expectEqualStrings("baz", nodes[0].link.title);
-// }
+test "inline link with destination and title" {
+    const value = "[foo](bar (baz))";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[0].*));
+
+    try testing.expectEqualStrings("bar", nodes[0].link.url);
+    try testing.expectEqualStrings("baz", nodes[0].link.title);
+}

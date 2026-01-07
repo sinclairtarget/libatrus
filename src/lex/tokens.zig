@@ -19,7 +19,7 @@ pub const BlockTokenType = enum {
 pub const InlineTokenType = enum {
     text,
     newline,
-    whitespace,                         // space, tab, unicode whitespace
+    whitespace,                         // space or tab (NOT unicode whitespace)
     decimal_character_reference,
     hexadecimal_character_reference,
     entity_reference,
