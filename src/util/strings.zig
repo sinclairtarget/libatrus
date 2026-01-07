@@ -1,21 +1,39 @@
+const std = @import("std");
+
+/// If s contains only the bytes in chars, returns true. False otherwise.
 pub fn containsOnly(s: []const u8, chars: []const u8) bool {
     for (s) |byte| {
-        const wasAllowedChar = blk: {
-            for (chars) |c| {
-                if (byte == c) {
-                    break :blk true;
-                }
+        for (chars) |c| {
+            if (byte == c) {
+                break;
             }
-
-            break :blk false;
-        };
-
-        if (!wasAllowedChar) {
-            return false;
-        }
+        } else return false;
     }
 
     return true;
+}
+
+/// If s contains any of the bytes in chars, returns true. False otherwise.
+pub fn containsAny(s: []const u8, chars: []const u8) bool {
+    for (s) |byte| {
+        for (chars) |c| {
+            if (byte == c) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/// Returns true if s contains an Ascii control char, otherwise false.
+pub fn containsAsciiControl(s: []const u8) bool {
+    for (s) |byte| {
+        if (std.ascii.isControl(byte)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 // https://spec.commonmark.org/0.30/#blank-line
