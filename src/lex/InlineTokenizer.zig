@@ -115,6 +115,10 @@ fn tokenize(self: *Self, scratch: Allocator) !InlineToken {
                 break :blk result;
             }
 
+            if (try self.tokenizeEmailAddress(scratch)) |result| {
+                break :blk result;
+            }
+
             break :blk null;
         };
 
@@ -747,6 +751,114 @@ fn tokenizeAbsoluteURI(self: Self, scratch: Allocator) !?TokenizeResult {
     };
 }
 
+/// Recognizes an email address.
+///
+/// [a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+
+/// @
+/// [a-zA-Z0-9]([a-zA-Z0-9-]{0, 61}[a-zA-Z0-9])?
+/// (\.[a-zA-Z0-9]([a-zA-Z0-9-]{0, 61}[a-zA-Z0-9])*
+fn tokenizeEmailAddress(self: Self, scratch: Allocator) !?TokenizeResult {
+    var lookahead_i = self.i;
+
+    var host_component_len: usize = 0; // max of 63 for each '.'-delimited part
+    const State = enum { name_start, name, host_start, host, host_end };
+    fsm: switch (State.name) {
+        .name_start => {
+            switch (self.in[lookahead_i]) {
+                'a'...'z', 'A'...'Z', '0'...'9', '.', '!', '#', '$', '%', '&',
+                '\'', '*', '+', '/', '=', '?', '^', '_', '`', '{', '|', '}',
+                '~', '-' => {
+                    lookahead_i += 1;
+                    continue :fsm .name;
+                },
+                else => return null,
+            }
+        },
+        .name => {
+            if (lookahead_i >= self.in.len) {
+                return null;
+            }
+
+            switch (self.in[lookahead_i]) {
+                'a'...'z', 'A'...'Z', '0'...'9', '.', '!', '#', '$', '%', '&',
+                '\'', '*', '+', '/', '=', '?', '^', '_', '`', '{', '|', '}',
+                '~', '-' => {
+                    lookahead_i += 1;
+                    continue :fsm .name;
+                },
+                '@' => {
+                    lookahead_i += 1;
+                    continue :fsm .host_start;
+                },
+                else => return null,
+            }
+        },
+        .host_start => {
+            if (lookahead_i >= self.in.len) {
+                return null;
+            }
+
+            switch (self.in[lookahead_i]) {
+                'a'...'z', 'A'...'Z', '0'...'9' => {
+                    lookahead_i += 1;
+                    host_component_len += 1;
+                    continue :fsm .host_end;
+                },
+                else => return null,
+            }
+        },
+        .host => {
+            if (lookahead_i >= self.in.len) {
+                return null;
+            }
+
+            if (host_component_len >= 63) {
+                return null;
+            }
+
+            switch (self.in[lookahead_i]) {
+                'a'...'z', 'A'...'Z', '0'...'9' => {
+                    lookahead_i += 1;
+                    host_component_len += 1;
+                    continue :fsm .host_end;
+                },
+                '-' => {
+                    lookahead_i += 1;
+                    host_component_len += 1;
+                    continue :fsm .host;
+                },
+                else => return null,
+            }
+        },
+        .host_end => {
+            if (lookahead_i >= self.in.len) {
+                break :fsm;
+            }
+
+            switch (self.in[lookahead_i]) {
+                '.' => {
+                    lookahead_i += 1;
+                    host_component_len = 0;
+                    continue :fsm .host_start;
+                },
+                'a'...'z', 'A'...'Z', '0'...'9', '-' => continue :fsm .host,
+                else => break :fsm,
+            }
+        },
+    }
+
+    const tokens = try evaluateTokens(
+        scratch,
+        .email,
+        .default,
+        self.in[self.i..lookahead_i],
+    );
+    return .{
+        .tokens = tokens,
+        .next_i = lookahead_i,
+    };
+}
+
 fn tokenizeWhitespace(self: Self, scratch: Allocator) !?TokenizeResult {
     var lookahead_i = self.i;
     while (lookahead_i < self.in.len) {
@@ -1146,11 +1258,7 @@ test "regular text" {
 
 test "backtick run" {
     const line = "``foobar``";
-    try expectEqualTokens(&.{
-        .backtick,
-        .text,
-        .backtick,
-    }, line);
+    try expectEqualTokens(&.{.backtick, .text, .backtick}, line);
 }
 
 test "quotes" {
@@ -1168,9 +1276,10 @@ test "quotes" {
 
 test "absolute URI" {
     const line = "http://foo.com/bar?f=1&b=bim%20bam next";
-    try expectEqualTokens(&.{
-        .absolute_uri,
-        .whitespace,
-        .text,
-    }, line);
+    try expectEqualTokens(&.{.absolute_uri, .whitespace, .text}, line);
+}
+
+test "email address" {
+    const line = "person@gmail.com next";
+    try expectEqualTokens(&.{.email, .whitespace, .text}, line);
 }

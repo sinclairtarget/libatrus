@@ -24,6 +24,7 @@ pub const InlineTokenType = enum {
     hexadecimal_character_reference,
     entity_reference,
     absolute_uri,
+    email,
     l_delim_star,
     r_delim_star,
     lr_delim_star,
