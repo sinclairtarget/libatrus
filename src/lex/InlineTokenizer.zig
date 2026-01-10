@@ -111,6 +111,10 @@ fn tokenize(self: *Self, scratch: Allocator) !InlineToken {
                 break :blk result;
             }
 
+            if (try self.tokenizeAbsoluteURI(scratch)) |result| {
+                break :blk result;
+            }
+
             break :blk null;
         };
 
@@ -676,6 +680,73 @@ fn tokenizeDelimUnderRun(
     };
 }
 
+fn tokenizeAbsoluteURI(self: Self, scratch: Allocator) !?TokenizeResult {
+    var lookahead_i = self.i;
+
+    const State = enum { start, scheme, rest };
+    fsm: switch (State.start) {
+        .start => {
+            switch (self.in[lookahead_i]) {
+                'a'...'z', 'A'...'Z' => {
+                    lookahead_i += 1;
+                    continue :fsm .scheme;
+                },
+                else => return null,
+            }
+        },
+        .scheme => {
+            if (lookahead_i >= self.in.len) {
+                return null;
+            }
+
+            switch (self.in[lookahead_i]) {
+                'a'...'z', 'A'...'Z', '0'...'9', '+', '.', '-' => {
+                    lookahead_i += 1;
+                    continue :fsm .scheme;
+                },
+                ':' => {
+                    const scheme_len = lookahead_i - self.i;
+                    if (scheme_len < 2 or scheme_len > 32) {
+                        return null;
+                    }
+
+                    lookahead_i += 1;
+                    continue :fsm .rest;
+                },
+                else => return null,
+            }
+        },
+        .rest => {
+            if (lookahead_i >= self.in.len) {
+                break :fsm;
+            }
+
+            switch (self.in[lookahead_i]) {
+                '<', '>', ' ' => break :fsm,
+                else => |b| {
+                    if (std.ascii.isControl(b)) {
+                        return null;
+                    }
+
+                    lookahead_i += 1;
+                    continue :fsm .rest;
+                },
+            }
+        },
+    }
+
+    const tokens = try evaluateTokens(
+        scratch,
+        .absolute_uri,
+        .default,
+        self.in[self.i..lookahead_i],
+    );
+    return .{
+        .tokens = tokens,
+        .next_i = lookahead_i,
+    };
+}
+
 fn tokenizeWhitespace(self: Self, scratch: Allocator) !?TokenizeResult {
     var lookahead_i = self.i;
     while (lookahead_i < self.in.len) {
@@ -1092,5 +1163,14 @@ test "quotes" {
         .single_quote,
         .text,
         .single_quote,
+    }, line);
+}
+
+test "absolute URI" {
+    const line = "http://foo.com/bar?f=1&b=bim%20bam next";
+    try expectEqualTokens(&.{
+        .absolute_uri,
+        .whitespace,
+        .text,
     }, line);
 }

@@ -23,6 +23,7 @@ pub const InlineTokenType = enum {
     decimal_character_reference,
     hexadecimal_character_reference,
     entity_reference,
+    absolute_uri,
     l_delim_star,
     r_delim_star,
     lr_delim_star,
