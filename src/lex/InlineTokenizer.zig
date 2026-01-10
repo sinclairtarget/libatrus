@@ -710,13 +710,20 @@ fn tokenizeWhitespace(self: Self, scratch: Allocator) !?TokenizeResult {
 fn tokenizeText(self: Self, scratch: Allocator) !?TokenizeResult {
     var lookahead_i = self.i;
 
-    const State = enum { start, normal, escaped, punct };
+    const State = enum {
+        start,
+        normal,
+        escaped,
+        punct,
+        delim_star,
+        delim_underscore,
+    };
     const next_state: TopLevelState = fsm: switch (State.start) {
         .start => {
             // Allow the first character to be something that later we will
             // break on.
             switch (self.in[lookahead_i]) {
-                '&', '`', '[', ']', '<', '>', '(', ')', '*', '_', '\'', '"' => {
+                '&', '`', '[', ']', '<', '>', '(', ')', '\'', '"' => {
                     lookahead_i += 1;
                     continue :fsm .punct;
                 },
@@ -724,6 +731,8 @@ fn tokenizeText(self: Self, scratch: Allocator) !?TokenizeResult {
                     lookahead_i += 1;
                     continue :fsm .normal;
                 },
+                '*' => continue :fsm .delim_star,
+                '_' => continue :fsm .delim_underscore,
                 else => continue :fsm .normal,
             }
         },
@@ -792,6 +801,38 @@ fn tokenizeText(self: Self, scratch: Allocator) !?TokenizeResult {
                     continue :fsm .punct;
                 },
                 else => continue :fsm .normal,
+            }
+        },
+        .delim_star => {
+            // We want to consume all adjacent * chars because we never want to
+            // tokenize just part of a sequence of those chars into a delimiter
+            // run.
+            if (lookahead_i >= self.in.len) {
+                break :fsm .punct;
+            }
+
+            switch (self.in[lookahead_i]) {
+                '*' => {
+                    lookahead_i += 1;
+                    continue :fsm .delim_star;
+                },
+                else => break :fsm .punct,
+            }
+        },
+        .delim_underscore => {
+            // We want to consume all adjacent _ chars because we never want to
+            // tokenize just part of a sequence of those chars into a delimiter
+            // run.
+            if (lookahead_i >= self.in.len) {
+                break :fsm .punct;
+            }
+
+            switch (self.in[lookahead_i]) {
+                '_' => {
+                    lookahead_i += 1;
+                    continue :fsm .delim_underscore;
+                },
+                else => break :fsm .punct,
             }
         },
     };
@@ -936,6 +977,17 @@ test "delim star context" {
     }
 
     try std.testing.expect(try tokenizer.next(scratch) == null);
+}
+
+test "delim star after space" {
+    const line = "**foo **";
+    try expectEqualTokens(&.{
+        .l_delim_star,
+        .l_delim_star,
+        .text,
+        .whitespace,
+        .text,
+    }, line);
 }
 
 // We should record the run length of the delimiter runs as context for the

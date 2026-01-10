@@ -1367,6 +1367,17 @@ test "unmatched nested emphasis no spacing" {
     );
 }
 
+test "bad star strong given spacing" {
+    // the space following "hello" means the last two asterisks shouldn't get
+    // tokenized as a delimiter run
+    const value = "**hello **";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
+}
+
 test "unmatched nested underscore" {
     const value = "*foo _bar*";
     const nodes = try parseIntoNodes(value);
