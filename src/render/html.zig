@@ -39,7 +39,7 @@ fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
             try out.print("</h{d}>", .{n.depth});
         },
         .text => |n| {
-            try printEscaped(out, n.value);
+            try printHTMLEscaped(out, n.value);
         },
         .emphasis => |n| {
             try out.print("<em>", .{});
@@ -58,7 +58,7 @@ fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
         .code => |n| {
             // TODO: Lang?
             try out.print("<pre><code>", .{});
-            try printEscaped(out, n.value); // TODO: Do we want to escape here??
+            try printHTMLEscaped(out, n.value); // TODO: Do we want to escape here??
             try out.print("\n", .{});
             try out.print("</code></pre>", .{});
         },
@@ -67,28 +67,33 @@ fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
         },
         .inline_code => |n| {
             try out.print("<code>", .{});
-            try printEscaped(out, n.value); // TODO: Escape?
+            try printHTMLEscaped(out, n.value); // TODO: Do we want to escape here??
             try out.print("</code>", .{});
         },
         .link => |n| {
+            try out.print("<a href=\"", .{});
+            try printHTMLEscaped(out, n.url);
+            try out.print("\"", .{});
+
             if (n.title.len > 0) {
-                try out.print(
-                    "<a href=\"{s}\" title=\"{s}\">",
-                    .{ n.url, n.title },
-                );
-            } else {
-                try out.print("<a href=\"{s}\">", .{ n.url });
+                try out.print(" title=\"", .{});
+                try printHTMLEscaped(out, n.title);
+                try out.print("\"", .{});
             }
+
+            try out.print(">", .{});
+
             for (n.children) |child| {
                 try renderNode(out, child);
             }
+
             try out.print("</a>", .{});
         },
     }
 }
 
 // HTML escaped output
-fn printEscaped(out: *Io.Writer, s: []const u8) Io.Writer.Error!void {
+fn printHTMLEscaped(out: *Io.Writer, s: []const u8) Io.Writer.Error!void {
     for (s) |c| {
         switch (c) {
             '&' => try out.print("&amp;", .{}),

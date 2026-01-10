@@ -60,6 +60,11 @@ pub fn parse(
             continue;
         }
 
+        if (try self.parseURIAutolink(alloc, scratch)) |link| {
+            try nodes.append(link);
+            continue;
+        }
+
         if (try self.parseInlineLink(alloc, scratch)) |link| {
             try nodes.append(link);
             continue;
@@ -996,6 +1001,44 @@ fn scanLinkTitle(self: *Self, scratch: Allocator) ![]const u8 {
     return try running_text.toOwnedSlice();
 }
 
+fn parseURIAutolink(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) Error!?*ast.Node {
+    const open_token = try self.peek(scratch) orelse return null;
+    if (open_token.token_type != .l_angle_bracket) {
+        return null;
+    }
+
+    const uri_token = try self.peekAhead(scratch, 2) orelse return null;
+    if (uri_token.token_type != .absolute_uri) {
+        return null;
+    }
+
+    const close_token = try self.peekAhead(scratch, 3) orelse return null;
+    if (close_token.token_type != .r_angle_bracket) {
+        return null;
+    }
+
+    _ = try self.consume(scratch, &.{.l_angle_bracket}) orelse return null;
+    _ = try self.consume(scratch, &.{.absolute_uri}) orelse return null;
+    _ = try self.consume(scratch, &.{.r_angle_bracket}) orelse return null;
+
+    const url = try resolveInlineText(scratch, uri_token);
+    const text = try createTextNode(alloc, url);
+
+    const inline_link = try alloc.create(ast.Node);
+    inline_link.* = .{
+        .link = .{
+            .url = try alloc.dupe(u8, url),
+            .title = "",
+            .children = try alloc.dupe(*ast.Node, &.{text}),
+        },
+    };
+    return inline_link;
+}
+
 fn scanText(self: *Self, scratch: Allocator) ![]const u8 {
     var running_text = Io.Writer.Allocating.init(scratch);
 
@@ -1865,4 +1908,27 @@ test "inline link with destination and title" {
 
     try testing.expectEqualStrings("bar", nodes[0].link.url);
     try testing.expectEqualStrings("baz", nodes[0].link.title);
+}
+
+test "URI autolink" {
+    const value = "<http://foo.com/bar>";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[0].*));
+
+    const link_node = nodes[0];
+    try testing.expectEqualStrings("http://foo.com/bar", link_node.link.url);
+    try testing.expectEqualStrings("", link_node.link.title);
+
+    try testing.expectEqual(1, link_node.link.children.len);
+    try testing.expectEqual(
+        ast.NodeType.text,
+        @as(ast.NodeType, link_node.link.children[0].*),
+    );
+    try testing.expectEqualStrings(
+        "http://foo.com/bar",
+        link_node.link.children[0].text.value,
+    );
 }
