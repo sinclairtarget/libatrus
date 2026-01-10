@@ -198,6 +198,7 @@ test {
     _ = @import("lex/InlineTokenizer.zig");
     _ = @import("parse/BlockParser.zig");
     _ = @import("parse/InlineParser.zig");
+    _ = @import("util/uri.zig");
 }
 
 test renderHTMLString {

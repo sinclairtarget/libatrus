@@ -17,10 +17,14 @@ const escape = @import("escape.zig");
 const references = @import("references.zig");
 const safety = @import("../util/safety.zig");
 const strings = @import("../util/strings.zig");
+const uri = @import("../util/uri.zig");
 
-pub const Error = error{
-    WriteFailed,
-} || references.CharacterReferenceError || Allocator.Error;
+pub const Error = (
+    Io.Writer.Error
+    || Allocator.Error
+    || references.CharacterReferenceError
+    || uri.Error
+);
 
 tokenizer: *InlineTokenizer,
 line: ArrayList(InlineToken),
@@ -61,6 +65,11 @@ pub fn parse(
         }
 
         if (try self.parseURIAutolink(alloc, scratch)) |link| {
+            try nodes.append(link);
+            continue;
+        }
+
+        if (try self.parseEmailAutolink(alloc, scratch)) |link| {
             try nodes.append(link);
             continue;
         }
@@ -1025,13 +1034,64 @@ fn parseURIAutolink(
     _ = try self.consume(scratch, &.{.absolute_uri}) orelse return null;
     _ = try self.consume(scratch, &.{.r_angle_bracket}) orelse return null;
 
-    const url = try resolveInlineText(scratch, uri_token);
-    const text = try createTextNode(alloc, url);
+    const url = try uri.normalize(alloc, scratch, uri_token.lexeme);
+    errdefer alloc.free(url);
+
+    const text = try createTextNode(
+        alloc,
+        try resolveInlineText(scratch, uri_token),
+    );
+    errdefer text.deinit(alloc);
 
     const inline_link = try alloc.create(ast.Node);
     inline_link.* = .{
         .link = .{
-            .url = try alloc.dupe(u8, url),
+            .url = url,
+            .title = "",
+            .children = try alloc.dupe(*ast.Node, &.{text}),
+        },
+    };
+    return inline_link;
+}
+
+fn parseEmailAutolink(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) Error!?*ast.Node {
+    const open_token = try self.peek(scratch) orelse return null;
+    if (open_token.token_type != .l_angle_bracket) {
+        return null;
+    }
+
+    const email_token = try self.peekAhead(scratch, 2) orelse return null;
+    if (email_token.token_type != .email) {
+        return null;
+    }
+
+    const close_token = try self.peekAhead(scratch, 3) orelse return null;
+    if (close_token.token_type != .r_angle_bracket) {
+        return null;
+    }
+
+    _ = try self.consume(scratch, &.{.l_angle_bracket}) orelse return null;
+    _ = try self.consume(scratch, &.{.email}) orelse return null;
+    _ = try self.consume(scratch, &.{.r_angle_bracket}) orelse return null;
+
+    const url = try std.fmt.allocPrint(
+        alloc,
+        "mailto:{s}",
+        .{email_token.lexeme},
+    );
+    const text = try createTextNode(
+        alloc,
+        try resolveInlineText(scratch, email_token),
+    );
+
+    const inline_link = try alloc.create(ast.Node);
+    inline_link.* = .{
+        .link = .{
+            .url = url,
             .title = "",
             .children = try alloc.dupe(*ast.Node, &.{text}),
         },
@@ -1911,7 +1971,7 @@ test "inline link with destination and title" {
 }
 
 test "URI autolink" {
-    const value = "<http://foo.com/bar>";
+    const value = "<http://foo.com/bar?bim[]=baz>";
     const nodes = try parseIntoNodes(value);
     defer freeNodes(nodes);
 
@@ -1919,7 +1979,10 @@ test "URI autolink" {
     try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[0].*));
 
     const link_node = nodes[0];
-    try testing.expectEqualStrings("http://foo.com/bar", link_node.link.url);
+    try testing.expectEqualStrings(
+        "http://foo.com/bar?bim%5B%5D=baz",
+        link_node.link.url,
+    );
     try testing.expectEqualStrings("", link_node.link.title);
 
     try testing.expectEqual(1, link_node.link.children.len);
@@ -1928,7 +1991,33 @@ test "URI autolink" {
         @as(ast.NodeType, link_node.link.children[0].*),
     );
     try testing.expectEqualStrings(
-        "http://foo.com/bar",
+        "http://foo.com/bar?bim[]=baz",
+        link_node.link.children[0].text.value,
+    );
+}
+
+test "email autolink" {
+    const value = "<person@gmail.com>";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[0].*));
+
+    const link_node = nodes[0];
+    try testing.expectEqualStrings(
+        "mailto:person@gmail.com",
+        link_node.link.url,
+    );
+    try testing.expectEqualStrings("", link_node.link.title);
+
+    try testing.expectEqual(1, link_node.link.children.len);
+    try testing.expectEqual(
+        ast.NodeType.text,
+        @as(ast.NodeType, link_node.link.children[0].*),
+    );
+    try testing.expectEqualStrings(
+        "person@gmail.com",
         link_node.link.children[0].text.value,
     );
 }
