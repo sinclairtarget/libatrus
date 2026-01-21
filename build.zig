@@ -10,7 +10,7 @@ const LibraryArtifacts = struct {
 };
 
 /// We have multiple groups of tests:
-/// * Unit tests (defined along side the source code for the library)
+/// * Unit tests (defined alongside the source code for the library)
 /// * Spec tests (test conformance with the MyST spec)
 /// * CLI tests (runs atrus as a subprocess, functional tests)
 /// * C API tests (makes sure the C API links and works)
