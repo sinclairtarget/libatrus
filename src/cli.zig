@@ -30,6 +30,23 @@ pub const Options = struct {
     }
 };
 
+pub const Action = enum {
+    tokenize,
+    parse,
+    print_version,
+    help,
+};
+
+pub const ArgsError = error{
+    NotEnoughArgs,
+    UnrecognizedArg,
+    IncompatibleArgs,
+};
+
+pub const Diagnostic = struct {
+    argname: ?[]const u8 = null,
+};
+
 pub fn printUsage(out: *Io.Writer) !void {
     const usage =
         \\Usage: atrus [--block|--pre|--html] [FILEPATH]
@@ -70,23 +87,6 @@ pub fn printUsage(out: *Io.Writer) !void {
     try out.print("{s}", .{full_usage});
 }
 
-pub const Action = enum {
-    tokenize,
-    parse,
-    print_version,
-    help,
-};
-
-pub const ArgsError = error{
-    NotEnoughArgs,
-    UnrecognizedArg,
-    IncompatibleArgs,
-};
-
-pub const Diagnostic = struct {
-    argname: ?[]const u8 = null,
-};
-
 /// Parse CLI args.
 ///
 /// Caller responsible for freeing memory held by returned Options.
@@ -100,7 +100,7 @@ pub fn parseArgs(
 
     const args = try std.process.argsAlloc(args_arena_impl.allocator());
     if (args.len < 2) {
-        return ArgsError.NotEnoughArgs;
+        return .{.parse, .{}};
     }
 
     if (std.mem.eql(u8, args[1], "--version")) {
