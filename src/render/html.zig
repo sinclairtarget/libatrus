@@ -92,18 +92,16 @@ fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
         .image => |n| {
             try out.print("<img src=\"", .{});
             try printHTMLEscaped(out, n.url);
-            try out.print("\"", .{});
+            try out.print("\" ", .{});
+
+            try out.print("alt=\"", .{});
+            try printHTMLEscaped(out, n.alt);
+            try out.print("\" ", .{});
 
             if (n.title.len > 0) {
-                try out.print(" title=\"", .{});
+                try out.print("title=\"", .{});
                 try printHTMLEscaped(out, n.title);
-                try out.print("\"", .{});
-            }
-
-            if (n.alt.len > 0) {
-                try out.print(" alt=\"", .{});
-                try printHTMLEscaped(out, n.alt);
-                try out.print("\"", .{});
+                try out.print("\" ", .{});
             }
 
             try out.print("/>", .{});

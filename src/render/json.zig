@@ -80,14 +80,14 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
             try stringify.objectField("url");
             try stringify.write(n.url);
 
-            if (n.title.len > 0) {
-                try stringify.objectField("title");
-                try stringify.write(n.title);
-            }
-
             if (n.alt.len > 0) {
                 try stringify.objectField("alt");
                 try stringify.write(n.alt);
+            }
+
+            if (n.title.len > 0) {
+                try stringify.objectField("title");
+                try stringify.write(n.title);
             }
         },
         .thematic_break => {},

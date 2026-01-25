@@ -149,6 +149,11 @@ fn parseStarStrong(
             continue;
         }
 
+        if (try self.parseImage(alloc, scratch)) |image| {
+            try children.append(image);
+            continue;
+        }
+
         if (try self.parseInlineLink(alloc, scratch)) |link| {
             try children.append(link);
             continue;
@@ -258,6 +263,10 @@ fn parseStarEmphasis(
         if (blk: {
             if (try self.parseInlineCode(alloc, scratch)) |code| {
                 break :blk code;
+            }
+
+            if (try self.parseImage(alloc, scratch)) |image| {
+                break :blk image;
             }
 
             if (try self.parseInlineLink(alloc, scratch)) |link| {
@@ -384,6 +393,11 @@ fn parseUnderscoreStrong(
     for (0..safety.loop_bound) |_| {
         if (try self.parseInlineCode(alloc, scratch)) |code| {
             try children.append(code);
+            continue;
+        }
+
+        if (try self.parseImage(alloc, scratch)) |image| {
+            try children.append(image);
             continue;
         }
 
@@ -514,6 +528,10 @@ fn parseUnderscoreEmphasis(
         if (blk: {
             if (try self.parseInlineCode(alloc, scratch)) |code| {
                 break :blk code;
+            }
+
+            if (try self.parseImage(alloc, scratch)) |image| {
+                break :blk image;
             }
 
             if (try self.parseInlineLink(alloc, scratch)) |link| {
@@ -828,6 +846,11 @@ fn parseImageDescription(
 
     var bracket_depth: u32 = 0;
     loop: for (0..safety.loop_bound) |_| {
+        if (try self.parseImage(alloc, scratch)) |image| {
+            try nodes.append(image);
+            continue;
+        }
+
         if (try self.parseInlineLink(alloc, scratch)) |link| {
             try nodes.append(link);
             continue;
