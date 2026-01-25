@@ -74,6 +74,11 @@ pub fn parse(
             continue;
         }
 
+        if (try self.parseImage(alloc, scratch)) |image| {
+            try nodes.append(image);
+            continue;
+        }
+
         if (try self.parseInlineLink(alloc, scratch)) |link| {
             try nodes.append(link);
             continue;
@@ -736,6 +741,165 @@ fn parseInlineCode(
     return inline_code_node;
 }
 
+// @ => link_description l_paren (link_dest link_title?)? r_paren
+/// Parses an inline link.
+fn parseImage(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) Error!?*ast.Node {
+    var image: ?*ast.Node = null;
+    const checkpoint_index = self.checkpoint();
+    defer {
+        if (image == null) {
+            self.backtrack(checkpoint_index);
+        }
+    }
+
+    const img_desc_nodes = (
+        try self.parseImageDescription(alloc, scratch) orelse return null
+    );
+    defer {
+        // We only need these nodes to produce the alt text. They won't end
+        // up in the final AST.
+        for (img_desc_nodes) |node| {
+            node.deinit(alloc);
+        }
+        alloc.free(img_desc_nodes);
+    }
+
+    _ = try self.consume(scratch, &.{.l_paren}) orelse return null;
+
+    // link destination
+    const url = try self.scanLinkDestination(scratch);
+
+    const title = blk: {
+        // link title, if present, must be separated from destination by
+        // whitespace
+        if (try self.consume(scratch, &.{.newline, .whitespace})) |_| {
+            break :blk try self.scanLinkTitle(scratch);
+        }
+
+        break :blk "";
+    };
+
+    _ = try self.consume(scratch, &.{.r_paren}) orelse return null;
+
+    // render "plain text" alt text
+    var running_text = Io.Writer.Allocating.init(alloc);
+    errdefer running_text.deinit();
+    for (img_desc_nodes) |node| {
+        try node.writePlainText(&running_text.writer);
+    }
+
+    image = try alloc.create(ast.Node);
+    image.?.* = .{
+        .image = .{
+            .url = try alloc.dupe(u8, url),
+            .title = try alloc.dupe(u8, title),
+            .alt = try running_text.toOwnedSlice(),
+        },
+    };
+    return image;
+}
+
+/// Parses the image description component of an inline image. Returns a slice
+/// of inline AST nodes.
+fn parseImageDescription(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) Error!?[]*ast.Node {
+    var nodes = NodeList.init(alloc, scratch, createTextNode);
+    var did_parse_successfully = false;
+    const checkpoint_index = self.checkpoint();
+    defer {
+        if (!did_parse_successfully) {
+            self.backtrack(checkpoint_index);
+            for (nodes.items()) |node| {
+                node.deinit(alloc);
+            }
+            nodes.deinit();
+        }
+    }
+
+    _ = try self.consume(scratch, &.{.exclamation_mark}) orelse return null;
+    _ = try self.consume(scratch, &.{.l_square_bracket}) orelse return null;
+
+    var bracket_depth: u32 = 0;
+    loop: for (0..safety.loop_bound) |_| {
+        if (try self.parseInlineLink(alloc, scratch)) |link| {
+            try nodes.append(link);
+            continue;
+        }
+
+        if (try self.parseInlineCode(alloc, scratch)) |code| {
+            try nodes.append(code);
+            continue;
+        }
+
+        // Handle square brackets, which are only allowed if they are balanced
+        const allowed_bracket: []const u8 = blk: {
+            const token = try self.peek(scratch) orelse return null;
+            switch (token.token_type) {
+                .l_square_bracket => {
+                    bracket_depth += 1;
+                },
+                .r_square_bracket => {
+                    if (bracket_depth == 0) {
+                        // end of link text
+                        break :loop;
+                    }
+
+                    bracket_depth -= 1;
+                },
+                else => break :blk "",
+            }
+
+            _ = try self.consume(scratch, &.{token.token_type});
+            const value = try resolveInlineText(scratch, token);
+            break :blk value;
+        };
+        if (allowed_bracket.len > 0) {
+            try nodes.appendText(allowed_bracket);
+            continue;
+        }
+
+        if (try self.parseAnyEmphasis(alloc, scratch)) |emph| {
+            try nodes.append(emph);
+            continue;
+        }
+
+        if (try self.parseAnyStrong(alloc, scratch)) |strong| {
+            try nodes.append(strong);
+            continue;
+        }
+
+        const text_value = try self.scanText(scratch);
+        if (text_value.len > 0) {
+            try nodes.appendText(text_value);
+            continue;
+        }
+
+        const text_fallback_value = try self.scanTextFallback(scratch);
+        if (text_fallback_value.len > 0) {
+            try nodes.appendText(text_fallback_value);
+            continue;
+        }
+
+        break;
+    } else @panic(safety.loop_bound_panic_msg);
+
+    _ = try self.consume(scratch, &.{.r_square_bracket}) orelse return null;
+
+    if (bracket_depth > 0) {
+        return null; // contained unbalanced brackets
+    }
+
+    did_parse_successfully = true;
+    return try nodes.toOwnedSlice();
+}
+
 // @ => link_text l_paren (link_dest link_title?)? r_paren
 /// Parses an inline link.
 fn parseInlineLink(
@@ -816,6 +980,11 @@ fn parseLinkText(
 
     var bracket_depth: u32 = 0;
     loop: for (0..safety.loop_bound) |_| {
+        if (try self.parseImage(alloc, scratch)) |image| {
+            try nodes.append(image);
+            continue;
+        }
+
         if (try self.parseInlineLink(alloc, scratch)) |link| {
             try nodes.append(link); // ensure it gets cleaned up
             return null; // nested links are not allowed!
@@ -2039,5 +2208,57 @@ test "email autolink" {
     try testing.expectEqualStrings(
         "person@gmail.com",
         link_node.link.children[0].text.value,
+    );
+}
+
+test "image" {
+    const value = "![foo](/bar \"bim\")";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.image, @as(ast.NodeType, nodes[0].*));
+
+    const image_node = nodes[0];
+    try testing.expectEqualStrings("foo", image_node.image.alt);
+    try testing.expectEqualStrings("/bar", image_node.image.url);
+    try testing.expectEqualStrings("bim", image_node.image.title);
+}
+
+test "image complicated alt text" {
+    const value = "![*foo* __bim__](/bar)";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.image, @as(ast.NodeType, nodes[0].*));
+
+    const image_node = nodes[0];
+    try testing.expectEqualStrings("foo bim", image_node.image.alt);
+    try testing.expectEqualStrings("/bar", image_node.image.url);
+}
+
+test "image link" {
+    const value = "[![](/foo.jpg)](/bar.com/baz)";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[0].*));
+    const link_node = nodes[0];
+    try testing.expectEqualStrings(
+        "/bar.com/baz",
+        link_node.link.url,
+    );
+    try testing.expectEqualStrings("", link_node.link.title);
+
+    try testing.expectEqual(1, link_node.link.children.len);
+    try testing.expectEqual(
+        ast.NodeType.image,
+        @as(ast.NodeType, link_node.link.children[0].*),
+    );
+    try testing.expectEqualStrings(
+        "/foo.jpg",
+        link_node.link.children[0].image.url,
     );
 }

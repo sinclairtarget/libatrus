@@ -5,6 +5,7 @@
 const std = @import("std");
 const ArrayList = std.ArrayList;
 const Allocator = std.mem.Allocator;
+const Io = std.Io;
 
 pub const NodeType = enum {
     root,
@@ -18,6 +19,7 @@ pub const NodeType = enum {
     strong,
     inline_code,
     link,
+    image,
 };
 
 pub const Node = union(NodeType) {
@@ -32,8 +34,19 @@ pub const Node = union(NodeType) {
     strong: Container,
     inline_code: Text,
     link: Link,
+    image: Image,
 
     const Self = @This();
+
+    /// Writes "plain text content" of node to writer.
+    ///
+    /// Needed primarily to create alt text for images.
+    pub fn writePlainText(self: *Self, out: *Io.Writer) Io.Writer.Error!void {
+        switch (self.*) {
+            .thematic_break => {},
+            inline else => |*payload| try payload.writePlainText(out),
+        }
+    }
 
     pub fn deinit(self: *Self, alloc: Allocator) void {
         switch (self.*) {
@@ -51,6 +64,12 @@ pub const Root = struct {
 
     const Self = @This();
 
+    pub fn writePlainText(self: *Self, out: *Io.Writer) !void {
+        for (self.children) |child| {
+            try child.writePlainText(out);
+        }
+    }
+
     pub fn deinit(self: *Self, alloc: Allocator) void {
         for (self.children) |child| {
             child.deinit(alloc);
@@ -63,6 +82,12 @@ pub const Container = struct {
     children: []*Node,
 
     const Self = @This();
+
+    pub fn writePlainText(self: *Self, out: *Io.Writer) !void {
+        for (self.children) |child| {
+            try child.writePlainText(out);
+        }
+    }
 
     pub fn deinit(self: *Self, alloc: Allocator) void {
         for (self.children) |child| {
@@ -78,6 +103,12 @@ pub const Heading = struct {
 
     const Self = @This();
 
+    pub fn writePlainText(self: *Self, out: *Io.Writer) !void {
+        for (self.children) |child| {
+            try child.writePlainText(out);
+        }
+    }
+
     pub fn deinit(self: *Self, alloc: Allocator) void {
         for (self.children) |child| {
             child.deinit(alloc);
@@ -91,6 +122,10 @@ pub const Text = struct {
 
     const Self = @This();
 
+    pub fn writePlainText(self: *Self, out: *Io.Writer) !void {
+        _ = try out.write(self.value);
+    }
+
     pub fn deinit(self: *Self, alloc: Allocator) void {
         alloc.free(self.value);
     }
@@ -101,6 +136,10 @@ pub const Code = struct {
     lang: []const u8,
 
     const Self = @This();
+
+    pub fn writePlainText(self: *Self, out: *Io.Writer) !void {
+        _ = try out.write(self.value);
+    }
 
     pub fn deinit(self: *Self, alloc: Allocator) void {
         alloc.free(self.value);
@@ -115,6 +154,12 @@ pub const Link = struct {
 
     const Self = @This();
 
+    pub fn writePlainText(self: *Self, out: *Io.Writer) !void {
+        for (self.children) |child| {
+            try child.writePlainText(out);
+        }
+    }
+
     pub fn deinit(self: *Self, alloc: Allocator) void {
         for (self.children) |child| {
             child.deinit(alloc);
@@ -123,6 +168,24 @@ pub const Link = struct {
 
         alloc.free(self.url);
         alloc.free(self.title);
+    }
+};
+
+pub const Image = struct {
+    url: []const u8,
+    title: []const u8,
+    alt: []const u8,
+
+    const Self = @This();
+
+    pub fn writePlainText(self: *Self, out: *Io.Writer) !void {
+        _ = try out.write(self.alt);
+    }
+
+    pub fn deinit(self: *Self, alloc: Allocator) void {
+        alloc.free(self.url);
+        alloc.free(self.title);
+        alloc.free(self.alt);
     }
 };
 

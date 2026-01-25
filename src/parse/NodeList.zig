@@ -71,6 +71,8 @@ pub fn toOwnedSlice(self: *Self) ![]*ast.Node {
     return try self.list.toOwnedSlice(self.allocator);
 }
 
+/// Appends a text node with any text content accumulated since we last appended
+/// a node.
 fn checkAppendCollected(self: *Self) !void {
     if (self.running_text.written().len == 0) {
         return;
