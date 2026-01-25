@@ -79,43 +79,43 @@ fn tokenize(self: *Self, scratch: Allocator) !InlineToken {
     const result: ?TokenizeResult = while (self.i < self.in.len) {
         // First, try regular tokens
         const regular_result: ?TokenizeResult = blk: {
-            if (try self.tokenizeSingleCharTokens(scratch)) |result| {
+            if (try self.matchSingleCharTokens(scratch)) |result| {
                 break :blk result;
             }
 
-            if (try self.tokenizeDecimalCharacterReference(scratch)) |result| {
+            if (try self.matchDecimalCharacterReference(scratch)) |result| {
                 break :blk result;
             }
 
-            if (try self.tokenizeHexCharacterReference(scratch)) |result| {
+            if (try self.matchHexCharacterReference(scratch)) |result| {
                 break :blk result;
             }
 
-            if (try self.tokenizeEntityReference(scratch)) |result| {
+            if (try self.matchEntityReference(scratch)) |result| {
                 break :blk result;
             }
 
-            if (try self.tokenizeBackticks(scratch)) |result| {
+            if (try self.matchBackticks(scratch)) |result| {
                 break :blk result;
             }
 
-            if (try self.tokenizeDelimStarRun(scratch, self.state)) |result| {
+            if (try self.matchDelimStarRun(scratch, self.state)) |result| {
                 break :blk result;
             }
 
-            if (try self.tokenizeDelimUnderRun(scratch, self.state)) |result| {
+            if (try self.matchDelimUnderRun(scratch, self.state)) |result| {
                 break :blk result;
             }
 
-            if (try self.tokenizeWhitespace(scratch)) |result| {
+            if (try self.matchWhitespace(scratch)) |result| {
                 break :blk result;
             }
 
-            if (try self.tokenizeAbsoluteURI(scratch)) |result| {
+            if (try self.matchAbsoluteURI(scratch)) |result| {
                 break :blk result;
             }
 
-            if (try self.tokenizeEmailAddress(scratch)) |result| {
+            if (try self.matchEmailAddress(scratch)) |result| {
                 break :blk result;
             }
 
@@ -130,7 +130,7 @@ fn tokenize(self: *Self, scratch: Allocator) !InlineToken {
 
         // Didn't successfully scan a regular token. Handle fallback
         const fallback_result = blk: {
-            if (try self.tokenizeText(scratch)) |result| {
+            if (try self.matchText(scratch)) |result| {
                 break :blk result;
             }
 
@@ -174,7 +174,7 @@ fn tokenize(self: *Self, scratch: Allocator) !InlineToken {
     return self.staged.pop().?;
 }
 
-fn tokenizeSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
+fn matchSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
     const result: struct {
         InlineTokenType,
         TopLevelState,
@@ -205,7 +205,7 @@ fn tokenizeSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
     };
 }
 
-fn tokenizeEntityReference(self: Self, scratch: Allocator) !?TokenizeResult {
+fn matchEntityReference(self: Self, scratch: Allocator) !?TokenizeResult {
     var lookahead_i = self.i;
 
     const State = enum { started, rest };
@@ -250,7 +250,7 @@ fn tokenizeEntityReference(self: Self, scratch: Allocator) !?TokenizeResult {
     };
 }
 
-fn tokenizeDecimalCharacterReference(
+fn matchDecimalCharacterReference(
     self: Self,
     scratch: Allocator,
 ) !?TokenizeResult {
@@ -317,7 +317,7 @@ fn tokenizeDecimalCharacterReference(
     };
 }
 
-fn tokenizeHexCharacterReference(
+fn matchHexCharacterReference(
     self: Self,
     scratch: Allocator,
 ) !?TokenizeResult {
@@ -397,7 +397,7 @@ fn tokenizeHexCharacterReference(
     };
 }
 
-fn tokenizeBackticks(self: Self, scratch: Allocator) !?TokenizeResult {
+fn matchBackticks(self: Self, scratch: Allocator) !?TokenizeResult {
     var lookahead_i = self.i;
 
     const State = enum { start, rest };
@@ -435,7 +435,7 @@ fn tokenizeBackticks(self: Self, scratch: Allocator) !?TokenizeResult {
     };
 }
 
-fn tokenizeDelimStarRun(
+fn matchDelimStarRun(
     self: Self,
     scratch: Allocator,
     top_level_state: TopLevelState,
@@ -529,7 +529,7 @@ fn tokenizeDelimStarRun(
     };
 }
 
-fn tokenizeDelimUnderRun(
+fn matchDelimUnderRun(
     self: Self,
     scratch: Allocator,
     top_level_state: TopLevelState,
@@ -684,7 +684,7 @@ fn tokenizeDelimUnderRun(
     };
 }
 
-fn tokenizeAbsoluteURI(self: Self, scratch: Allocator) !?TokenizeResult {
+fn matchAbsoluteURI(self: Self, scratch: Allocator) !?TokenizeResult {
     var lookahead_i = self.i;
 
     const State = enum { start, scheme, rest };
@@ -757,7 +757,7 @@ fn tokenizeAbsoluteURI(self: Self, scratch: Allocator) !?TokenizeResult {
 /// @
 /// [a-zA-Z0-9]([a-zA-Z0-9-]{0, 61}[a-zA-Z0-9])?
 /// (\.[a-zA-Z0-9]([a-zA-Z0-9-]{0, 61}[a-zA-Z0-9])*
-fn tokenizeEmailAddress(self: Self, scratch: Allocator) !?TokenizeResult {
+fn matchEmailAddress(self: Self, scratch: Allocator) !?TokenizeResult {
     var lookahead_i = self.i;
 
     var host_component_len: usize = 0; // max of 63 for each '.'-delimited part
@@ -859,7 +859,7 @@ fn tokenizeEmailAddress(self: Self, scratch: Allocator) !?TokenizeResult {
     };
 }
 
-fn tokenizeWhitespace(self: Self, scratch: Allocator) !?TokenizeResult {
+fn matchWhitespace(self: Self, scratch: Allocator) !?TokenizeResult {
     var lookahead_i = self.i;
     while (lookahead_i < self.in.len) {
         switch (self.in[lookahead_i]) {
@@ -890,7 +890,7 @@ fn tokenizeWhitespace(self: Self, scratch: Allocator) !?TokenizeResult {
 /// Tokenize basic text.
 ///
 /// This is basically anything that wasn't already tokenized as something else.
-fn tokenizeText(self: Self, scratch: Allocator) !?TokenizeResult {
+fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
     var lookahead_i = self.i;
 
     const State = enum {

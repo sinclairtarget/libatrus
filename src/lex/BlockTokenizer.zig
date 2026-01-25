@@ -60,30 +60,30 @@ pub fn next(self: *Self, scratch: Allocator) Error!?BlockToken {
 /// Returns the next token starting at the current index.
 fn tokenize(self: *Self, scratch: Allocator) !BlockToken {
     const result: TokenizeResult = blk: {
-        if (try self.tokenizePound(scratch)) |result| {
+        if (try self.matchPound(scratch)) |result| {
             break :blk result;
         }
 
-        if (try self.tokenizeNewline(scratch)) |result| {
+        if (try self.matchNewline(scratch)) |result| {
             break :blk result;
         }
 
-        if (try self.tokenizeIndent(scratch)) |result| {
+        if (try self.matchIndent(scratch)) |result| {
             break :blk result;
         }
 
-        if (try self.tokenizeRule(scratch)) |result| {
+        if (try self.matchRule(scratch)) |result| {
             break :blk result;
         }
 
-        break :blk try self.tokenizeText(scratch);
+        break :blk try self.matchText(scratch);
     };
 
     self.i = result.next_i;
     return result.token;
 }
 
-fn tokenizePound(self: Self, scratch: Allocator) !?TokenizeResult {
+fn matchPound(self: Self, scratch: Allocator) !?TokenizeResult {
     var lookahead_i = self.i;
 
     const State = enum { start, rest };
@@ -120,7 +120,7 @@ fn tokenizePound(self: Self, scratch: Allocator) !?TokenizeResult {
     };
 }
 
-fn tokenizeNewline(self: Self, scratch: Allocator) !?TokenizeResult {
+fn matchNewline(self: Self, scratch: Allocator) !?TokenizeResult {
     if (self.line[self.i] != '\n') {
         return null;
     }
@@ -136,7 +136,7 @@ fn tokenizeNewline(self: Self, scratch: Allocator) !?TokenizeResult {
     };
 }
 
-fn tokenizeIndent(self: Self, scratch: Allocator) !?TokenizeResult {
+fn matchIndent(self: Self, scratch: Allocator) !?TokenizeResult {
     if (self.i > 0) {
         // valid only at beginning of line
         return null;
@@ -174,7 +174,7 @@ fn tokenizeIndent(self: Self, scratch: Allocator) !?TokenizeResult {
 
 /// Tokenize a rule line (later parsed into setext headings or thematic
 /// breaks).
-fn tokenizeRule(self: Self, scratch: Allocator) !?TokenizeResult {
+fn matchRule(self: Self, scratch: Allocator) !?TokenizeResult {
     if (self.i > 0) {
         // valid only at beginning of line
         return null;
@@ -251,7 +251,7 @@ fn tokenizeRule(self: Self, scratch: Allocator) !?TokenizeResult {
     };
 }
 
-fn tokenizeText(self: Self, scratch: Allocator) !TokenizeResult {
+fn matchText(self: Self, scratch: Allocator) !TokenizeResult {
     var lookahead_i = self.i;
 
     const State = enum { start, whitespace };
