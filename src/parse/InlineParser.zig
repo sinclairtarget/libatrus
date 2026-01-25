@@ -1950,7 +1950,6 @@ test "inline link destination angle brackets" {
 
 test "inline link destination no angle brackets" {
     const value = "[foo](bar)";
-
     const nodes = try parseIntoNodes(value);
     defer freeNodes(nodes);
 
@@ -1970,6 +1969,25 @@ test "inline link with destination and title" {
 
     try testing.expectEqualStrings("bar", nodes[0].link.url);
     try testing.expectEqualStrings("baz", nodes[0].link.title);
+}
+
+test "inline link with exclamation mark" {
+    const value = "[foo!](bar)";
+    const nodes = try parseIntoNodes(value);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[0].*));
+
+    try testing.expectEqualStrings(nodes[0].link.url, "bar");
+
+    try testing.expectEqual(1, nodes[0].link.children.len);
+    const text = nodes[0].link.children[0];
+    try testing.expectEqual(
+        ast.NodeType.text,
+        @as(ast.NodeType, text.*),
+    );
+    try testing.expectEqualStrings("foo!", text.text.value);
 }
 
 test "URI autolink" {
