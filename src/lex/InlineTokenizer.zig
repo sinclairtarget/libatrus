@@ -188,6 +188,7 @@ fn matchSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
             ')'  => .{ .r_paren, .punct },
             '\'' => .{ .single_quote, .punct },
             '"'  => .{ .double_quote, .punct },
+            '!'  => .{ .exclamation_mark, .punct },
             else => return null,
     };
 
@@ -906,7 +907,7 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
             // Allow the first character to be something that later we will
             // break on.
             switch (self.in[lookahead_i]) {
-                '&', '`', '[', ']', '<', '>', '(', ')', '\'', '"' => {
+                '&', '`', '[', ']', '<', '>', '(', ')', '\'', '"', '!' => {
                     lookahead_i += 1;
                     continue :fsm .punct;
                 },
@@ -926,14 +927,14 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
 
             switch (self.in[lookahead_i]) {
                 '\n', ' ', '\t', '&', '`', '[', ']', '<', '>', '(', ')', '*',
-                '_', '\'', '"' => {
+                '_', '\'', '"', '!' => {
                     break :fsm .normal;
                 },
                 '\\' => {
                     lookahead_i += 1;
                     continue :fsm .escaped;
                 },
-                '!', '#'...'%', '+'...'/', ':', ';', '=', '?', '@', '^',
+                '#'...'%', '+'...'/', ':', ';', '=', '?', '@', '^',
                 '{'...'~' => {
                     continue :fsm .punct;
                 },
@@ -975,10 +976,10 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
 
             switch (self.in[lookahead_i]) {
                 '\n', ' ', '\t' ,'&', '`', '[', ']', '<', '>', '(', ')', '*',
-                '_', '\'', '"' => {
+                '_', '\'', '"', '!' => {
                     break :fsm .punct;
                 },
-                '!', '#'...'%', '+'...'/', ':', ';', '=', '?', '@', '^',
+                '#'...'%', '+'...'/', ':', ';', '=', '?', '@', '^',
                 '{'...'~' => {
                     lookahead_i += 1;
                     continue :fsm .punct;
@@ -1282,4 +1283,9 @@ test "absolute URI" {
 test "email address" {
     const line = "person@gmail.com next";
     try expectEqualTokens(&.{.email, .whitespace, .text}, line);
+}
+
+test "exclamation mark" {
+    const line = "Hello!";
+    try expectEqualTokens(&.{.text, .exclamation_mark}, line);
 }
