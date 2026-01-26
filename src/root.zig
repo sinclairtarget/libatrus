@@ -85,6 +85,8 @@ pub fn parse(
 
     errdefer root.deinit(alloc);
 
+    // extract link definitions
+
     // second stage; parse inline elements
     _ = arena.reset(.retain_capacity);
     timer.reset();
@@ -198,6 +200,7 @@ test {
     _ = @import("lex/InlineTokenizer.zig");
     _ = @import("parse/BlockParser.zig");
     _ = @import("parse/InlineParser.zig");
+    _ = @import("parse/link_defs.zig");
     _ = @import("util/uri.zig");
 }
 

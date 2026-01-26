@@ -19,6 +19,7 @@ pub const NodeType = enum {
     strong,
     inline_code,
     link,
+    definition, // link definition
     image,
 };
 
@@ -34,16 +35,19 @@ pub const Node = union(NodeType) {
     strong: Container,
     inline_code: Text,
     link: Link,
+    definition: LinkDefinition,
     image: Image,
 
     const Self = @This();
 
     /// Writes "plain text content" of node to writer.
     ///
-    /// Needed primarily to create alt text for images.
+    /// NOT MEANT TO BE USED FOR RENDERING. Any renders should have their own
+    /// logic for turning AST nodes into output text. This is only used during
+    /// parsing for image alt text.
     pub fn writePlainText(self: *Self, out: *Io.Writer) Io.Writer.Error!void {
         switch (self.*) {
-            .thematic_break => {},
+            .thematic_break, .definition => {},
             inline else => |*payload| try payload.writePlainText(out),
         }
     }
@@ -168,6 +172,20 @@ pub const Link = struct {
 
         alloc.free(self.url);
         alloc.free(self.title);
+    }
+};
+
+pub const LinkDefinition = struct {
+    url: []const u8,
+    title: []const u8,
+    label: []const u8,
+
+    const Self = @This();
+
+    pub fn deinit(self: *Self, alloc: Allocator) void {
+        alloc.free(self.url);
+        alloc.free(self.title);
+        alloc.free(self.label);
     }
 };
 
