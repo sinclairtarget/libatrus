@@ -3,9 +3,7 @@
 //! https://mystmd.org/spec
 
 const std = @import("std");
-const ArrayList = std.ArrayList;
 const Allocator = std.mem.Allocator;
-const Io = std.Io;
 
 pub const NodeType = enum {
     root,
@@ -40,18 +38,6 @@ pub const Node = union(NodeType) {
 
     const Self = @This();
 
-    /// Writes "plain text content" of node to writer.
-    ///
-    /// NOT MEANT TO BE USED FOR RENDERING. Any renders should have their own
-    /// logic for turning AST nodes into output text. This is only used during
-    /// parsing for image alt text.
-    pub fn writePlainText(self: *Self, out: *Io.Writer) Io.Writer.Error!void {
-        switch (self.*) {
-            .thematic_break, .definition => {},
-            inline else => |*payload| try payload.writePlainText(out),
-        }
-    }
-
     pub fn deinit(self: *Self, alloc: Allocator) void {
         switch (self.*) {
             .thematic_break => {},
@@ -68,12 +54,6 @@ pub const Root = struct {
 
     const Self = @This();
 
-    pub fn writePlainText(self: *Self, out: *Io.Writer) !void {
-        for (self.children) |child| {
-            try child.writePlainText(out);
-        }
-    }
-
     pub fn deinit(self: *Self, alloc: Allocator) void {
         for (self.children) |child| {
             child.deinit(alloc);
@@ -86,12 +66,6 @@ pub const Container = struct {
     children: []*Node,
 
     const Self = @This();
-
-    pub fn writePlainText(self: *Self, out: *Io.Writer) !void {
-        for (self.children) |child| {
-            try child.writePlainText(out);
-        }
-    }
 
     pub fn deinit(self: *Self, alloc: Allocator) void {
         for (self.children) |child| {
@@ -107,12 +81,6 @@ pub const Heading = struct {
 
     const Self = @This();
 
-    pub fn writePlainText(self: *Self, out: *Io.Writer) !void {
-        for (self.children) |child| {
-            try child.writePlainText(out);
-        }
-    }
-
     pub fn deinit(self: *Self, alloc: Allocator) void {
         for (self.children) |child| {
             child.deinit(alloc);
@@ -126,10 +94,6 @@ pub const Text = struct {
 
     const Self = @This();
 
-    pub fn writePlainText(self: *Self, out: *Io.Writer) !void {
-        _ = try out.write(self.value);
-    }
-
     pub fn deinit(self: *Self, alloc: Allocator) void {
         alloc.free(self.value);
     }
@@ -140,10 +104,6 @@ pub const Code = struct {
     lang: []const u8,
 
     const Self = @This();
-
-    pub fn writePlainText(self: *Self, out: *Io.Writer) !void {
-        _ = try out.write(self.value);
-    }
 
     pub fn deinit(self: *Self, alloc: Allocator) void {
         alloc.free(self.value);
@@ -157,12 +117,6 @@ pub const Link = struct {
     children: []*Node,
 
     const Self = @This();
-
-    pub fn writePlainText(self: *Self, out: *Io.Writer) !void {
-        for (self.children) |child| {
-            try child.writePlainText(out);
-        }
-    }
 
     pub fn deinit(self: *Self, alloc: Allocator) void {
         for (self.children) |child| {
@@ -195,10 +149,6 @@ pub const Image = struct {
     alt: []const u8,
 
     const Self = @This();
-
-    pub fn writePlainText(self: *Self, out: *Io.Writer) !void {
-        _ = try out.write(self.alt);
-    }
 
     pub fn deinit(self: *Self, alloc: Allocator) void {
         alloc.free(self.url);

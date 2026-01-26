@@ -90,7 +90,8 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
                 try stringify.write(n.title);
             }
         },
-        .thematic_break => {},
+        // Don't get rendered
+        .thematic_break, .definition => {},
     }
 
     try stringify.endObject();

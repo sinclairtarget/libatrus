@@ -82,7 +82,7 @@ pub fn transform(
             return node;
         },
         .text, .code, .thematic_break, .emphasis, .strong, .inline_code,
-        .link, .image => {
+        .link, .image, .definition => {
             return original_node;
         },
     }

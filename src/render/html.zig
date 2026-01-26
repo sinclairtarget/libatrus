@@ -106,6 +106,8 @@ fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
 
             try out.print("/>", .{});
         },
+        // Don't get rendered
+        .definition => {},
     }
 }
 

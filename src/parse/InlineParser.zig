@@ -13,6 +13,7 @@ const InlineToken = tokens.InlineToken;
 const InlineTokenType = tokens.InlineTokenType;
 const InlineTokenizer = @import("../lex/InlineTokenizer.zig");
 const NodeList = @import("NodeList.zig");
+const alttext = @import("alttext.zig");
 const escape = @import("escape.zig");
 const references = @import("references.zig");
 const safety = @import("../util/safety.zig");
@@ -807,7 +808,7 @@ fn parseImage(
     var running_text = Io.Writer.Allocating.init(alloc);
     errdefer running_text.deinit();
     for (img_desc_nodes) |node| {
-        try node.writePlainText(&running_text.writer);
+        try alttext.write(&running_text.writer, node);
     }
 
     image = try alloc.create(ast.Node);
