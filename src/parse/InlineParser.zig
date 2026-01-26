@@ -954,7 +954,9 @@ fn parseInlineLink(
     _ = try self.consume(scratch, &.{.l_paren}) orelse return null;
 
     // link destination
-    const url = try self.scanLinkDestination(scratch);
+    const raw_url = try self.scanLinkDestination(scratch);
+    const url = try uri.normalize(alloc, scratch, raw_url);
+    errdefer alloc.free(url);
 
     const title = blk: {
         // link title, if present, must be separated from destination by
@@ -971,7 +973,7 @@ fn parseInlineLink(
     inline_link = try alloc.create(ast.Node);
     inline_link.?.* = .{
         .link = .{
-            .url = try alloc.dupe(u8, url),
+            .url = url,
             .title = try alloc.dupe(u8, title),
             .children = link_text_nodes,
         },

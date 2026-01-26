@@ -10,17 +10,50 @@ pub const Error = (
 );
 
 /// Normalizes URIs that will be used as attibute values (vs. textual content).
+///
+/// Performs percent-encoding.
+///
+/// Returned string is owned by the caller.
 pub fn normalize(
     alloc: Allocator,
     scratch: Allocator,
     raw: []const u8,
 ) Error![]const u8 {
+    if (raw.len == 0) {
+        return alloc.dupe(u8, raw);
+    }
+
     var w = Io.Writer.Allocating.init(alloc);
     errdefer w.deinit();
 
-    const uri = try Uri.parse(raw);
+    var include_scheme = true;
+    const uri = blk: {  // parse URI, be as forgiving as we can
+        if (Uri.parse(raw)) |uri| {
+            break :blk uri;
+        } else |err| switch (err) {
+            Uri.ParseError.InvalidFormat,
+            Uri.ParseError.InvalidPort,
+            Uri.ParseError.UnexpectedCharacter => {},
+        }
+
+        include_scheme = false;
+
+        if (Uri.parseAfterScheme("https", raw)) |uri| {
+            break :blk uri;
+        } else |err| switch (err) {
+            Uri.ParseError.InvalidFormat,
+            Uri.ParseError.InvalidPort,
+            Uri.ParseError.UnexpectedCharacter => {},
+        }
+
+        break :blk Uri{
+            .scheme = "https",
+            .path = Uri.Component{ .percent_encoded = raw },
+        };
+    };
+
     const raw_uri = try toRawUri(scratch, uri);
-    try customFormat(raw_uri, &w.writer);
+    try customFormat(raw_uri, include_scheme, &w.writer);
     return try w.toOwnedSlice();
 }
 
@@ -95,11 +128,19 @@ fn toRawUri(scratch: Allocator, uri: Uri) !Uri {
 /// Custom version of Uri.writeToStream(), since as of Zig 0.15.2 that function
 /// always includes a '/' for the path, even when it is empty. That seems like
 /// a sensible thing to do but it doesn't match the MyST spec tests.
-fn customFormat(uri: Uri, writer: *Io.Writer) Io.Writer.Error!void {
-    try writer.print("{s}:", .{uri.scheme});
-    if (uri.host != null) {
-        try writer.writeAll("//");
+fn customFormat(
+    uri: Uri,
+    include_scheme: bool,
+    writer: *Io.Writer,
+) Io.Writer.Error!void {
+    if (include_scheme) {
+        try writer.print("{s}:", .{uri.scheme});
+
+        if (uri.host != null) {
+            try writer.writeAll("//");
+        }
     }
+
     if (uri.host != null) {
         if (uri.user) |user| {
             try user.formatUser(writer);
@@ -154,4 +195,23 @@ test "normalize uri already encoded" {
         "https://foo.com/bar?nums%5B%5D=1&nums%5B%5D=2",
         "https://foo.com/bar?nums%5B%5D=1&nums%5B%5D=2",
     );
+}
+
+test "normalize relative uri" {
+    try expectNormalized("/foo%20bar", "/foo bar");
+}
+
+test "normalize uri with no leading forward slash" {
+    try expectNormalized("foo%20bar", "foo bar");
+}
+
+test "normalize uri with no leading forward slash query params" {
+    try expectNormalized(
+        "foo%20bar?nums%5B%5D=1&baz=2",
+        "foo bar?nums[]=1&baz=2",
+    );
+}
+
+test "normalize uri no leading forward slash fragment" {
+    try expectNormalized("foo#bar", "foo#bar");
 }
