@@ -1094,6 +1094,9 @@ fn evaluateTokens(
 // Unit Tests
 // ----------------------------------------------------------------------------
 const testing = std.testing;
+const util = struct {
+    pub const testing = @import("../util/testing.zig");
+};
 
 fn expectEqualTokens(
     expected: []const InlineTokenType,
@@ -1106,9 +1109,9 @@ fn expectEqualTokens(
     var tokenizer = Self.init(line);
 
     for (expected) |exp| {
-        const token = try tokenizer.next(scratch);
-        try std.testing.expect(token != null);
-        try std.testing.expectEqual(exp, token.?.token_type);
+        const maybe_token = try tokenizer.next(scratch);
+        const token = try util.testing.expectNonNull(InlineToken, maybe_token);
+        try std.testing.expectEqual(exp, token.token_type);
     }
 
     try std.testing.expect(try tokenizer.next(scratch) == null);
