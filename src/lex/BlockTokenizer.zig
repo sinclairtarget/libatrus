@@ -15,7 +15,10 @@ const ArrayList = std.ArrayList;
 const BlockToken = @import("tokens.zig").BlockToken;
 const BlockTokenType = @import("tokens.zig").BlockTokenType;
 const LineReader = @import("LineReader.zig");
-const safety = @import("../util/safety.zig");
+
+const util = struct {
+    pub const safety = @import("../util/safety.zig");
+};
 
 pub const Error = error{
     /// Input reader did not have a large enough buffer to read a whole line.
@@ -143,7 +146,7 @@ fn matchIndent(self: Self, scratch: Allocator) !?TokenizeResult {
     }
 
     var lookahead_i = self.i;
-    loop: for (0..safety.loop_bound) |_| {
+    loop: for (0..util.safety.loop_bound) |_| {
         switch (self.line[lookahead_i]) {
             '\t' => {
                 lookahead_i += 1;
@@ -159,7 +162,7 @@ fn matchIndent(self: Self, scratch: Allocator) !?TokenizeResult {
             },
             else => return null,
         }
-    } else @panic(safety.loop_bound_panic_msg);
+    } else @panic(util.safety.loop_bound_panic_msg);
 
     const lexeme = try evaluate_lexeme(self, scratch, .indent, lookahead_i);
     const token = BlockToken{
@@ -183,14 +186,14 @@ fn matchRule(self: Self, scratch: Allocator) !?TokenizeResult {
     var lookahead_i = self.i;
 
     // Up to three leading spaces allowed
-    loop: for (0..safety.loop_bound) |_| {
+    loop: for (0..util.safety.loop_bound) |_| {
         switch (self.line[lookahead_i]) {
             ' ' => {
                 lookahead_i += 1;
             },
             else => break :loop,
         }
-    } else @panic(safety.loop_bound_panic_msg);
+    } else @panic(util.safety.loop_bound_panic_msg);
     if (lookahead_i > 3) {
         return null;
     }

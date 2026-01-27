@@ -17,8 +17,11 @@ const ast = @import("ast.zig");
 const BlockTokenizer = @import("../lex/BlockTokenizer.zig");
 const BlockToken = @import("../lex/tokens.zig").BlockToken;
 const BlockTokenType = @import("../lex/tokens.zig").BlockTokenType;
-const safety = @import("../util/safety.zig");
-const strings = @import("../util/strings.zig");
+
+const util = struct {
+    pub const safety = @import("../util/safety.zig");
+    pub const strings = @import("../util/strings.zig");
+};
 
 const Error = error{
     LineTooLong,
@@ -59,7 +62,7 @@ pub fn parse(
         children.deinit(alloc);
     }
 
-    for (0..safety.loop_bound) |_| { // could hit if we forget to consume tokens
+    for (0..util.safety.loop_bound) |_| { // could hit if we forget to consume tokens
         _ = try self.peek(scratch) orelse break;
 
         if (blk: {
@@ -92,7 +95,7 @@ pub fn parse(
         }
 
         @panic("unable to parse block token");
-    } else @panic(safety.loop_bound_panic_msg);
+    } else @panic(util.safety.loop_bound_panic_msg);
 
     const node = try alloc.create(ast.Node);
     node.* = .{
@@ -126,7 +129,7 @@ fn parseATXHeading(
     _ = try self.consume(scratch, &.{.pound});
 
     var inner = Io.Writer.Allocating.init(scratch);
-    for (0..safety.loop_bound) |_| {
+    for (0..util.safety.loop_bound) |_| {
         const current = try self.peek(scratch) orelse break;
         if (current.token_type == .pound) {
             // Look ahead for a newline. If there is one, this is a closing
@@ -142,7 +145,7 @@ fn parseATXHeading(
 
         const text = try self.scanText(scratch) orelse break;
         try inner.writer.print("{s}", .{text});
-    } else @panic(safety.loop_bound_panic_msg);
+    } else @panic(util.safety.loop_bound_panic_msg);
 
     _ = try self.consume(scratch, &.{.newline});
 
@@ -206,7 +209,7 @@ fn parseIndentedCode(
 
     // Parse one or more indented lines
     var lines: ArrayList([]const u8) = .empty;
-    block_loop: for (0..safety.loop_bound) |_| {
+    block_loop: for (0..util.safety.loop_bound) |_| {
         var line = Io.Writer.Allocating.init(scratch);
 
         const line_start = try self.peek(scratch) orelse break :block_loop;
@@ -230,7 +233,7 @@ fn parseIndentedCode(
                 try line.writer.print("", .{});
             },
             .text => {
-                if (strings.isBlankLine(line_start.lexeme)) {
+                if (util.strings.isBlankLine(line_start.lexeme)) {
                     // blank line doesn't end indented block
                     // https://spec.commonmark.org/0.30/#example-111
                     _ = try self.consume(scratch, &.{.text});
@@ -245,7 +248,7 @@ fn parseIndentedCode(
         }
 
         try lines.append(scratch, line.written());
-    } else @panic(safety.loop_bound_panic_msg);
+    } else @panic(util.safety.loop_bound_panic_msg);
 
     if (lines.items.len == 0) {
         return null;
@@ -253,7 +256,7 @@ fn parseIndentedCode(
 
     // Skip leading and trailing blank lines
     const start_index = for (lines.items, 0..) |line, i| {
-        if (line.len > 0 and !strings.containsOnly(line, "\n")) {
+        if (line.len > 0 and !util.strings.containsOnly(line, "\n")) {
             break i;
         }
     } else lines.items.len;
@@ -262,7 +265,7 @@ fn parseIndentedCode(
         while (i > 0) {
             i -= 1;
             const line = lines.items[i];
-            if (line.len > 0 and !strings.containsOnly(line, "\n")) {
+            if (line.len > 0 and !util.strings.containsOnly(line, "\n")) {
                 break :blk i + 1;
             }
         }
@@ -291,20 +294,20 @@ fn parseParagraph(
 ) !?*ast.Node {
     var lines: ArrayList([]const u8) = .empty;
 
-    for (0..safety.loop_bound) |_| {
+    for (0..util.safety.loop_bound) |_| {
         var line = Io.Writer.Allocating.init(scratch);
 
         const start_text = try self.scanTextStart(scratch) orelse break;
         try line.writer.print("{s}", .{start_text});
 
-        for (0..safety.loop_bound) |_| {
+        for (0..util.safety.loop_bound) |_| {
             const next_text = try self.scanText(scratch) orelse break;
             try line.writer.print("{s}", .{next_text});
-        } else @panic(safety.loop_bound_panic_msg);
+        } else @panic(util.safety.loop_bound_panic_msg);
 
         try lines.append(scratch, line.written());
         _ = try self.consume(scratch, &.{.newline});
-    } else @panic(safety.loop_bound_panic_msg);
+    } else @panic(util.safety.loop_bound_panic_msg);
 
     if (lines.items.len == 0) {
         return null;

@@ -21,7 +21,11 @@ const Io = std.Io;
 const InlineToken = @import("tokens.zig").InlineToken;
 const InlineTokenType = @import("tokens.zig").InlineTokenType;
 const Context = @import("tokens.zig").Context;
-const strings = @import("../util/strings.zig");
+
+const util = struct {
+    pub const strings = @import("../util/strings.zig");
+    pub const testing = @import("../util/testing.zig");
+};
 
 pub const Error = error{
     WriteFailed,
@@ -574,7 +578,7 @@ fn matchDelimUnderRun(
                         evaluateDelimUnderscoreContext(
                             self.in[self.i..lookahead_i],
                             false,
-                            strings.isPunctuation(&.{ b }),
+                            util.strings.isPunctuation(&.{ b }),
                         ),
                     };
                 },
@@ -606,7 +610,7 @@ fn matchDelimUnderRun(
                         evaluateDelimUnderscoreContext(
                             self.in[self.i..lookahead_i],
                             false,
-                            strings.isPunctuation(&.{b}),
+                            util.strings.isPunctuation(&.{b}),
                         ),
                     };
                 },
@@ -616,7 +620,7 @@ fn matchDelimUnderRun(
                         evaluateDelimUnderscoreContext(
                             self.in[self.i..lookahead_i],
                             false,
-                            strings.isPunctuation(&.{b}),
+                            util.strings.isPunctuation(&.{b}),
                         ),
                     };
                 },
@@ -668,7 +672,7 @@ fn matchDelimUnderRun(
                         evaluateDelimUnderscoreContext(
                             self.in[self.i..lookahead_i],
                             true,
-                            strings.isPunctuation(&.{b}),
+                            util.strings.isPunctuation(&.{b}),
                         ),
                     };
                 }
@@ -1094,9 +1098,6 @@ fn evaluateTokens(
 // Unit Tests
 // ----------------------------------------------------------------------------
 const testing = std.testing;
-const util = struct {
-    pub const testing = @import("../util/testing.zig");
-};
 
 fn expectEqualTokens(
     expected: []const InlineTokenType,

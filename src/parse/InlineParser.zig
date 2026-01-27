@@ -16,15 +16,18 @@ const NodeList = @import("NodeList.zig");
 const alttext = @import("alttext.zig");
 const escape = @import("escape.zig");
 const references = @import("references.zig");
-const safety = @import("../util/safety.zig");
-const strings = @import("../util/strings.zig");
-const uri = @import("../util/uri.zig");
+
+const util = struct {
+    const safety = @import("../util/safety.zig");
+    const strings = @import("../util/strings.zig");
+    const uri = @import("../util/uri.zig");
+};
 
 pub const Error = (
     Io.Writer.Error
     || Allocator.Error
     || references.CharacterReferenceError
-    || uri.Error
+    || util.uri.Error
 );
 
 tokenizer: *InlineTokenizer,
@@ -57,7 +60,7 @@ pub fn parse(
         nodes.deinit();
     }
 
-    for (0..safety.loop_bound) |_| { // could hit if we forget to consume tokens
+    for (0..util.safety.loop_bound) |_| { // could hit if we forget to consume tokens
         _ = try self.peek(scratch) orelse break;
 
         if (try self.parseInlineCode(alloc, scratch)) |code| {
@@ -108,7 +111,7 @@ pub fn parse(
         }
 
         @panic("unable to parse inline token");
-    } else @panic(safety.loop_bound_panic_msg);
+    } else @panic(util.safety.loop_bound_panic_msg);
 
     return try nodes.toOwnedSlice();
 }
@@ -144,7 +147,7 @@ fn parseStarStrong(
         .lr_delim_star,
     }) orelse return null;
 
-    for (0..safety.loop_bound) |_| {
+    for (0..util.safety.loop_bound) |_| {
         if (try self.parseInlineCode(alloc, scratch)) |code| {
             try children.append(code);
             continue;
@@ -197,7 +200,7 @@ fn parseStarStrong(
         }
 
         break;
-    } else @panic(safety.loop_bound_panic_msg);
+    } else @panic(util.safety.loop_bound_panic_msg);
 
     try children.flush();
     if (children.len() == 0) {
@@ -258,7 +261,7 @@ fn parseStarEmphasis(
         .lr_delim_star,
     }) orelse return null;
 
-    for (0..safety.loop_bound) |_| {
+    for (0..util.safety.loop_bound) |_| {
         const maybe_leading_emph = try self.parseStarEmphasis(alloc, scratch);
 
         if (blk: {
@@ -326,7 +329,7 @@ fn parseStarEmphasis(
         }
 
         break;
-    } else @panic(safety.loop_bound_panic_msg);
+    } else @panic(util.safety.loop_bound_panic_msg);
 
     try children.flush();
     if (children.len() == 0) {
@@ -391,7 +394,7 @@ fn parseUnderscoreStrong(
         else => return null,
     }
 
-    for (0..safety.loop_bound) |_| {
+    for (0..util.safety.loop_bound) |_| {
         if (try self.parseInlineCode(alloc, scratch)) |code| {
             try children.append(code);
             continue;
@@ -444,7 +447,7 @@ fn parseUnderscoreStrong(
         }
 
         break;
-    } else @panic(safety.loop_bound_panic_msg);
+    } else @panic(util.safety.loop_bound_panic_msg);
 
     try children.flush();
     if (children.len() == 0) {
@@ -523,7 +526,7 @@ fn parseUnderscoreEmphasis(
         else => return null,
     }
 
-    for (0..safety.loop_bound) |_| {
+    for (0..util.safety.loop_bound) |_| {
         const maybe_leading_emph = try self.parseUnderscoreEmphasis(alloc, scratch);
 
         if (blk: {
@@ -591,7 +594,7 @@ fn parseUnderscoreEmphasis(
         }
 
         break;
-    } else @panic(safety.loop_bound_panic_msg);
+    } else @panic(util.safety.loop_bound_panic_msg);
 
     try children.flush();
     if (children.len() == 0) {
@@ -714,7 +717,7 @@ fn parseInlineCode(
     const open = try self.consume(scratch, &.{ .backtick }) orelse return null;
 
     var values: ArrayList([]const u8) = .empty;
-    for (0..safety.loop_bound) |_| {
+    for (0..util.safety.loop_bound) |_| {
         const token = try self.peek(scratch) orelse return null;
         switch (token.token_type) {
             .backtick => {
@@ -733,7 +736,7 @@ fn parseInlineCode(
                 try values.append(scratch, value);
             }
         }
-    } else @panic(safety.loop_bound_panic_msg);
+    } else @panic(util.safety.loop_bound_panic_msg);
 
     if (values.items.len == 0) {
         return null;
@@ -742,7 +745,7 @@ fn parseInlineCode(
     var value = try std.mem.join(alloc, "", values.items);
 
     // Special case for stripping single leading and following space
-    if (value.len > 1 and !strings.containsOnly(value, " ")) {
+    if (value.len > 1 and !util.strings.containsOnly(value, " ")) {
         if (value[0] == ' ' and value[value.len - 1] == ' ') {
             // TODO: Do we have to allocate here?
             const new = try alloc.dupe(u8, value[1..value.len - 1]);
@@ -846,7 +849,7 @@ fn parseImageDescription(
     _ = try self.consume(scratch, &.{.l_square_bracket}) orelse return null;
 
     var bracket_depth: u32 = 0;
-    loop: for (0..safety.loop_bound) |_| {
+    loop: for (0..util.safety.loop_bound) |_| {
         if (try self.parseImage(alloc, scratch)) |image| {
             try nodes.append(image);
             continue;
@@ -912,7 +915,7 @@ fn parseImageDescription(
         }
 
         break;
-    } else @panic(safety.loop_bound_panic_msg);
+    } else @panic(util.safety.loop_bound_panic_msg);
 
     _ = try self.consume(scratch, &.{.r_square_bracket}) orelse return null;
 
@@ -956,7 +959,7 @@ fn parseInlineLink(
 
     // link destination
     const raw_url = try self.scanLinkDestination(scratch);
-    const url = try uri.normalize(alloc, scratch, raw_url);
+    const url = try util.uri.normalize(alloc, scratch, raw_url);
     errdefer alloc.free(url);
 
     const title = blk: {
@@ -1005,7 +1008,7 @@ fn parseLinkText(
     _ = try self.consume(scratch, &.{.l_square_bracket}) orelse return null;
 
     var bracket_depth: u32 = 0;
-    loop: for (0..safety.loop_bound) |_| {
+    loop: for (0..util.safety.loop_bound) |_| {
         if (try self.parseImage(alloc, scratch)) |image| {
             try nodes.append(image);
             continue;
@@ -1071,7 +1074,7 @@ fn parseLinkText(
         }
 
         break;
-    } else @panic(safety.loop_bound_panic_msg);
+    } else @panic(util.safety.loop_bound_panic_msg);
 
     _ = try self.consume(scratch, &.{.r_square_bracket}) orelse return null;
 
@@ -1229,7 +1232,7 @@ fn parseURIAutolink(
     _ = try self.consume(scratch, &.{.absolute_uri}) orelse return null;
     _ = try self.consume(scratch, &.{.r_angle_bracket}) orelse return null;
 
-    const url = try uri.normalize(alloc, scratch, uri_token.lexeme);
+    const url = try util.uri.normalize(alloc, scratch, uri_token.lexeme);
     errdefer alloc.free(url);
 
     const text = try createTextNode(
