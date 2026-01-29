@@ -84,11 +84,11 @@ pub fn parse(
     }
 
     errdefer root.deinit(alloc);
+    _ = arena.reset(.retain_capacity);
 
     // extract link definitions
 
     // second stage; parse inline elements
-    _ = arena.reset(.retain_capacity);
     timer.reset();
     logger.debug("Beginning inline parsing...", .{});
     root = try transform.parseInlines(alloc, &arena, root);
@@ -98,8 +98,9 @@ pub fn parse(
         return root;
     }
 
-    // third stage; MyST-specific transforms
     _ = arena.reset(.retain_capacity);
+
+    // third stage; MyST-specific transforms
     timer.reset();
     logger.debug("Beginning post-processing...", .{});
     root = try transform.postProcess(alloc, root);

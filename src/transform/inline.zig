@@ -14,17 +14,7 @@ pub fn transform(
     original_node: *ast.Node,
 ) !*ast.Node {
     switch (original_node.*) {
-        .root => |n| {
-            for (0..n.children.len) |i| {
-                n.children[i] = try transform(
-                    alloc,
-                    scratch_arena,
-                    n.children[i],
-                );
-            }
-            return original_node;
-        },
-        .block => |n| {
+        inline .root, .block => |n| {
             for (0..n.children.len) |i| {
                 n.children[i] = try transform(
                     alloc,
@@ -103,6 +93,7 @@ fn parseInline(
     std.debug.assert(scratch_arena.state.end_index == 0);
 
     var nodes: ArrayList(*ast.Node) = .empty;
+    errdefer nodes.deinit(alloc);
 
     var did_replace_something = false;
     for (original_nodes) |node| {
@@ -114,6 +105,8 @@ fn parseInline(
                     alloc,
                     scratch_arena.allocator(),
                 );
+                errdefer alloc.free(replacement_nodes);
+
                 for (replacement_nodes) |replacement| {
                     try nodes.append(alloc, replacement);
                 }
