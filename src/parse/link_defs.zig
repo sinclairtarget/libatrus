@@ -143,7 +143,6 @@ test "can map single link def" {
     try testing.expectEqual(1, map.count());
 
     const val = try util.testing.expectNonNull(
-        *ast.LinkDefinition,
         try map.get(testing.allocator, "bim"),
     );
     try testing.expectEqual("/foo", val.url);
@@ -178,7 +177,6 @@ test "first link def takes precedence" {
     try testing.expectEqual(1, map.count());
 
     const val = try util.testing.expectNonNull(
-        *ast.LinkDefinition,
         try map.get(testing.allocator, "bim"),
     );
     try testing.expectEqual("/foo", val.url);
@@ -206,7 +204,6 @@ test "match is case-insensitive" {
     try testing.expectEqual(1, map.count());
 
     const val = try util.testing.expectNonNull(
-        *ast.LinkDefinition,
         try map.get(testing.allocator, "Bim"),
     );
     try testing.expectEqual("/foo", val.url);

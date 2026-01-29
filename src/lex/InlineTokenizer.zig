@@ -1111,7 +1111,7 @@ fn expectEqualTokens(
 
     for (expected) |exp| {
         const maybe_token = try tokenizer.next(scratch);
-        const token = try util.testing.expectNonNull(InlineToken, maybe_token);
+        const token = try util.testing.expectNonNull(maybe_token);
         try std.testing.expectEqual(exp, token.token_type);
     }
 
