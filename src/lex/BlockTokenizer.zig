@@ -60,6 +60,10 @@ pub fn next(self: *Self, scratch: Allocator) Error!?BlockToken {
 /// Returns the next token starting at the current index.
 fn tokenize(self: *Self, scratch: Allocator) !BlockToken {
     const result: TokenizeResult = blk: {
+        if (try self.matchSingleCharTokens(scratch)) |result| {
+            break :blk result;
+        }
+
         if (try self.matchPound(scratch)) |result| {
             break :blk result;
         }
@@ -81,6 +85,28 @@ fn tokenize(self: *Self, scratch: Allocator) !BlockToken {
 
     self.i = result.next_i;
     return result.token;
+}
+
+fn matchSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
+    const token_type: BlockTokenType = switch (self.line[self.i]) {
+        '['  => .l_square_bracket,
+        ']'  => .r_square_bracket,
+        '<'  => .l_angle_bracket,
+        '>'  => .r_angle_bracket,
+        ':'  => .colon,
+        '"'  => .double_quote,
+        else => return null,
+    };
+
+    const lexeme = try evaluate_lexeme(self, scratch, token_type, self.i + 1);
+    const token = BlockToken{
+        .token_type = token_type,
+        .lexeme = lexeme,
+    };
+    return .{
+        .token = token,
+        .next_i = self.i + 1,
+    };
 }
 
 fn matchPound(self: Self, scratch: Allocator) !?TokenizeResult {
@@ -254,7 +280,7 @@ fn matchRule(self: Self, scratch: Allocator) !?TokenizeResult {
 fn matchText(self: Self, scratch: Allocator) !TokenizeResult {
     var lookahead_i = self.i;
 
-    const State = enum { start, whitespace };
+    const State = enum { start, text, whitespace };
     fsm: switch (State.start) {
         .start => {
             switch (self.line[lookahead_i]) {
@@ -262,13 +288,23 @@ fn matchText(self: Self, scratch: Allocator) !TokenizeResult {
                 ' ', '\t' => continue :fsm .whitespace,
                 else => {
                     lookahead_i += 1;
-                    continue :fsm .start;
+                    continue :fsm .text;
+                },
+            }
+        },
+        .text => {
+            switch (self.line[lookahead_i]) {
+                '"', '<', '>', '[', ']', '\n' => break :fsm,
+                ' ', '\t' => continue :fsm .whitespace,
+                else => {
+                    lookahead_i += 1;
+                    continue :fsm .text;
                 },
             }
         },
         .whitespace => {
             switch (self.line[lookahead_i]) {
-                '\n', '#' => break :fsm,
+                '"', '<', '>', '[', ']', '\n', '#' => break :fsm,
                 ' ', '\t' => {
                     lookahead_i += 1;
                     continue :fsm .whitespace;
@@ -345,6 +381,7 @@ test "pound paragraph" {
         \\It has multiple lines.
         \\
         \\This is a new paragraph.
+        \\It has "symbols" like ([]<>) that still count as text.
         \\
     ;
 
@@ -355,6 +392,8 @@ test "pound paragraph" {
         .text, .newline,
         .newline,
         .text, .newline,
+        .text, .double_quote, .text, .double_quote, .text, .l_square_bracket,
+        .r_square_bracket, .l_angle_bracket, .r_angle_bracket, .text, .newline,
     }, md);
 }
 
@@ -391,5 +430,20 @@ test "indent" {
         .indent, .text, .newline,
         .newline,
         .indent, .text, .newline,
+    }, md);
+}
+
+test "link reference definition" {
+    const md = "[foo]: /bar \"baz\"\n";
+    try expectEqualTokens(&.{
+        .l_square_bracket,
+        .text,
+        .r_square_bracket,
+        .colon,
+        .text,
+        .double_quote,
+        .text,
+        .double_quote,
+        .newline,
     }, md);
 }

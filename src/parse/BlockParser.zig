@@ -59,6 +59,9 @@ pub fn parse(
         children.deinit(alloc);
     }
 
+    var link_defs: LinkDefMap = .empty;
+    errdefer link_defs.deinit(alloc);
+
     for (0..util.safety.loop_bound) |_| { // could hit if we forget to consume tokens
         _ = try self.peek(scratch) orelse break;
 
@@ -73,6 +76,12 @@ pub fn parse(
 
             if (try self.parseThematicBreak(alloc, scratch)) |thematic_break| {
                 break :blk thematic_break;
+            }
+
+            if (
+                try self.parseLinkReferenceDefinition(alloc, scratch, link_defs)
+            ) |link_def| {
+                break :blk link_def;
             }
 
             if (try self.parseParagraph(alloc, scratch)) |paragraph| {
@@ -100,7 +109,7 @@ pub fn parse(
             .children = try children.toOwnedSlice(alloc),
         },
     };
-    return .{ node, .empty };
+    return .{ node, link_defs };
 }
 
 // @     => pound inner? end?
@@ -284,6 +293,25 @@ fn parseIndentedCode(
     return node;
 }
 
+fn parseLinkReferenceDefinition(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+    link_defs: LinkDefMap,
+) !?*ast.Node {
+    _ = self;
+    _ = alloc;
+    _ = scratch;
+    _ = link_defs;
+    return null;
+}
+
+fn scanLinkLabel() ![]const u8 {}
+
+fn scanLinkDestination() ![]const u8 {}
+
+fn scanLinkTitle() ![]const u8 {}
+
 fn parseParagraph(
     self: *Self,
     alloc: Allocator,
@@ -330,6 +358,12 @@ fn scanText(self: *Self, scratch: Allocator) !?[]const u8 {
         .pound,
         .rule_equals,
         .rule_dash,
+        .double_quote,
+        .colon,
+        .l_square_bracket,
+        .r_square_bracket,
+        .l_angle_bracket,
+        .r_angle_bracket,
     }) orelse return null;
     return token.lexeme;
 }
@@ -351,7 +385,9 @@ fn scanTextStart(self: *Self, scratch: Allocator) !?[]const u8 {
             _ = try self.consume(scratch, &.{.indent});
             return try self.scanText(scratch);
         },
-        .text, .rule_equals, .rule_dash => {
+        .text, .rule_equals, .rule_dash, .double_quote, .colon,
+        .l_square_bracket, .r_square_bracket, .l_angle_bracket,
+        .r_angle_bracket => {
             return try self.scanText(scratch);
         },
         else => return null,
@@ -414,6 +450,21 @@ fn clear_consumed_tokens(self: *Self) void {
 const testing = std.testing;
 const LineReader = @import("../lex/LineReader.zig");
 
+fn parseBlocks(md: []const u8) !struct{*ast.Node, LinkDefMap} {
+    var reader: Io.Reader = .fixed(md);
+    var line_buf: [512]u8 = undefined;
+    const line_reader: LineReader = .{ .in = &reader, .buf = &line_buf };
+    var tokenizer = BlockTokenizer.init(line_reader);
+    var parser = Self.init(&tokenizer);
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const scratch = arena.allocator();
+
+    const root, const link_defs = try parser.parse(testing.allocator, scratch);
+    return .{ root, link_defs };
+}
+
 test "ATX heading and paragraphs" {
     const md =
         \\# This is a heading
@@ -427,17 +478,7 @@ test "ATX heading and paragraphs" {
         \\
     ;
 
-    var reader: Io.Reader = .fixed(md);
-    var line_buf: [512]u8 = undefined;
-    const line_reader: LineReader = .{ .in = &reader, .buf = &line_buf };
-    var tokenizer = BlockTokenizer.init(line_reader);
-    var parser = Self.init(&tokenizer);
-
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena.deinit();
-    const scratch = arena.allocator();
-
-    const root, var link_defs = try parser.parse(testing.allocator, scratch);
+    const root, var link_defs = try parseBlocks(md);
     defer root.deinit(testing.allocator);
     defer link_defs.deinit(testing.allocator);
 
@@ -455,4 +496,27 @@ test "ATX heading and paragraphs" {
 
     const p3 = root.root.children[3];
     try testing.expectEqual(.paragraph, @as(ast.NodeType, p3.*));
+}
+
+test "paragraph can contain punctuation" {
+    const md =
+        \\# Heading containing "symbols" ([]<>)
+        \\This is a "paragraph" that contains punctuation! (We don't want any
+        \\of these symbols, like [, ], <, or >, to break the paragraph.)
+        \\
+    ;
+
+    const root, var link_defs = try parseBlocks(md);
+    defer root.deinit(testing.allocator);
+    defer link_defs.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
+    try testing.expectEqual(2, root.root.children.len);
+
+    const h = root.root.children[0];
+    try testing.expectEqual(.heading, @as(ast.NodeType, h.*));
+    try testing.expectEqual(1, h.heading.children.len);
+
+    const p = root.root.children[1];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
 }

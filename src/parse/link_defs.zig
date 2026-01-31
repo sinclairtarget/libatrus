@@ -1,4 +1,4 @@
-//! Handles normalization, storage, and lookup of link definitions.
+//! Handles normalization, storage, and lookup of link references/destinations.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -6,6 +6,8 @@ const ArrayList = std.ArrayList;
 const StringHashMapUnmanaged = std.hash_map.StringHashMapUnmanaged;
 
 const ast = @import("ast.zig");
+
+pub const label_max_chars = 999; // Unicode code points
 
 pub const Error = Allocator.Error;
 

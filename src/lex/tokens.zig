@@ -13,6 +13,12 @@ pub const BlockTokenType = enum {
     rule_dash_with_whitespace,
     rule_dash,
     rule_equals,
+    colon,
+    l_square_bracket,
+    r_square_bracket,
+    l_angle_bracket,
+    r_angle_bracket,
+    double_quote,
 };
 
 /// Tokens recognized by the inline parser.
