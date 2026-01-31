@@ -7,23 +7,22 @@ const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const Io = std.Io;
 
-const ast = @import("ast.zig");
 const tokens = @import("../lex/tokens.zig");
 const InlineToken = tokens.InlineToken;
 const InlineTokenType = tokens.InlineTokenType;
 const InlineTokenizer = @import("../lex/InlineTokenizer.zig");
+const cmark = @import("../cmark/cmark.zig");
+const LinkDefMap = @import("../parse/link_defs.zig").LinkDefMap;
+const util = @import("../util/util.zig");
+const ast = @import("ast.zig");
 const NodeList = @import("NodeList.zig");
-const LinkDefMap = @import("link_defs.zig").LinkDefMap;
 const alttext = @import("alttext.zig");
 const escape = @import("escape.zig");
-const references = @import("references.zig");
-const util = @import("../util.zig");
 
 pub const Error = (
     Io.Writer.Error
     || Allocator.Error
-    || references.CharacterReferenceError
-    || util.uri.Error
+    || cmark.character_refs.CharacterReferenceError
 );
 
 tokenizer: *InlineTokenizer,
@@ -958,7 +957,7 @@ fn parseInlineLink(
 
     // link destination
     const raw_url = try self.scanLinkDestination(scratch);
-    const url = try util.uri.normalize(alloc, scratch, raw_url);
+    const url = try cmark.uri.normalize(alloc, scratch, raw_url);
     errdefer alloc.free(url);
 
     const title = blk: {
@@ -1231,7 +1230,7 @@ fn parseURIAutolink(
     _ = try self.consume(scratch, &.{.absolute_uri}) orelse return null;
     _ = try self.consume(scratch, &.{.r_angle_bracket}) orelse return null;
 
-    const url = try util.uri.normalize(alloc, scratch, uri_token.lexeme);
+    const url = try cmark.uri.normalize(alloc, scratch, uri_token.lexeme);
     errdefer alloc.free(url);
 
     const text = try createTextNode(
@@ -1363,7 +1362,7 @@ fn resolveInlineText(scratch: Allocator, token: InlineToken) ![]const u8 {
     const value = switch (token.token_type) {
         .decimal_character_reference, .hexadecimal_character_reference,
         .entity_reference => blk: {
-            break :blk try resolveCharacterEntityRef(scratch, token);
+            break :blk try resolveCharacterReference(scratch, token);
         },
         .newline => "\n",
         .absolute_uri, .email, .backtick, .whitespace => token.lexeme,
@@ -1383,10 +1382,13 @@ fn resolveInlineText(scratch: Allocator, token: InlineToken) ![]const u8 {
     return value;
 }
 
-fn resolveCharacterEntityRef(scratch: Allocator, token: InlineToken) ![]const u8 {
+fn resolveCharacterReference(
+    scratch: Allocator,
+    token: InlineToken,
+) ![]const u8 {
     switch (token.token_type) {
         .decimal_character_reference => {
-            const value = try references.resolveCharacter(
+            const value = try cmark.character_refs.resolveNumericCharacter(
                 scratch,
                 token.lexeme[2..token.lexeme.len - 1],
                 10, // base
@@ -1394,7 +1396,7 @@ fn resolveCharacterEntityRef(scratch: Allocator, token: InlineToken) ![]const u8
             return value;
         },
         .hexadecimal_character_reference => {
-            const value = try references.resolveCharacter(
+            const value = try cmark.character_refs.resolveNumericCharacter(
                 scratch,
                 token.lexeme[3..token.lexeme.len - 1],
                 16, // base
@@ -1403,7 +1405,9 @@ fn resolveCharacterEntityRef(scratch: Allocator, token: InlineToken) ![]const u8
         },
         .entity_reference => {
             const lexeme = token.lexeme;
-            const value = references.resolveEntity(lexeme[1..lexeme.len - 1]);
+            const value = cmark.character_refs.resolveCharacterEntity(
+                lexeme[1..lexeme.len - 1],
+            );
             return value orelse lexeme;
         },
         else => unreachable,

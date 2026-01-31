@@ -15,7 +15,6 @@ const LineReader = @import("lex/LineReader.zig");
 const BlockTokenizer = @import("lex/BlockTokenizer.zig");
 const BlockParser = @import("parse/BlockParser.zig");
 const InlineParser = @import("parse/InlineParser.zig");
-const mapLinkDefs = @import("parse/link_defs.zig").mapLinkDefs;
 const transform = @import("transform/transform.zig");
 const json = @import("render/json.zig");
 const html = @import("render/html.zig");
@@ -72,12 +71,13 @@ pub fn parse(
     var line_buf: [max_line_len]u8 = undefined;
     const line_reader: LineReader = .{ .in = &reader, .buf = &line_buf };
 
-    // first stage; parse into blocks
+    // first pass; parse into blocks
     var timer = time.Timer.start() catch { @panic("timer unsupported"); };
     logger.debug("Beginning block parsing...", .{});
     var block_tokenizer = BlockTokenizer.init(line_reader);
     var block_parser = BlockParser.init(&block_tokenizer);
-    var root = try block_parser.parse(alloc, scratch);
+    var root, var link_defs = try block_parser.parse(alloc, scratch);
+    defer link_defs.deinit(alloc);
     logger.debug("Done in {D}.", .{timer.read()});
 
     if (options.parse_level == .block) {
@@ -87,11 +87,7 @@ pub fn parse(
     errdefer root.deinit(alloc);
     _ = arena.reset(.retain_capacity);
 
-    // extract link definitions
-    var link_defs = try mapLinkDefs(alloc, root);
-    defer link_defs.deinit(alloc);
-
-    // second stage; parse inline elements
+    // second pass; parse inline elements
     timer.reset();
     logger.debug("Beginning inline parsing...", .{});
     root = try transform.parseInlines(alloc, &arena, root, link_defs);
@@ -103,7 +99,7 @@ pub fn parse(
 
     _ = arena.reset(.retain_capacity);
 
-    // third stage; MyST-specific transforms
+    // third pass; MyST-specific transforms
     timer.reset();
     logger.debug("Beginning post-processing...", .{});
     root = try transform.postProcess(alloc, root);
@@ -204,8 +200,8 @@ test {
     _ = @import("lex/InlineTokenizer.zig");
     _ = @import("parse/BlockParser.zig");
     _ = @import("parse/InlineParser.zig");
-    _ = @import("parse/link_defs.zig");
-    _ = @import("util/uri.zig");
+    _ = @import("cmark/cmark.zig");
+    _ = @import("util/util.zig");
 }
 
 test renderHTMLString {

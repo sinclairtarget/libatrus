@@ -17,7 +17,8 @@ const ast = @import("ast.zig");
 const BlockTokenizer = @import("../lex/BlockTokenizer.zig");
 const BlockToken = @import("../lex/tokens.zig").BlockToken;
 const BlockTokenType = @import("../lex/tokens.zig").BlockTokenType;
-const util = @import("../util.zig");
+const LinkDefMap = @import("link_defs.zig").LinkDefMap;
+const util = @import("../util/util.zig");
 
 const Error = error{
     LineTooLong,
@@ -49,7 +50,7 @@ pub fn parse(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
-) Error!*ast.Node {
+) Error!struct { *ast.Node, LinkDefMap } {
     var children: ArrayList(*ast.Node) = .empty;
     errdefer {
         for (children.items) |child| {
@@ -99,7 +100,7 @@ pub fn parse(
             .children = try children.toOwnedSlice(alloc),
         },
     };
-    return node;
+    return .{ node, .empty };
 }
 
 // @     => pound inner? end?
@@ -436,21 +437,22 @@ test "ATX heading and paragraphs" {
     defer arena.deinit();
     const scratch = arena.allocator();
 
-    const root = try parser.parse(std.testing.allocator, scratch);
-    defer root.deinit(std.testing.allocator);
+    const root, var link_defs = try parser.parse(testing.allocator, scratch);
+    defer root.deinit(testing.allocator);
+    defer link_defs.deinit(testing.allocator);
 
-    try std.testing.expectEqual(.root, @as(ast.NodeType, root.*));
-    try std.testing.expectEqual(4, root.root.children.len);
+    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
+    try testing.expectEqual(4, root.root.children.len);
 
     const heading = root.root.children[0];
-    try std.testing.expectEqual(.heading, @as(ast.NodeType, heading.*));
+    try testing.expectEqual(.heading, @as(ast.NodeType, heading.*));
 
     const p1 = root.root.children[1];
-    try std.testing.expectEqual(.paragraph, @as(ast.NodeType, p1.*));
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p1.*));
 
     const p2 = root.root.children[2];
-    try std.testing.expectEqual(.paragraph, @as(ast.NodeType, p2.*));
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p2.*));
 
     const p3 = root.root.children[3];
-    try std.testing.expectEqual(.paragraph, @as(ast.NodeType, p3.*));
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p3.*));
 }

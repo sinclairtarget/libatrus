@@ -1,4 +1,4 @@
-//! Handle entity and numeric character references.
+//! Handle character entity and numeric character references.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -10,7 +10,7 @@ pub const CharacterReferenceError = error{
     UnicodeError,
 } || Allocator.Error;
 
-pub fn resolveCharacter(
+pub fn resolveNumericCharacter(
     alloc: Allocator,
     digits: []const u8,
     base: u8,
@@ -27,7 +27,7 @@ pub fn resolveCharacter(
     }
 }
 
-pub fn resolveEntity(name: []const u8) ?[]const u8 {
+pub fn resolveCharacterEntity(name: []const u8) ?[]const u8 {
     // TODO: Support all named entities
     if (mem.eql(u8, name, "amp")) {
         return "&";

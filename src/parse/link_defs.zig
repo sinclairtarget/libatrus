@@ -1,4 +1,4 @@
-//! Store link definitions for lookup.
+//! Handles normalization, storage, and lookup of link definitions.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -47,7 +47,7 @@ pub const LinkDefMap = struct {
         label: []const u8,
         def: *ast.LinkDefinition,
     ) Error!void {
-        const key = try Self.toKey(alloc, label);
+        const key = try normalize(alloc, label);
         errdefer alloc.free(key);
 
         const result = try self.backing_map.getOrPut(alloc, key);
@@ -62,22 +62,16 @@ pub const LinkDefMap = struct {
 
     pub fn get(
         self: Self,
-        scratch: Allocator,
+        alloc: Allocator,
         label: []const u8,
     ) Error!?*ast.LinkDefinition {
-        const key = try Self.toKey(scratch, label);
-        defer scratch.free(key);
+        const key = try normalize(alloc, label);
+        defer alloc.free(key);
         return self.backing_map.get(key);
     }
 
     pub fn count(self: Self) u32 {
         return self.backing_map.count();
-    }
-
-    /// Downcase labels to use as keys. Matching should be case-insensitive.
-    fn toKey(alloc: Allocator, label: []const u8) Error![]const u8 {
-        // TODO: Non-ascii lowercase
-        return try std.ascii.allocLowerString(alloc, label);
     }
 };
 
@@ -89,7 +83,7 @@ pub const LinkDefMap = struct {
 /// tree the hashmap will contain dangling pointers.
 ///
 /// The caller owns the memory used for the returned hashmap itself.
-pub fn mapLinkDefs(alloc: Allocator, root: *ast.Node) Error!LinkDefMap {
+pub fn buildMap(alloc: Allocator, root: *ast.Node) Error!LinkDefMap {
     var map: LinkDefMap = .empty;
     try fillLinkDefs(alloc, root, &map);
     return map;
@@ -114,11 +108,19 @@ fn fillLinkDefs(
     }
 }
 
+/// Normalizes the given link label, returning a new string.
+///
+/// Caller owns the returned string.
+fn normalize(alloc: Allocator, link_label: []const u8) Error![]const u8 {
+    // TODO: Non-ascii lowercase
+    return try std.ascii.allocLowerString(alloc, link_label);
+}
+
 // ----------------------------------------------------------------------------
 // Unit Tests
 // ----------------------------------------------------------------------------
 const testing = std.testing;
-const util = @import("../util.zig");
+const util = @import("../util/util.zig");
 
 test "can map single link def" {
     var def: ast.Node = .{
@@ -135,7 +137,7 @@ test "can map single link def" {
         },
     };
 
-    var map = try mapLinkDefs(testing.allocator, &root);
+    var map = try buildMap(testing.allocator, &root);
     defer map.deinit(testing.allocator);
 
     try testing.expectEqual(1, map.count());
@@ -169,7 +171,7 @@ test "first link def takes precedence" {
         },
     };
 
-    var map = try mapLinkDefs(testing.allocator, &root);
+    var map = try buildMap(testing.allocator, &root);
     defer map.deinit(testing.allocator);
 
     try testing.expectEqual(1, map.count());
@@ -196,7 +198,7 @@ test "match is case-insensitive" {
         },
     };
 
-    var map = try mapLinkDefs(testing.allocator, &root);
+    var map = try buildMap(testing.allocator, &root);
     defer map.deinit(testing.allocator);
 
     try testing.expectEqual(1, map.count());

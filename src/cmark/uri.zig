@@ -6,7 +6,6 @@ const Uri = std.Uri;
 pub const Error = (
     Allocator.Error
     || Io.Writer.Error
-    || Uri.ParseError
 );
 
 /// Normalizes URIs that will be used as attibute values (vs. textual content).

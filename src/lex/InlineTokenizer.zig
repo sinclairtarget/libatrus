@@ -21,7 +21,7 @@ const Io = std.Io;
 const InlineToken = @import("tokens.zig").InlineToken;
 const InlineTokenType = @import("tokens.zig").InlineTokenType;
 const Context = @import("tokens.zig").Context;
-const util = @import("../util.zig");
+const util = @import("../util/util.zig");
 
 pub const Error = error{
     WriteFailed,

@@ -15,7 +15,7 @@ const ArrayList = std.ArrayList;
 const BlockToken = @import("tokens.zig").BlockToken;
 const BlockTokenType = @import("tokens.zig").BlockTokenType;
 const LineReader = @import("LineReader.zig");
-const util = @import("../util.zig");
+const util = @import("../util/util.zig");
 
 pub const Error = error{
     /// Input reader did not have a large enough buffer to read a whole line.
