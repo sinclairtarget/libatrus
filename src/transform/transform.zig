@@ -5,6 +5,7 @@ const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
 
 const ast = @import("../parse/ast.zig");
+const LinkDefMap = @import("../parse/link_defs.zig").LinkDefMap;
 const post = @import("post.zig");
 const @"inline" = @import("inline.zig");
 
@@ -16,6 +17,7 @@ pub fn parseInlines(
     alloc: Allocator,
     scratch_arena: *ArenaAllocator,
     root: *ast.Node,
+    link_defs: LinkDefMap,
 ) !*ast.Node {
-    return try @"inline".transform(alloc, scratch_arena, root);
+    return try @"inline".transform(alloc, scratch_arena, root, link_defs);
 }

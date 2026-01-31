@@ -15,6 +15,7 @@ const LineReader = @import("lex/LineReader.zig");
 const BlockTokenizer = @import("lex/BlockTokenizer.zig");
 const BlockParser = @import("parse/BlockParser.zig");
 const InlineParser = @import("parse/InlineParser.zig");
+const mapLinkDefs = @import("parse/link_defs.zig").mapLinkDefs;
 const transform = @import("transform/transform.zig");
 const json = @import("render/json.zig");
 const html = @import("render/html.zig");
@@ -87,11 +88,13 @@ pub fn parse(
     _ = arena.reset(.retain_capacity);
 
     // extract link definitions
+    var link_defs = try mapLinkDefs(alloc, root);
+    defer link_defs.deinit(alloc);
 
     // second stage; parse inline elements
     timer.reset();
     logger.debug("Beginning inline parsing...", .{});
-    root = try transform.parseInlines(alloc, &arena, root);
+    root = try transform.parseInlines(alloc, &arena, root, link_defs);
     logger.debug("Done in {D}.", .{timer.read()});
 
     if (options.parse_level == .pre) {

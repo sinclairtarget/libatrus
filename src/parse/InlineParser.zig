@@ -13,6 +13,7 @@ const InlineToken = tokens.InlineToken;
 const InlineTokenType = tokens.InlineTokenType;
 const InlineTokenizer = @import("../lex/InlineTokenizer.zig");
 const NodeList = @import("NodeList.zig");
+const LinkDefMap = @import("link_defs.zig").LinkDefMap;
 const alttext = @import("alttext.zig");
 const escape = @import("escape.zig");
 const references = @import("references.zig");
@@ -51,7 +52,10 @@ pub fn parse(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
+    link_defs: LinkDefMap,
 ) Error![]*ast.Node {
+    _ = link_defs;
+
     var nodes = NodeList.init(alloc, scratch, createTextNode);
     errdefer {
         for (nodes.items()) |node| {
@@ -1476,7 +1480,7 @@ fn parseIntoNodes(value: []const u8) ![]*ast.Node {
 
     var tokenizer = InlineTokenizer.init(value);
     var parser = Self.init(&tokenizer);
-    return try parser.parse(testing.allocator, scratch);
+    return try parser.parse(testing.allocator, scratch, .empty);
 }
 
 fn freeNodes(nodes: []*ast.Node) void {
