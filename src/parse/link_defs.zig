@@ -118,9 +118,7 @@ fn fillLinkDefs(
 // Unit Tests
 // ----------------------------------------------------------------------------
 const testing = std.testing;
-const util = struct {
-    pub const testing = @import("../util/testing.zig");
-};
+const util = @import("../util.zig");
 
 test "can map single link def" {
     var def: ast.Node = .{

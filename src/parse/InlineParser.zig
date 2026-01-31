@@ -17,12 +17,7 @@ const LinkDefMap = @import("link_defs.zig").LinkDefMap;
 const alttext = @import("alttext.zig");
 const escape = @import("escape.zig");
 const references = @import("references.zig");
-
-const util = struct {
-    const safety = @import("../util/safety.zig");
-    const strings = @import("../util/strings.zig");
-    const uri = @import("../util/uri.zig");
-};
+const util = @import("../util.zig");
 
 pub const Error = (
     Io.Writer.Error

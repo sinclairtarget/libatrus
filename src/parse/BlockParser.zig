@@ -17,11 +17,7 @@ const ast = @import("ast.zig");
 const BlockTokenizer = @import("../lex/BlockTokenizer.zig");
 const BlockToken = @import("../lex/tokens.zig").BlockToken;
 const BlockTokenType = @import("../lex/tokens.zig").BlockTokenType;
-
-const util = struct {
-    pub const safety = @import("../util/safety.zig");
-    pub const strings = @import("../util/strings.zig");
-};
+const util = @import("../util.zig");
 
 const Error = error{
     LineTooLong,
