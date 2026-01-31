@@ -122,11 +122,24 @@ fn parseATXHeading(
 ) !?*ast.Node {
     // Just peek, don't consume until we know the depth is valid
     const start_token = try self.peek(scratch) orelse return null;
-    if (start_token.token_type != .pound) {
-        return null;
-    }
+    const pound_start_token = switch (start_token.token_type) {
+        .text => blk: {
+            // Handle allowed leading whitespace
+            if (
+                util.strings.containsOnly(start_token.lexeme, " ")
+                and start_token.lexeme.len < 4
+            ) {
+                _ = try self.consume(scratch, &.{.text});
+                break :blk try self.peek(scratch) orelse return null;
+            } else {
+                return null;
+            }
+        },
+        .pound => start_token,
+        else => return null,
+    };
 
-    const depth = start_token.lexeme.len;
+    const depth = pound_start_token.lexeme.len;
     if (depth > 6) { // https://spec.commonmark.org/0.31.2/#example-63
         return null;
     }
@@ -496,6 +509,27 @@ test "ATX heading and paragraphs" {
 
     const p3 = root.root.children[3];
     try testing.expectEqual(.paragraph, @as(ast.NodeType, p3.*));
+}
+
+test "ATX heading with leading whitespace" {
+    const md =
+        \\ ### foo
+        \\   # foo
+        \\
+    ;
+
+    const root, var link_defs = try parseBlocks(md);
+    defer root.deinit(testing.allocator);
+    defer link_defs.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
+    try testing.expectEqual(2, root.root.children.len);
+
+    const h1 = root.root.children[0];
+    try testing.expectEqual(.heading, @as(ast.NodeType, h1.*));
+
+    const h2 = root.root.children[0];
+    try testing.expectEqual(.heading, @as(ast.NodeType, h2.*));
 }
 
 test "paragraph can contain punctuation" {
