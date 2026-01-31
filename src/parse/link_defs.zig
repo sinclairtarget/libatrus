@@ -6,6 +6,7 @@ const ArrayList = std.ArrayList;
 const StringHashMapUnmanaged = std.hash_map.StringHashMapUnmanaged;
 
 const ast = @import("ast.zig");
+const logger = @import("../logging.zig").logger;
 
 pub const label_max_chars = 999; // Unicode code points
 
@@ -60,6 +61,8 @@ pub const LinkDefMap = struct {
 
         try self.keys.append(alloc, key);
         result.value_ptr.* = def;
+
+        logger.debug("Added link definition under key \"{s}\"", .{key});
     }
 
     pub fn get(
