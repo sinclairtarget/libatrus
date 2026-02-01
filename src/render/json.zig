@@ -34,6 +34,12 @@ pub fn render(
 }
 
 fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
+    // These nodes don't get rendered
+    switch (node.*) {
+        .definition => return,
+        else => {},
+    }
+
     try stringify.beginObject();
     try stringify.objectField("type");
 
@@ -90,8 +96,8 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
                 try stringify.write(n.title);
             }
         },
-        // Don't get rendered
-        .thematic_break, .definition => {},
+        .thematic_break => {},
+        .definition => unreachable,
     }
 
     try stringify.endObject();

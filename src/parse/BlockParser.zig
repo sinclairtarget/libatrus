@@ -4,7 +4,7 @@
 //! an array list. The array list is cleared of consumed tokens as each block is
 //! successfully parsed.
 //!
-//! This parser is a predictive recursive-descent parser (i.e. no backtracking).
+//! This is a recursive-descent parser with backtracking.
 
 const std = @import("std");
 const fmt = std.fmt;
@@ -18,6 +18,7 @@ const BlockTokenizer = @import("../lex/BlockTokenizer.zig");
 const BlockToken = @import("../lex/tokens.zig").BlockToken;
 const BlockTokenType = @import("../lex/tokens.zig").BlockTokenType;
 const LinkDefMap = @import("link_defs.zig").LinkDefMap;
+const link_label_max_chars = @import("link_defs.zig").label_max_chars;
 const util = @import("../util/util.zig");
 
 const Error = error{
@@ -79,8 +80,13 @@ pub fn parse(
             }
 
             if (
-                try self.parseLinkReferenceDefinition(alloc, scratch, link_defs)
+                try self.parseLinkReferenceDefinition(alloc, scratch)
             ) |link_def| {
+                try link_defs.add(
+                    alloc,
+                    link_def.definition.label,
+                    &link_def.definition,
+                );
                 break :blk link_def;
             }
 
@@ -310,18 +316,84 @@ fn parseLinkReferenceDefinition(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
-    link_defs: LinkDefMap,
 ) !?*ast.Node {
-    _ = self;
-    _ = alloc;
-    _ = scratch;
-    _ = link_defs;
-    return null;
+    var link_def_node: ?*ast.Node = null;
+    const checkpoint_index = self.checkpoint();
+    defer {
+        if (link_def_node == null) {
+            self.backtrack(checkpoint_index);
+        }
+    }
+
+    // consume allowed leading whitespace
+    {
+        const token = try self.peek(scratch) orelse return null;
+        if (token.token_type == .text) {
+            if (
+                util.strings.containsOnly(token.lexeme, " ")
+                and token.lexeme.len < 4
+            ) {
+                _ = try self.consume(scratch, &.{.text});
+            }
+        }
+    }
+
+    const scanned_label = try self.scanLinkLabel(scratch) orelse return null;
+    _ = try self.consume(scratch, &.{.colon}) orelse return null;
+    const scanned_url = try self.scanLinkDestination(
+        scratch,
+    ) orelse return null;
+
+    _ = try self.consume(scratch, &.{.newline});
+
+    const label = try alloc.dupe(u8, scanned_label);
+    errdefer alloc.free(label);
+    const url = try alloc.dupe(u8, scanned_url);
+    errdefer alloc.free(url);
+
+    link_def_node = try alloc.create(ast.Node);
+    link_def_node.?.* = .{
+        .definition = .{
+            .url = url,
+            .label = label,
+            .title = "",
+        },
+    };
+    return link_def_node;
 }
 
-fn scanLinkLabel() ![]const u8 {}
+fn scanLinkLabel(self: *Self, scratch: Allocator) !?[]const u8 {
+    const start = try self.peek(scratch) orelse return null;
+    if (start.token_type != .l_square_bracket) {
+        return null;
+    }
 
-fn scanLinkDestination() ![]const u8 {}
+    const token = try self.peekAhead(scratch, 2) orelse return null;
+    if (token.token_type != .text) {
+        return null;
+    }
+    // TODO: Technically this should be the length in unicode code points, not
+    // bytes.
+    if (token.lexeme.len > link_label_max_chars) {
+        return null;
+    }
+
+    const end = try self.peekAhead(scratch, 3) orelse return null;
+    if (end.token_type != .r_square_bracket) {
+        return null;
+    }
+
+    _ = try self.consume(scratch, &.{.l_square_bracket});
+    _ = try self.consume(scratch, &.{.text});
+    _ = try self.consume(scratch, &.{.r_square_bracket});
+
+    return token.lexeme;
+}
+
+fn scanLinkDestination(self: *Self, scratch: Allocator) !?[]const u8 {
+    const token = try self.consume(scratch, &.{.text}) orelse return null;
+    return token.lexeme;
+}
 
 fn scanLinkTitle() ![]const u8 {}
 
@@ -455,6 +527,14 @@ fn clear_consumed_tokens(self: *Self) void {
     const unparsed = self.tokens.items[self.token_index..];
     self.tokens.replaceRangeAssumeCapacity(0, self.tokens.items.len, unparsed);
     self.token_index = 0;
+}
+
+fn checkpoint(self: *Self) usize {
+    return self.token_index;
+}
+
+fn backtrack(self: *Self, checkpoint_index: usize) void {
+    self.token_index = checkpoint_index;
 }
 
 // ----------------------------------------------------------------------------
