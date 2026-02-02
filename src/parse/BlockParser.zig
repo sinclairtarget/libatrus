@@ -337,7 +337,18 @@ fn parseLinkReferenceDefinition(
 
     const scanned_label = try self.scanLinkLabel(scratch) orelse return null;
     _ = try self.consume(scratch, &.{.colon}) orelse return null;
-    _ = try self.consume(scratch, &.{.whitespace});
+
+    // whitespace allowed and up to one newline
+    var seen_newline = false;
+    while (try self.consume(scratch, &.{.newline, .whitespace})) |token| {
+        if (token.token_type == .newline) {
+            if (seen_newline) {
+                return null;
+            }
+            seen_newline = true;
+        }
+    }
+
     const scanned_url = try self.scanLinkDestination(
         scratch,
     ) orelse return null;
@@ -361,32 +372,53 @@ fn parseLinkReferenceDefinition(
     return node;
 }
 
+/// https://spec.commonmark.org/0.30/#link-label
 fn scanLinkLabel(self: *Self, scratch: Allocator) !?[]const u8 {
-    const start = try self.peek(scratch) orelse return null;
-    if (start.token_type != .l_square_bracket) {
-        return null;
+    var did_parse = false;
+    var running_text = Io.Writer.Allocating.init(scratch);
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+    };
+
+    _ = try self.consume(
+        scratch,
+        &.{.l_square_bracket},
+    ) orelse return null;
+
+    var saw_non_blank = false;
+    while (try self.peek(scratch)) |token| {
+        switch (token.token_type) {
+            .whitespace => {
+                _ = try self.consume(scratch, &.{.whitespace});
+                _ = try running_text.writer.write(token.lexeme);
+            },
+            .newline => {
+                _ = try self.consume(scratch, &.{.newline});
+                _ = try running_text.writer.write(" ");
+            },
+            .l_square_bracket => return null,
+            .r_square_bracket => break,
+            else => |t| {
+                saw_non_blank = true;
+                _ = try self.consume(scratch, &.{t});
+                _ = try running_text.writer.write(token.lexeme);
+            },
+        }
     }
 
-    const token = try self.peekAhead(scratch, 2) orelse return null;
-    if (token.token_type != .text) {
-        return null;
-    }
+    _ = try self.consume(
+        scratch,
+        &.{.r_square_bracket},
+    ) orelse return null;
+
     // TODO: Technically this should be the length in unicode code points, not
     // bytes.
-    if (token.lexeme.len > link_label_max_chars) {
+    if (running_text.written().len > link_label_max_chars) {
         return null;
     }
-
-    const end = try self.peekAhead(scratch, 3) orelse return null;
-    if (end.token_type != .r_square_bracket) {
-        return null;
-    }
-
-    _ = try self.consume(scratch, &.{.l_square_bracket});
-    _ = try self.consume(scratch, &.{.text});
-    _ = try self.consume(scratch, &.{.r_square_bracket});
-
-    return token.lexeme;
+    did_parse = true;
+    return try running_text.toOwnedSlice();
 }
 
 fn scanLinkDestination(self: *Self, scratch: Allocator) !?[]const u8 {
@@ -654,4 +686,35 @@ test "paragraph can contain punctuation" {
 
     const p = root.root.children[1];
     try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
+}
+
+test "link reference definition" {
+    const md =
+        \\[checkout this cool link][foo]
+        \\
+        \\[foo]: /bar
+        \\
+    ;
+
+    const root, var link_defs = try parseBlocks(md);
+    defer root.deinit(testing.allocator);
+    defer link_defs.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
+
+    // The link definition is added to the AST (even though it isn't rendered),
+    // which is why we have two nodes.
+    try testing.expectEqual(2, root.root.children.len);
+
+    // Link should get parsed as a paragraph by the block parser; the inline
+    // parser will later turn it into a link.
+    const p = root.root.children[0];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
+
+    try testing.expectEqual(1, link_defs.count());
+
+    const maybe_definition = try link_defs.get(testing.allocator, "foo");
+    const definition = try util.testing.expectNonNull(maybe_definition);
+    try testing.expectEqualStrings("foo", definition.label);
+    try testing.expectEqualStrings("/bar", definition.url);
 }

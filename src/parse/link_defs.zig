@@ -115,6 +115,12 @@ fn fillLinkDefs(
 
 /// Normalizes the given link label, returning a new string.
 ///
+/// To normalize a label, strip off the opening and closing brackets,
+/// perform the Unicode case fold, strip leading and trailing spaces, tabs,
+/// and line endings, and collapse consecutive internal spaces, tabs, and
+/// line endings to a single space.
+/// https://spec.commonmark.org/0.30/#matches
+///
 /// Caller owns the returned string.
 fn normalize(alloc: Allocator, link_label: []const u8) Error![]const u8 {
     // TODO: Non-ascii lowercase
