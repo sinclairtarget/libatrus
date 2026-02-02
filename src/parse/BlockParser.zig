@@ -126,26 +126,22 @@ fn parseATXHeading(
     alloc: Allocator,
     scratch: Allocator,
 ) !?*ast.Node {
-    // Just peek, don't consume until we know the depth is valid
-    const start_token = try self.peek(scratch) orelse return null;
-    const pound_start_token = switch (start_token.token_type) {
-        .text => blk: {
-            // Handle allowed leading whitespace
-            if (
-                util.strings.containsOnly(start_token.lexeme, " ")
-                and start_token.lexeme.len < 4
-            ) {
-                _ = try self.consume(scratch, &.{.text});
-                break :blk try self.peek(scratch) orelse return null;
-            } else {
-                return null;
-            }
-        },
-        .pound => start_token,
-        else => return null,
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
     };
 
-    const depth = pound_start_token.lexeme.len;
+    // Handle allowed leading whitespace
+    _ = try self.consume(scratch, &.{.whitespace});
+
+    // Just peek, don't consume until we know the depth is valid
+    const start_token = try self.peek(scratch) orelse return null;
+    if (start_token.token_type != .pound) {
+        return null;
+    }
+
+    const depth = start_token.lexeme.len;
     if (depth > 6) { // https://spec.commonmark.org/0.31.2/#example-63
         return null;
     }
@@ -156,40 +152,51 @@ fn parseATXHeading(
     var inner = Io.Writer.Allocating.init(scratch);
     for (0..util.safety.loop_bound) |_| {
         const current = try self.peek(scratch) orelse break;
-        if (current.token_type == .pound) {
-            // Look ahead for a newline. If there is one, this is a closing
-            // sequence of # and we've reached the end of the line. Otherwise,
-            // parse the pound token as inner text.
-            if (try self.peekAhead(scratch, 2)) |t| {
-                if (t.token_type == .newline) {
-                    _ = try self.consume(scratch, &.{.pound});
-                    break; // Reached end of the line
+        switch (current.token_type) {
+            .pound => {
+                _ = try self.consume(scratch, &.{.pound});
+
+                // Look ahead for a newline. If there is one, this is a closing
+                // sequence of # and we've reached the end of the line.
+                // Otherwise, parse the pound token as inner text.
+                const lookahead_checkpoint_index = self.checkpoint();
+                while (try self.consume(scratch, &.{.whitespace})) |_| {}
+                if (try self.peek(scratch)) |last| {
+                    if (last.token_type != .newline) {
+                        // Was not trailing pound, write it
+                        try inner.writer.print("{s}", .{current.lexeme});
+                        self.backtrack(lookahead_checkpoint_index);
+                    }
                 }
+            },
+            .newline => break,
+            else => {
+                const text = try self.scanText(scratch) orelse break;
+                try inner.writer.print("{s}", .{text});
             }
         }
-
-        const text = try self.scanText(scratch) orelse break;
-        try inner.writer.print("{s}", .{text});
     } else @panic(util.safety.loop_bound_panic_msg);
 
-    _ = try self.consume(scratch, &.{.newline});
+    _ = try self.consume(scratch, &.{.newline}) orelse return null;
 
-    const children: []const *ast.Node = blk: {
+    const children: []*ast.Node = blk: {
         const trimmed_inner = std.mem.trim(u8, inner.written(), " \t");
         if (trimmed_inner.len == 0) {
             break :blk &.{};
         }
         const text_node = try createTextNode(alloc, trimmed_inner);
-        break :blk &.{ text_node };
+        break :blk try alloc.dupe(*ast.Node, &.{ text_node });
     };
+    errdefer alloc.free(children);
 
     const node = try alloc.create(ast.Node);
     node.* = .{
         .heading = .{
             .depth = @truncate(depth),
-            .children = try alloc.dupe(*ast.Node, children),
+            .children = children,
         },
     };
+    did_parse = true;
     return node;
 }
 
@@ -257,16 +264,18 @@ fn parseIndentedCode(
                 _ = try self.consume(scratch, &.{.newline});
                 try line.writer.print("", .{});
             },
-            .text => {
-                if (util.strings.isBlankLine(line_start.lexeme)) {
-                    // blank line doesn't end indented block
-                    // https://spec.commonmark.org/0.30/#example-111
-                    _ = try self.consume(scratch, &.{.text});
-                    try line.writer.print("", .{});
-                    _ = try self.consume(scratch, &.{.newline});
-                } else {
-                    // Unindented, non-blank line does end block
-                    break :block_loop;
+            .whitespace => {
+                const lookahead_checkpoint_index = self.checkpoint();
+                while (try self.consume(scratch, &.{.whitespace})) |_| {}
+                if (try self.peek(scratch)) |token| {
+                    if (token.token_type == .newline) {
+                        _ = try self.consume(scratch, &.{.newline});
+                        try line.writer.print("", .{});
+                    } else {
+                        // Unindented, non-blank line does end block
+                        self.backtrack(lookahead_checkpoint_index);
+                        break :block_loop;
+                    }
                 }
             },
             else => break :block_loop,
@@ -324,20 +333,11 @@ fn parseLinkReferenceDefinition(
     };
 
     // consume allowed leading whitespace
-    {
-        const token = try self.peek(scratch) orelse return null;
-        if (token.token_type == .text) {
-            if (
-                util.strings.containsOnly(token.lexeme, " ")
-                and token.lexeme.len < 4
-            ) {
-                _ = try self.consume(scratch, &.{.text});
-            }
-        }
-    }
+    _ = try self.consume(scratch, &.{.whitespace});
 
     const scanned_label = try self.scanLinkLabel(scratch) orelse return null;
     _ = try self.consume(scratch, &.{.colon}) orelse return null;
+    _ = try self.consume(scratch, &.{.whitespace});
     const scanned_url = try self.scanLinkDestination(
         scratch,
     ) orelse return null;
@@ -438,6 +438,7 @@ fn parseParagraph(
 fn scanText(self: *Self, scratch: Allocator) !?[]const u8 {
     const token = try self.consume(scratch, &.{
         .text,
+        .whitespace,
         .pound,
         .rule_equals,
         .rule_dash,
@@ -470,10 +471,12 @@ fn scanTextStart(self: *Self, scratch: Allocator) !?[]const u8 {
         },
         .text, .rule_equals, .rule_dash, .double_quote, .colon,
         .l_square_bracket, .r_square_bracket, .l_angle_bracket,
-        .r_angle_bracket => {
+        .r_angle_bracket, .whitespace => {
             return try self.scanText(scratch);
         },
-        else => return null,
+        .newline, .rule_star, .rule_underline, .rule_dash_with_whitespace => {
+            return null;
+        },
     }
 }
 
@@ -491,7 +494,12 @@ fn peek(self: *Self, scratch: Allocator) !?BlockToken {
     return self.peekAhead(scratch, 1);
 }
 
-fn peekAhead(self: *Self, scratch: Allocator, count: u16) !?BlockToken {
+/// Should be used for looking ahead a fixed amount only.
+fn peekAhead(
+    self: *Self,
+    scratch: Allocator,
+    comptime count: u16,
+) !?BlockToken {
     const index = self.token_index + (count - 1);
     while (index >= self.tokens.items.len) {
         // Returning null here means end of token stream
@@ -608,6 +616,20 @@ test "ATX heading with leading whitespace" {
 
     const h2 = root.root.children[0];
     try testing.expectEqual(.heading, @as(ast.NodeType, h2.*));
+}
+
+test "ATX heading with trailing pounds" {
+    const md = "## foo ##    \n";
+
+    const root, var link_defs = try parseBlocks(md);
+    defer root.deinit(testing.allocator);
+    defer link_defs.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
+    try testing.expectEqual(1, root.root.children.len);
+
+    const h1 = root.root.children[0];
+    try testing.expectEqual(.heading, @as(ast.NodeType, h1.*));
 }
 
 test "paragraph can contain punctuation" {
