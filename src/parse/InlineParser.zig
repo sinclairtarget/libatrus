@@ -123,10 +123,10 @@ fn parseStarStrong(
     alloc: Allocator,
     scratch: Allocator,
 ) Error!?*ast.Node {
-    var strong_node: ?*ast.Node = null;
+    var did_parse = false;
     var children = NodeList.init(alloc, scratch, createTextNode);
     const checkpoint_index = self.checkpoint();
-    defer if (strong_node == null) {
+    defer if (!did_parse) {
         self.backtrack(checkpoint_index);
         for (children.items()) |child| {
             child.deinit(alloc);
@@ -216,13 +216,14 @@ fn parseStarStrong(
         return null;
     }
 
-    strong_node = try alloc.create(ast.Node);
-    strong_node.?.* = .{
+    const node = try alloc.create(ast.Node);
+    node.* = .{
         .strong = .{
             .children = try children.toOwnedSlice(),
         },
     };
-    return strong_node;
+    did_parse = true;
+    return node;
 }
 
 // star_emph  => open inner close
@@ -239,10 +240,10 @@ fn parseStarEmphasis(
     alloc: Allocator,
     scratch: Allocator,
 ) Error!?*ast.Node {
-    var emphasis_node: ?*ast.Node = null;
+    var did_parse = false;
     var children = NodeList.init(alloc, scratch, createTextNode);
     const checkpoint_index = self.checkpoint();
-    defer if (emphasis_node == null) {
+    defer if (!did_parse) {
         self.backtrack(checkpoint_index);
         for (children.items()) |child| {
             child.deinit(alloc);
@@ -339,12 +340,13 @@ fn parseStarEmphasis(
         return null;
     }
 
-    emphasis_node = try alloc.create(ast.Node);
-    emphasis_node.?.* = .{
+    const emphasis_node = try alloc.create(ast.Node);
+    emphasis_node.* = .{
         .emphasis = .{
             .children = try children.toOwnedSlice(),
         },
     };
+    did_parse = true;
     return emphasis_node;
 }
 
@@ -357,10 +359,10 @@ fn parseUnderscoreStrong(
     alloc: Allocator,
     scratch: Allocator,
 ) Error!?*ast.Node {
-    var strong_node: ?*ast.Node = null;
+    var did_parse = false;
     var children = NodeList.init(alloc, scratch, createTextNode);
     const checkpoint_index = self.checkpoint();
-    defer if (strong_node == null) {
+    defer if (!did_parse) {
         self.backtrack(checkpoint_index);
         for (children.items()) |child| {
             child.deinit(alloc);
@@ -468,12 +470,13 @@ fn parseUnderscoreStrong(
         return null;
     }
 
-    strong_node = try alloc.create(ast.Node);
-    strong_node.?.* = .{
+    const strong_node = try alloc.create(ast.Node);
+    strong_node.* = .{
         .strong = .{
             .children = try children.toOwnedSlice(),
         },
     };
+    did_parse = true;
     return strong_node;
 }
 
@@ -491,10 +494,10 @@ fn parseUnderscoreEmphasis(
     alloc: Allocator,
     scratch: Allocator,
 ) Error!?*ast.Node {
-    var emphasis_node: ?*ast.Node = null;
+    var did_parse = false;
     var children = NodeList.init(alloc, scratch, createTextNode);
     const checkpoint_index = self.checkpoint();
-    defer if (emphasis_node == null) {
+    defer if (!did_parse) {
         self.backtrack(checkpoint_index);
         for (children.items()) |child| {
             child.deinit(alloc);
@@ -609,12 +612,13 @@ fn parseUnderscoreEmphasis(
         return null;
     }
 
-    emphasis_node = try alloc.create(ast.Node);
-    emphasis_node.?.* = .{
+    const emphasis_node = try alloc.create(ast.Node);
+    emphasis_node.* = .{
         .emphasis = .{
             .children = try children.toOwnedSlice(),
         },
     };
+    did_parse = true;
     return emphasis_node;
 }
 
@@ -696,9 +700,9 @@ fn parseInlineCode(
     alloc: Allocator,
     scratch: Allocator,
 ) Error!?*ast.Node {
-    var inline_code_node: ?*ast.Node = null;
+    var did_parse = false;
     const checkpoint_index = self.checkpoint();
-    defer if (inline_code_node == null) {
+    defer if (!did_parse) {
         self.backtrack(checkpoint_index);
     };
 
@@ -742,12 +746,13 @@ fn parseInlineCode(
         }
     }
 
-    inline_code_node = try alloc.create(ast.Node);
-    inline_code_node.?.* = .{
+    const inline_code_node = try alloc.create(ast.Node);
+    inline_code_node.* = .{
         .inline_code = .{
             .value = value,
         },
     };
+    did_parse = true;
     return inline_code_node;
 }
 
@@ -758,9 +763,9 @@ fn parseImage(
     alloc: Allocator,
     scratch: Allocator,
 ) Error!?*ast.Node {
-    var image: ?*ast.Node = null;
+    var did_parse = false;
     const checkpoint_index = self.checkpoint();
-    defer if (image == null) {
+    defer if (!did_parse) {
         self.backtrack(checkpoint_index);
     };
 
@@ -800,14 +805,15 @@ fn parseImage(
         try alttext.write(&running_text.writer, node);
     }
 
-    image = try alloc.create(ast.Node);
-    image.?.* = .{
+    const image = try alloc.create(ast.Node);
+    image.* = .{
         .image = .{
             .url = try alloc.dupe(u8, url),
             .title = try alloc.dupe(u8, title),
             .alt = try running_text.toOwnedSlice(),
         },
     };
+    did_parse = true;
     return image;
 }
 
@@ -818,10 +824,10 @@ fn parseImageDescription(
     alloc: Allocator,
     scratch: Allocator,
 ) Error!?[]*ast.Node {
+    var did_parse = false;
     var nodes = NodeList.init(alloc, scratch, createTextNode);
-    var did_parse_successfully = false;
     const checkpoint_index = self.checkpoint();
-    defer if (!did_parse_successfully) {
+    defer if (!did_parse) {
         self.backtrack(checkpoint_index);
         for (nodes.items()) |node| {
             node.deinit(alloc);
@@ -907,7 +913,7 @@ fn parseImageDescription(
         return null; // contained unbalanced brackets
     }
 
-    did_parse_successfully = true;
+    did_parse = true;
     return try nodes.toOwnedSlice();
 }
 
@@ -918,9 +924,9 @@ fn parseInlineLink(
     alloc: Allocator,
     scratch: Allocator,
 ) Error!?*ast.Node {
-    var inline_link: ?*ast.Node = null;
+    var did_parse = false;
     const checkpoint_index = self.checkpoint();
-    defer if (inline_link == null) {
+    defer if (!did_parse) {
         self.backtrack(checkpoint_index);
     };
 
@@ -928,7 +934,7 @@ fn parseInlineLink(
     const link_text_nodes = (
         try self.parseLinkText(alloc, scratch) orelse return null
     );
-    defer if (inline_link == null) {
+    defer if (!did_parse) {
         for (link_text_nodes) |node| {
             node.deinit(alloc);
         }
@@ -954,14 +960,15 @@ fn parseInlineLink(
 
     _ = try self.consume(scratch, &.{.r_paren}) orelse return null;
 
-    inline_link = try alloc.create(ast.Node);
-    inline_link.?.* = .{
+    const inline_link = try alloc.create(ast.Node);
+    inline_link.* = .{
         .link = .{
             .url = url,
             .title = try alloc.dupe(u8, title),
             .children = link_text_nodes,
         },
     };
+    did_parse = true;
     return inline_link;
 }
 
@@ -973,9 +980,9 @@ fn parseLinkText(
     scratch: Allocator,
 ) Error!?[]*ast.Node {
     var nodes = NodeList.init(alloc, scratch, createTextNode);
-    var did_parse_successfully = false;
+    var did_parse = false;
     const checkpoint_index = self.checkpoint();
-    defer if (!did_parse_successfully) {
+    defer if (!did_parse) {
         self.backtrack(checkpoint_index);
         for (nodes.items()) |node| {
             node.deinit(alloc);
@@ -1060,7 +1067,7 @@ fn parseLinkText(
         return null; // contained unbalanced brackets
     }
 
-    did_parse_successfully = true;
+    did_parse = true;
     return try nodes.toOwnedSlice();
 }
 
@@ -1070,9 +1077,9 @@ fn parseLinkText(
 /// nonempty sequence without a space (or unbalanced parens)
 fn scanLinkDestination(self: *Self, scratch: Allocator) ![]const u8 {
     var running_text = Io.Writer.Allocating.init(scratch);
-    var did_parse_successfully = false;
+    var did_parse = false;
     const checkpoint_index = self.checkpoint();
-    defer if (!did_parse_successfully) {
+    defer if (!did_parse) {
         self.backtrack(checkpoint_index);
     };
 
@@ -1125,7 +1132,7 @@ fn scanLinkDestination(self: *Self, scratch: Allocator) ![]const u8 {
         }
     }
 
-    did_parse_successfully = true;
+    did_parse = true;
     return try running_text.toOwnedSlice();
 }
 
@@ -1135,9 +1142,9 @@ fn scanLinkDestination(self: *Self, scratch: Allocator) ![]const u8 {
 // contain a blank line.
 fn scanLinkTitle(self: *Self, scratch: Allocator) ![]const u8 {
     var running_text = Io.Writer.Allocating.init(scratch);
-    var did_parse_successfully = false;
+    var did_parse = false;
     const checkpoint_index = self.checkpoint();
-    defer if (!did_parse_successfully) {
+    defer if (!did_parse) {
         self.backtrack(checkpoint_index);
     };
 
@@ -1181,7 +1188,7 @@ fn scanLinkTitle(self: *Self, scratch: Allocator) ![]const u8 {
     }
     _ = try self.consume(scratch, &.{close_t}) orelse return "";
 
-    did_parse_successfully = true;
+    did_parse = true;
     return try running_text.toOwnedSlice();
 }
 

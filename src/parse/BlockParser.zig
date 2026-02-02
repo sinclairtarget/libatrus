@@ -326,9 +326,9 @@ fn parseLinkReferenceDefinition(
     alloc: Allocator,
     scratch: Allocator,
 ) !?*ast.Node {
-    var link_def_node: ?*ast.Node = null;
+    var did_parse = false;
     const checkpoint_index = self.checkpoint();
-    defer if (link_def_node == null) {
+    defer if (!did_parse) {
         self.backtrack(checkpoint_index);
     };
 
@@ -349,15 +349,16 @@ fn parseLinkReferenceDefinition(
     const url = try alloc.dupe(u8, scanned_url);
     errdefer alloc.free(url);
 
-    link_def_node = try alloc.create(ast.Node);
-    link_def_node.?.* = .{
+    const node = try alloc.create(ast.Node);
+    node.* = .{
         .definition = .{
             .url = url,
             .label = label,
             .title = "",
         },
     };
-    return link_def_node;
+    did_parse = true;
+    return node;
 }
 
 fn scanLinkLabel(self: *Self, scratch: Allocator) !?[]const u8 {
