@@ -13,18 +13,6 @@ pub fn containsOnly(s: []const u8, chars: []const u8) bool {
     return true;
 }
 
-/// If s contains any of the bytes in chars, returns true. False otherwise.
-pub fn containsAny(s: []const u8, chars: []const u8) bool {
-    for (s) |byte| {
-        for (chars) |c| {
-            if (byte == c) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
 /// Returns true if s contains an Ascii control char, otherwise false.
 pub fn containsAsciiControl(s: []const u8) bool {
     for (s) |byte| {
@@ -34,11 +22,6 @@ pub fn containsAsciiControl(s: []const u8) bool {
     }
 
     return false;
-}
-
-// https://spec.commonmark.org/0.30/#blank-line
-pub fn isBlankLine(s: []const u8) bool {
-    return s.len == 0 or containsOnly(s, " \t");
 }
 
 pub fn isPunctuation(s: []const u8) bool {
