@@ -1116,6 +1116,9 @@ fn scanLinkDestination(self: *Self, scratch: Allocator) ![]const u8 {
                 else => |t| {
                     _ = try self.consume(scratch, &.{t});
                     const value = try resolveInlineText(scratch, token);
+                    if (util.strings.containsAsciiControl(value)) {
+                        return "";
+                    }
                     _ = try running_text.writer.write(value);
                 },
             }
