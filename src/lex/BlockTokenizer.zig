@@ -80,6 +80,10 @@ fn tokenize(self: *Self, scratch: Allocator) !BlockToken {
             break :blk result;
         }
 
+        if (try self.matchWhitespace(scratch)) |result| {
+            break :blk result;
+        }
+
         break :blk try self.matchText(scratch);
     };
 
@@ -277,15 +281,43 @@ fn matchRule(self: Self, scratch: Allocator) !?TokenizeResult {
     };
 }
 
+fn matchWhitespace(self: Self, scratch: Allocator) !?TokenizeResult {
+    var lookahead_i = self.i;
+    while (lookahead_i < self.line.len) {
+        switch (self.line[lookahead_i]) {
+            ' ', '\t' => {
+                lookahead_i += 1;
+            },
+            else => break,
+        }
+    }
+
+    if (lookahead_i == self.i) {
+        return null;
+    }
+
+    const lexeme = try evaluate_lexeme(self, scratch, .whitespace, lookahead_i);
+    const token = BlockToken{
+        .token_type = .whitespace,
+        .lexeme = lexeme,
+    };
+    return .{
+        .token = token,
+        .next_i = lookahead_i,
+    };
+}
+
 fn matchText(self: Self, scratch: Allocator) !TokenizeResult {
     var lookahead_i = self.i;
 
-    const State = enum { start, text, whitespace };
+    const State = enum { start, text };
     fsm: switch (State.start) {
         .start => {
+            // We allow the first character to be something we'd otherwise break
+            // on, since we assume if it could have been tokenized as something
+            // else it already would have been.
             switch (self.line[lookahead_i]) {
                 '\n' => break :fsm,
-                ' ', '\t' => continue :fsm .whitespace,
                 else => {
                     lookahead_i += 1;
                     continue :fsm .text;
@@ -294,22 +326,11 @@ fn matchText(self: Self, scratch: Allocator) !TokenizeResult {
         },
         .text => {
             switch (self.line[lookahead_i]) {
-                '"', '<', '>', '[', ']', '\n' => break :fsm,
-                ' ', '\t' => continue :fsm .whitespace,
+                '"', '<', '>', '[', ']', '\n', ' ', '\t' => break :fsm,
                 else => {
                     lookahead_i += 1;
                     continue :fsm .text;
                 },
-            }
-        },
-        .whitespace => {
-            switch (self.line[lookahead_i]) {
-                '"', '<', '>', '[', ']', '\n', '#' => break :fsm,
-                ' ', '\t' => {
-                    lookahead_i += 1;
-                    continue :fsm .whitespace;
-                },
-                else => continue :fsm .start,
             }
         },
     }
@@ -386,14 +407,21 @@ test "pound paragraph" {
     ;
 
     try expectEqualTokens(&.{
-        .pound, .text, .newline,
-        .pound, .text, .newline,
-        .text, .newline,
-        .text, .newline,
+        .pound, .whitespace, .text, .newline,
+        .pound, .whitespace, .text, .newline,
+        .text, .whitespace, .text, .whitespace, .text, .whitespace,
+            .text, .newline,
+        .text, .whitespace, .text, .whitespace, .text, .whitespace,
+            .text, .newline,
         .newline,
-        .text, .newline,
-        .text, .double_quote, .text, .double_quote, .text, .l_square_bracket,
-        .r_square_bracket, .l_angle_bracket, .r_angle_bracket, .text, .newline,
+        .text, .whitespace, .text, .whitespace, .text, .whitespace,
+            .text, .whitespace, .text, .newline,
+        .text, .whitespace, .text, .whitespace, .double_quote, .text,
+            .double_quote, .whitespace, .text, .whitespace, .text,
+            .l_square_bracket, .r_square_bracket, .l_angle_bracket,
+            .r_angle_bracket, .text, .whitespace, .text, .whitespace, .text,
+            .whitespace, .text, .whitespace, .text, .whitespace, .text,
+            .newline,
     }, md);
 }
 
@@ -423,13 +451,13 @@ test "rule" {
 }
 
 test "indent" {
-    // Can't use \t in multiline string literal
+    // In Zig, can't use \t in multiline string literal :(
     const md = "    a simple\n      space-indented block\n\n\ttab indent\n";
     try expectEqualTokens(&.{
-        .indent, .text, .newline,
-        .indent, .text, .newline,
+        .indent, .text, .whitespace, .text, .newline,
+        .indent, .whitespace, .text, .whitespace, .text, .newline,
         .newline,
-        .indent, .text, .newline,
+        .indent, .text, .whitespace, .text, .newline,
     }, md);
 }
 
@@ -440,7 +468,9 @@ test "link reference definition" {
         .text,
         .r_square_bracket,
         .colon,
+        .whitespace,
         .text,
+        .whitespace,
         .double_quote,
         .text,
         .double_quote,

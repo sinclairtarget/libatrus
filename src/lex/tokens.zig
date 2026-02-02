@@ -8,6 +8,7 @@ pub const BlockTokenType = enum {
     indent,                     // indent at beginning of line
     pound,                      // one or more consecutive '#' symbols
     newline,
+    whitespace,
     rule_star,
     rule_underline,
     rule_dash_with_whitespace,
