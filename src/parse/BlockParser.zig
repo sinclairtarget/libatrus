@@ -319,11 +319,9 @@ fn parseLinkReferenceDefinition(
 ) !?*ast.Node {
     var link_def_node: ?*ast.Node = null;
     const checkpoint_index = self.checkpoint();
-    defer {
-        if (link_def_node == null) {
-            self.backtrack(checkpoint_index);
-        }
-    }
+    defer if (link_def_node == null) {
+        self.backtrack(checkpoint_index);
+    };
 
     // consume allowed leading whitespace
     {

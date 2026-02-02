@@ -126,15 +126,13 @@ fn parseStarStrong(
     var strong_node: ?*ast.Node = null;
     var children = NodeList.init(alloc, scratch, createTextNode);
     const checkpoint_index = self.checkpoint();
-    defer {
-        if (strong_node == null) {
-            self.backtrack(checkpoint_index);
-            for (children.items()) |child| {
-                child.deinit(alloc);
-            }
-            children.deinit();
+    defer if (strong_node == null) {
+        self.backtrack(checkpoint_index);
+        for (children.items()) |child| {
+            child.deinit(alloc);
         }
-    }
+        children.deinit();
+    };
 
     const open_token = try self.consume(scratch, &.{
         .l_delim_star,
@@ -244,15 +242,13 @@ fn parseStarEmphasis(
     var emphasis_node: ?*ast.Node = null;
     var children = NodeList.init(alloc, scratch, createTextNode);
     const checkpoint_index = self.checkpoint();
-    defer {
-        if (emphasis_node == null) {
-            self.backtrack(checkpoint_index);
-            for (children.items()) |child| {
-                child.deinit(alloc);
-            }
-            children.deinit();
+    defer if (emphasis_node == null) {
+        self.backtrack(checkpoint_index);
+        for (children.items()) |child| {
+            child.deinit(alloc);
         }
-    }
+        children.deinit();
+    };
 
     const open_token = try self.consume(scratch, &.{
         .l_delim_star,
@@ -364,15 +360,13 @@ fn parseUnderscoreStrong(
     var strong_node: ?*ast.Node = null;
     var children = NodeList.init(alloc, scratch, createTextNode);
     const checkpoint_index = self.checkpoint();
-    defer {
-        if (strong_node == null) {
-            self.backtrack(checkpoint_index);
-            for (children.items()) |child| {
-                child.deinit(alloc);
-            }
-            children.deinit();
+    defer if (strong_node == null) {
+        self.backtrack(checkpoint_index);
+        for (children.items()) |child| {
+            child.deinit(alloc);
         }
-    }
+        children.deinit();
+    };
 
     const open_token = try self.peek(scratch) orelse return null;
     switch (open_token.token_type) {
@@ -500,15 +494,13 @@ fn parseUnderscoreEmphasis(
     var emphasis_node: ?*ast.Node = null;
     var children = NodeList.init(alloc, scratch, createTextNode);
     const checkpoint_index = self.checkpoint();
-    defer {
-        if (emphasis_node == null) {
-            self.backtrack(checkpoint_index);
-            for (children.items()) |child| {
-                child.deinit(alloc);
-            }
-            children.deinit();
+    defer if (emphasis_node == null) {
+        self.backtrack(checkpoint_index);
+        for (children.items()) |child| {
+            child.deinit(alloc);
         }
-    }
+        children.deinit();
+    };
 
     const open_token = try self.peek(scratch) orelse return null;
     switch (open_token.token_type) {
@@ -706,11 +698,9 @@ fn parseInlineCode(
 ) Error!?*ast.Node {
     var inline_code_node: ?*ast.Node = null;
     const checkpoint_index = self.checkpoint();
-    defer {
-        if (inline_code_node == null) {
-            self.backtrack(checkpoint_index);
-        }
-    }
+    defer if (inline_code_node == null) {
+        self.backtrack(checkpoint_index);
+    };
 
     const open = try self.consume(scratch, &.{ .backtick }) orelse return null;
 
@@ -770,11 +760,9 @@ fn parseImage(
 ) Error!?*ast.Node {
     var image: ?*ast.Node = null;
     const checkpoint_index = self.checkpoint();
-    defer {
-        if (image == null) {
-            self.backtrack(checkpoint_index);
-        }
-    }
+    defer if (image == null) {
+        self.backtrack(checkpoint_index);
+    };
 
     const img_desc_nodes = (
         try self.parseImageDescription(alloc, scratch) orelse return null
@@ -833,15 +821,13 @@ fn parseImageDescription(
     var nodes = NodeList.init(alloc, scratch, createTextNode);
     var did_parse_successfully = false;
     const checkpoint_index = self.checkpoint();
-    defer {
-        if (!did_parse_successfully) {
-            self.backtrack(checkpoint_index);
-            for (nodes.items()) |node| {
-                node.deinit(alloc);
-            }
-            nodes.deinit();
+    defer if (!did_parse_successfully) {
+        self.backtrack(checkpoint_index);
+        for (nodes.items()) |node| {
+            node.deinit(alloc);
         }
-    }
+        nodes.deinit();
+    };
 
     _ = try self.consume(scratch, &.{.exclamation_mark}) orelse return null;
     _ = try self.consume(scratch, &.{.l_square_bracket}) orelse return null;
@@ -934,24 +920,20 @@ fn parseInlineLink(
 ) Error!?*ast.Node {
     var inline_link: ?*ast.Node = null;
     const checkpoint_index = self.checkpoint();
-    defer {
-        if (inline_link == null) {
-            self.backtrack(checkpoint_index);
-        }
-    }
+    defer if (inline_link == null) {
+        self.backtrack(checkpoint_index);
+    };
 
     // handle link text
     const link_text_nodes = (
         try self.parseLinkText(alloc, scratch) orelse return null
     );
-    defer {
-        if (inline_link == null) {
-            for (link_text_nodes) |node| {
-                node.deinit(alloc);
-            }
-            alloc.free(link_text_nodes);
+    defer if (inline_link == null) {
+        for (link_text_nodes) |node| {
+            node.deinit(alloc);
         }
-    }
+        alloc.free(link_text_nodes);
+    };
 
     _ = try self.consume(scratch, &.{.l_paren}) orelse return null;
 
@@ -993,15 +975,13 @@ fn parseLinkText(
     var nodes = NodeList.init(alloc, scratch, createTextNode);
     var did_parse_successfully = false;
     const checkpoint_index = self.checkpoint();
-    defer {
-        if (!did_parse_successfully) {
-            self.backtrack(checkpoint_index);
-            for (nodes.items()) |node| {
-                node.deinit(alloc);
-            }
-            nodes.deinit();
+    defer if (!did_parse_successfully) {
+        self.backtrack(checkpoint_index);
+        for (nodes.items()) |node| {
+            node.deinit(alloc);
         }
-    }
+        nodes.deinit();
+    };
 
     _ = try self.consume(scratch, &.{.l_square_bracket}) orelse return null;
 
@@ -1092,11 +1072,9 @@ fn scanLinkDestination(self: *Self, scratch: Allocator) ![]const u8 {
     var running_text = Io.Writer.Allocating.init(scratch);
     var did_parse_successfully = false;
     const checkpoint_index = self.checkpoint();
-    defer {
-        if (!did_parse_successfully) {
-            self.backtrack(checkpoint_index);
-        }
-    }
+    defer if (!did_parse_successfully) {
+        self.backtrack(checkpoint_index);
+    };
 
     if (try self.consume(scratch, &.{.l_angle_bracket})) |_| {
         // Option one, angle bracket delimited
@@ -1156,11 +1134,9 @@ fn scanLinkTitle(self: *Self, scratch: Allocator) ![]const u8 {
     var running_text = Io.Writer.Allocating.init(scratch);
     var did_parse_successfully = false;
     const checkpoint_index = self.checkpoint();
-    defer {
-        if (!did_parse_successfully) {
-            self.backtrack(checkpoint_index);
-        }
-    }
+    defer if (!did_parse_successfully) {
+        self.backtrack(checkpoint_index);
+    };
 
     const open = try self.consume(
         scratch,
