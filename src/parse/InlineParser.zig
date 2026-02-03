@@ -76,7 +76,7 @@ pub fn parse(
             continue;
         }
 
-        if (try self.parseImage(alloc, scratch)) |image| {
+        if (try self.parseInlineImage(alloc, scratch)) |image| {
             try nodes.append(image);
             continue;
         }
@@ -149,7 +149,7 @@ fn parseStarStrong(
             continue;
         }
 
-        if (try self.parseImage(alloc, scratch)) |image| {
+        if (try self.parseInlineImage(alloc, scratch)) |image| {
             try children.append(image);
             continue;
         }
@@ -264,7 +264,7 @@ fn parseStarEmphasis(
                 break :blk code;
             }
 
-            if (try self.parseImage(alloc, scratch)) |image| {
+            if (try self.parseInlineImage(alloc, scratch)) |image| {
                 break :blk image;
             }
 
@@ -394,7 +394,7 @@ fn parseUnderscoreStrong(
             continue;
         }
 
-        if (try self.parseImage(alloc, scratch)) |image| {
+        if (try self.parseInlineImage(alloc, scratch)) |image| {
             try children.append(image);
             continue;
         }
@@ -527,7 +527,7 @@ fn parseUnderscoreEmphasis(
                 break :blk code;
             }
 
-            if (try self.parseImage(alloc, scratch)) |image| {
+            if (try self.parseInlineImage(alloc, scratch)) |image| {
                 break :blk image;
             }
 
@@ -757,8 +757,8 @@ fn parseInlineCode(
 }
 
 // @ => link_description l_paren (link_dest link_title?)? r_paren
-/// Parses an inline link.
-fn parseImage(
+/// Parses an inline image link.
+fn parseInlineImage(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
@@ -784,13 +784,13 @@ fn parseImage(
     _ = try self.consume(scratch, &.{.l_paren}) orelse return null;
 
     // link destination
-    const url = try self.scanLinkDestination(scratch);
+    const url = try self.scanLinkDestination(scratch) orelse "";
 
     const title = blk: {
         // link title, if present, must be separated from destination by
         // whitespace
         if (try self.consume(scratch, &.{.newline, .whitespace})) |_| {
-            break :blk try self.scanLinkTitle(scratch);
+            break :blk try self.scanLinkTitle(scratch) orelse "";
         }
 
         break :blk "";
@@ -840,7 +840,7 @@ fn parseImageDescription(
 
     var bracket_depth: u32 = 0;
     loop: for (0..util.safety.loop_bound) |_| {
-        if (try self.parseImage(alloc, scratch)) |image| {
+        if (try self.parseInlineImage(alloc, scratch)) |image| {
             try nodes.append(image);
             continue;
         }
@@ -944,7 +944,7 @@ fn parseInlineLink(
     _ = try self.consume(scratch, &.{.l_paren}) orelse return null;
 
     // link destination
-    const raw_url = try self.scanLinkDestination(scratch);
+    const raw_url = try self.scanLinkDestination(scratch) orelse "";
     const url = try cmark.uri.normalize(alloc, scratch, raw_url);
     errdefer alloc.free(url);
 
@@ -952,7 +952,7 @@ fn parseInlineLink(
         // link title, if present, must be separated from destination by
         // whitespace
         if (try self.consume(scratch, &.{.newline, .whitespace})) |_| {
-            break :blk try self.scanLinkTitle(scratch);
+            break :blk try self.scanLinkTitle(scratch) orelse "";
         }
 
         break :blk "";
@@ -994,7 +994,7 @@ fn parseLinkText(
 
     var bracket_depth: u32 = 0;
     loop: for (0..util.safety.loop_bound) |_| {
-        if (try self.parseImage(alloc, scratch)) |image| {
+        if (try self.parseInlineImage(alloc, scratch)) |image| {
             try nodes.append(image);
             continue;
         }
@@ -1075,19 +1075,19 @@ fn parseLinkText(
 /// <foobar>
 /// or
 /// nonempty sequence without a space (or unbalanced parens)
-fn scanLinkDestination(self: *Self, scratch: Allocator) ![]const u8 {
-    var running_text = Io.Writer.Allocating.init(scratch);
+fn scanLinkDestination(self: *Self, scratch: Allocator) !?[]const u8 {
     var did_parse = false;
     const checkpoint_index = self.checkpoint();
     defer if (!did_parse) {
         self.backtrack(checkpoint_index);
     };
 
+    var running_text = Io.Writer.Allocating.init(scratch);
     if (try self.consume(scratch, &.{.l_angle_bracket})) |_| {
-        // Option one, angle bracket delimited
+        // Option one, angle bracket delimited, empty string allowed
         while (try self.peek(scratch)) |token| {
             switch (token.token_type) {
-                .l_angle_bracket, .newline => return "",
+                .l_angle_bracket, .newline => return null,
                 .r_angle_bracket => break,
                 else => |t| {
                     _ = try self.consume(scratch, &.{t});
@@ -1099,6 +1099,7 @@ fn scanLinkDestination(self: *Self, scratch: Allocator) ![]const u8 {
         _ = try self.consume(scratch, &.{.r_angle_bracket});
     } else {
         // Option two
+        // - non-zero length
         // - no ascii control chars
         // - no spaces
         // - balanced parens
@@ -1135,11 +1136,11 @@ fn scanLinkDestination(self: *Self, scratch: Allocator) ![]const u8 {
         }
 
         if (paren_depth > 0) {
-            return "";
+            return null;
         }
 
         if (running_text.written().len == 0) {
-            return "";
+            return null;
         }
     }
 
@@ -1151,18 +1152,19 @@ fn scanLinkDestination(self: *Self, scratch: Allocator) ![]const u8 {
 ///
 /// Should be enclosed in () or "" or ''. Can span multiple lines but cannot
 /// contain a blank line.
-fn scanLinkTitle(self: *Self, scratch: Allocator) ![]const u8 {
-    var running_text = Io.Writer.Allocating.init(scratch);
+fn scanLinkTitle(self: *Self, scratch: Allocator) !?[]const u8 {
     var did_parse = false;
     const checkpoint_index = self.checkpoint();
     defer if (!did_parse) {
         self.backtrack(checkpoint_index);
     };
 
+    var running_text = Io.Writer.Allocating.init(scratch);
+
     const open = try self.consume(
         scratch,
         &.{.l_paren, .single_quote, .double_quote},
-    ) orelse return "";
+    ) orelse return null;
 
     const open_t = open.token_type;
     const close_t = if (open_t == .l_paren) .r_paren else open_t;
@@ -1172,7 +1174,7 @@ fn scanLinkTitle(self: *Self, scratch: Allocator) ![]const u8 {
         switch (token.token_type) {
             .newline => {
                 if (blank_line_so_far) {
-                    return ""; // link title cannot contain blank line
+                    return null; // link title cannot contain blank line
                 }
                 _ = try self.consume(scratch, &.{.newline});
                 const value = try resolveInlineText(scratch, token);
@@ -1197,7 +1199,7 @@ fn scanLinkTitle(self: *Self, scratch: Allocator) ![]const u8 {
             },
         }
     }
-    _ = try self.consume(scratch, &.{close_t}) orelse return "";
+    _ = try self.consume(scratch, &.{close_t}) orelse return null;
 
     did_parse = true;
     return try running_text.toOwnedSlice();
