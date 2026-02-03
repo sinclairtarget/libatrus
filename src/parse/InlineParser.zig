@@ -1118,6 +1118,9 @@ fn scanLinkDestination(self: *Self, scratch: Allocator) ![]const u8 {
                     }
 
                     paren_depth -= 1;
+                    _ = try self.consume(scratch, &.{.r_paren});
+                    const value = try resolveInlineText(scratch, token);
+                    _ = try running_text.writer.write(value);
                 },
                 .whitespace => break,
                 else => |t| {
@@ -1130,16 +1133,24 @@ fn scanLinkDestination(self: *Self, scratch: Allocator) ![]const u8 {
                 },
             }
         }
+
+        if (paren_depth > 0) {
+            return "";
+        }
+
+        if (running_text.written().len == 0) {
+            return "";
+        }
     }
 
     did_parse = true;
     return try running_text.toOwnedSlice();
 }
 
-// Title part of an inline link.
-//
-// Should be enclosed in () or "" or ''. Can span multiple lines but cannot
-// contain a blank line.
+/// Title part of an inline link.
+///
+/// Should be enclosed in () or "" or ''. Can span multiple lines but cannot
+/// contain a blank line.
 fn scanLinkTitle(self: *Self, scratch: Allocator) ![]const u8 {
     var running_text = Io.Writer.Allocating.init(scratch);
     var did_parse = false;

@@ -19,6 +19,9 @@ pub const BlockTokenType = enum {
     r_square_bracket,
     l_angle_bracket,
     r_angle_bracket,
+    l_paren,
+    r_paren,
+    single_quote,
     double_quote,
 };
 

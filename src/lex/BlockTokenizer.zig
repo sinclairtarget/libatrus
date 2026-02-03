@@ -97,8 +97,11 @@ fn matchSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
         ']'  => .r_square_bracket,
         '<'  => .l_angle_bracket,
         '>'  => .r_angle_bracket,
+        '('  => .l_paren,
+        ')'  => .r_paren,
         ':'  => .colon,
         '"'  => .double_quote,
+        '\'' => .single_quote,
         else => return null,
     };
 
@@ -417,10 +420,10 @@ test "pound paragraph" {
         .text, .whitespace, .text, .whitespace, .text, .whitespace,
             .text, .whitespace, .text, .newline,
         .text, .whitespace, .text, .whitespace, .double_quote, .text,
-            .double_quote, .whitespace, .text, .whitespace, .text,
+            .double_quote, .whitespace, .text, .whitespace, .l_paren,
             .l_square_bracket, .r_square_bracket, .l_angle_bracket,
-            .r_angle_bracket, .text, .whitespace, .text, .whitespace, .text,
-            .whitespace, .text, .whitespace, .text, .whitespace, .text,
+            .r_angle_bracket, .r_paren, .whitespace, .text, .whitespace,
+            .text, .whitespace, .text, .whitespace, .text, .whitespace, .text,
             .newline,
     }, md);
 }

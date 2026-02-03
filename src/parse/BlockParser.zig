@@ -321,6 +321,7 @@ fn parseIndentedCode(
     return node;
 }
 
+/// https://spec.commonmark.org/0.30/#link-reference-definition
 fn parseLinkReferenceDefinition(
     self: *Self,
     alloc: Allocator,
@@ -335,7 +336,7 @@ fn parseLinkReferenceDefinition(
     // consume allowed leading whitespace
     _ = try self.consume(scratch, &.{.whitespace});
 
-    const scanned_label = try self.scanLinkLabel(scratch) orelse return null;
+    const scanned_label = try self.scanLinkDefLabel(scratch) orelse return null;
     _ = try self.consume(scratch, &.{.colon}) orelse return null;
 
     // whitespace allowed and up to one newline
@@ -349,23 +350,48 @@ fn parseLinkReferenceDefinition(
         }
     }
 
-    const scanned_url = try self.scanLinkDestination(
+    const scanned_url = try self.scanLinkDefDestination(
         scratch,
     ) orelse return null;
 
-    _ = try self.consume(scratch, &.{.newline});
+    // whitespace allowed and up to one newline
+    var seen_any_separating_whitespace = false;
+    seen_newline = false;
+    while (try self.consume(scratch, &.{.newline, .whitespace})) |token| {
+        seen_any_separating_whitespace = true;
+        if (token.token_type == .newline) {
+            if (seen_newline) {
+                return null;
+            }
+            seen_newline = true;
+        }
+    }
+
+    const scanned_title = blk: {
+        // link title, if present, must be separated from destination by
+        // whitespace
+        if (seen_any_separating_whitespace) {
+            break :blk try self.scanLinkDefTitle(scratch) orelse "";
+        }
+        break :blk "";
+    };
+
+    // "no further character can occur"
+    _ = try self.consume(scratch, &.{.newline}) orelse return null;
 
     const label = try alloc.dupe(u8, scanned_label);
     errdefer alloc.free(label);
     const url = try alloc.dupe(u8, scanned_url);
     errdefer alloc.free(url);
+    const title = try alloc.dupe(u8, scanned_title);
+    errdefer alloc.free(title);
 
     const node = try alloc.create(ast.Node);
     node.* = .{
         .definition = .{
             .url = url,
             .label = label,
-            .title = "",
+            .title = title,
         },
     };
     did_parse = true;
@@ -373,7 +399,7 @@ fn parseLinkReferenceDefinition(
 }
 
 /// https://spec.commonmark.org/0.30/#link-label
-fn scanLinkLabel(self: *Self, scratch: Allocator) !?[]const u8 {
+fn scanLinkDefLabel(self: *Self, scratch: Allocator) !?[]const u8 {
     var did_parse = false;
     var running_text = Io.Writer.Allocating.init(scratch);
     const checkpoint_index = self.checkpoint();
@@ -421,12 +447,138 @@ fn scanLinkLabel(self: *Self, scratch: Allocator) !?[]const u8 {
     return try running_text.toOwnedSlice();
 }
 
-fn scanLinkDestination(self: *Self, scratch: Allocator) !?[]const u8 {
-    const token = try self.consume(scratch, &.{.text}) orelse return null;
-    return token.lexeme;
+fn scanLinkDefDestination(self: *Self, scratch: Allocator) !?[]const u8 {
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+    };
+
+    var running_text = Io.Writer.Allocating.init(scratch);
+    if (try self.consume(scratch, &.{.l_angle_bracket})) |_| {
+        // Option one, angle bracket delimited, empty string allowed
+        while (try self.peek(scratch)) |token| {
+            switch (token.token_type) {
+                .l_angle_bracket, .newline => return null,
+                .r_angle_bracket => break,
+                // None of these tokens should really be possible here, since
+                // they can only be matched at the beginning of a line.
+                .indent, .rule_star, .rule_underline, .rule_dash_with_whitespace,
+                .rule_dash, .rule_equals => return null,
+                .text, .pound, .whitespace, .colon, .l_square_bracket,
+                .r_square_bracket, .l_paren, .r_paren, .double_quote,
+                .single_quote => |t| {
+                    _ = try self.consume(scratch, &.{t});
+                    _ = try running_text.writer.write(token.lexeme);
+                },
+            }
+        }
+        _ = try self.consume(scratch, &.{.r_angle_bracket});
+    } else {
+        // Option two
+        // - non-zero length
+        // - no ascii control chars
+        // - no spaces
+        // - balanced parens
+        var paren_depth: u32 = 0;
+        while (try self.peek(scratch)) |token| {
+            switch (token.token_type) {
+                .l_paren => {
+                    paren_depth += 1;
+                    _ = try self.consume(scratch, &.{.l_paren});
+                    _ = try running_text.writer.write(token.lexeme);
+                },
+                .r_paren => {
+                    if (paren_depth == 0) {
+                        break;
+                    }
+
+                    paren_depth -= 1;
+                    _ = try self.consume(scratch, &.{.r_paren});
+                    _ = try running_text.writer.write(token.lexeme);
+                },
+                .newline, .whitespace => break,
+                .indent, .rule_star, .rule_underline, .rule_dash_with_whitespace,
+                .rule_dash, .rule_equals => return null,
+                .text, .pound, .colon, .l_square_bracket, .r_square_bracket,
+                .l_angle_bracket, .r_angle_bracket, .double_quote,
+                .single_quote => |t| {
+                    _ = try self.consume(scratch, &.{t});
+                    const value = token.lexeme;
+                    if (util.strings.containsAsciiControl(value)) {
+                        return null;
+                    }
+                    _ = try running_text.writer.write(value);
+                },
+            }
+        }
+
+        if (paren_depth > 0) {
+            return null;
+        }
+
+        if (running_text.written().len == 0) {
+            return null;
+        }
+    }
+
+    did_parse = true;
+    return try running_text.toOwnedSlice();
 }
 
-fn scanLinkTitle() ![]const u8 {}
+/// Title part of a link reference definition.
+///
+/// Should be enclosed in () or "" or ''. Can span multiple lines but cannot
+/// contain a blank line.
+fn scanLinkDefTitle(self: *Self, scratch: Allocator) !?[]const u8 {
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+    };
+
+    var running_text = Io.Writer.Allocating.init(scratch);
+
+    const open = try self.consume(
+        scratch,
+        &.{.l_paren, .single_quote, .double_quote},
+    ) orelse return "";
+
+    const open_t = open.token_type;
+    const close_t = if (open_t == .l_paren) .r_paren else open_t;
+
+    var blank_line_so_far = false;
+    while (try self.peek(scratch)) |token| {
+        switch (token.token_type) {
+            .newline => {
+                if (blank_line_so_far) {
+                    return null; // link title cannot contain blank line
+                }
+                _ = try self.consume(scratch, &.{.newline});
+                _ = try running_text.writer.write("\n");
+
+                blank_line_so_far = true;
+            },
+            .whitespace => {
+                _ = try self.consume(scratch, &.{.whitespace});
+                _ = try running_text.writer.write(token.lexeme);
+            },
+            else => |t| {
+                if (t == close_t) {
+                    break;
+                }
+
+                _ = try self.consume(scratch, &.{t});
+                _ = try running_text.writer.write(token.lexeme);
+                blank_line_so_far = false;
+            },
+        }
+    }
+    _ = try self.consume(scratch, &.{close_t}) orelse return null;
+
+    did_parse = true;
+    return try running_text.toOwnedSlice();
+}
 
 fn parseParagraph(
     self: *Self,
@@ -475,12 +627,15 @@ fn scanText(self: *Self, scratch: Allocator) !?[]const u8 {
         .pound,
         .rule_equals,
         .rule_dash,
+        .single_quote,
         .double_quote,
         .colon,
         .l_square_bracket,
         .r_square_bracket,
         .l_angle_bracket,
         .r_angle_bracket,
+        .l_paren,
+        .r_paren,
     }) orelse return null;
     return token.lexeme;
 }
@@ -502,9 +657,9 @@ fn scanTextStart(self: *Self, scratch: Allocator) !?[]const u8 {
             _ = try self.consume(scratch, &.{.indent});
             return try self.scanText(scratch);
         },
-        .text, .rule_equals, .rule_dash, .double_quote, .colon,
+        .text, .rule_equals, .rule_dash, .single_quote, .double_quote, .colon,
         .l_square_bracket, .r_square_bracket, .l_angle_bracket,
-        .r_angle_bracket, .whitespace => {
+        .r_angle_bracket, .l_paren, .r_paren, .whitespace => {
             return try self.scanText(scratch);
         },
         .newline, .rule_star, .rule_underline, .rule_dash_with_whitespace => {
@@ -692,7 +847,7 @@ test "link reference definition" {
     const md =
         \\[checkout this cool link][foo]
         \\
-        \\[foo]: /bar
+        \\[foo]: /bar "baz bot"
         \\
     ;
 
@@ -717,4 +872,5 @@ test "link reference definition" {
     const definition = try util.testing.expectNonNull(maybe_definition);
     try testing.expectEqualStrings("foo", definition.label);
     try testing.expectEqualStrings("/bar", definition.url);
+    try testing.expectEqualStrings("baz bot", definition.title);
 }
