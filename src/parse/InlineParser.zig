@@ -13,6 +13,7 @@ const InlineTokenType = tokens.InlineTokenType;
 const InlineTokenizer = @import("../lex/InlineTokenizer.zig");
 const cmark = @import("../cmark/cmark.zig");
 const LinkDefMap = @import("../parse/link_defs.zig").LinkDefMap;
+const link_label_max_chars = @import("link_defs.zig").label_max_chars;
 const util = @import("../util/util.zig");
 const ast = @import("ast.zig");
 const NodeList = @import("NodeList.zig");
@@ -48,8 +49,6 @@ pub fn parse(
     scratch: Allocator,
     link_defs: LinkDefMap,
 ) Error![]*ast.Node {
-    _ = link_defs;
-
     var nodes = NodeList.init(alloc, scratch, createTextNode);
     errdefer {
         for (nodes.items()) |node| {
@@ -82,6 +81,21 @@ pub fn parse(
         }
 
         if (try self.parseInlineLink(alloc, scratch)) |link| {
+            try nodes.append(link);
+            continue;
+        }
+
+        if (try self.parseFullReferenceLink(alloc, scratch, link_defs)) |link| {
+            try nodes.append(link);
+            continue;
+        }
+
+        if (try self.parseCollapsedReferenceLink(alloc, scratch)) |link| {
+            try nodes.append(link);
+            continue;
+        }
+
+        if (try self.parseShortcutReferenceLink(alloc, scratch)) |link| {
             try nodes.append(link);
             continue;
         }
@@ -1205,6 +1219,132 @@ fn scanLinkTitle(self: *Self, scratch: Allocator) !?[]const u8 {
     return try running_text.toOwnedSlice();
 }
 
+fn parseFullReferenceLink(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+    link_defs: LinkDefMap,
+) Error!?*ast.Node {
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+    };
+
+    // handle link text
+    const link_text_nodes = (
+        try self.parseLinkText(alloc, scratch) orelse return null
+    );
+    defer if (!did_parse) {
+        for (link_text_nodes) |node| {
+            node.deinit(alloc);
+        }
+        alloc.free(link_text_nodes);
+    };
+
+    // handle link label
+    const scanned_link_label = (
+        try self.scanLinkLabel(scratch) orelse return null
+    );
+
+    // lookup link def
+    const link_def = try link_defs.get(
+        scratch,
+        scanned_link_label,
+    ) orelse return null; // no matching def means parse failure
+
+    const url = try alloc.dupe(u8, link_def.url);
+    errdefer alloc.free(url);
+    const title = try alloc.dupe(u8, link_def.title);
+    errdefer alloc.free(title);
+
+    const inline_link = try alloc.create(ast.Node);
+    inline_link.* = .{
+        .link = .{
+            .url = url,
+            .title = title,
+            .children = link_text_nodes,
+        },
+    };
+    did_parse = true;
+    return inline_link;
+}
+
+fn parseCollapsedReferenceLink(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) Error!?*ast.Node {
+    _ = self;
+    _ = alloc;
+    _ = scratch;
+    return null;
+}
+
+fn parseShortcutReferenceLink(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) Error!?*ast.Node {
+    _ = self;
+    _ = alloc;
+    _ = scratch;
+    return null;
+}
+
+/// Scans a link label, returning a string.
+fn scanLinkLabel(self: *Self, scratch: Allocator) !?[]const u8 {
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+    };
+
+    var running_text = Io.Writer.Allocating.init(scratch);
+
+    _ = try self.consume(
+        scratch,
+        &.{.l_square_bracket},
+    ) orelse return null;
+
+    var saw_non_blank = false;
+    while (try self.peek(scratch)) |token| {
+        switch (token.token_type) {
+            .whitespace => {
+                _ = try self.consume(scratch, &.{.whitespace});
+                const value = try resolveInlineText(scratch, token);
+                _ = try running_text.writer.write(value);
+            },
+            .newline => {
+                _ = try self.consume(scratch, &.{.newline});
+                const value = try resolveInlineText(scratch, token);
+                _ = try running_text.writer.write(value);
+            },
+            .l_square_bracket => return null,
+            .r_square_bracket => break,
+            else => |t| {
+                saw_non_blank = true;
+                _ = try self.consume(scratch, &.{t});
+                const value = try resolveInlineText(scratch, token);
+                _ = try running_text.writer.write(value);
+            },
+        }
+    }
+
+    _ = try self.consume(
+        scratch,
+        &.{.r_square_bracket},
+    ) orelse return null;
+
+    // TODO: Technically this should be the length in unicode code points, not
+    // bytes.
+    if (running_text.written().len > link_label_max_chars) {
+        return null;
+    }
+    did_parse = true;
+    return try running_text.toOwnedSlice();
+}
+
 fn parseURIAutolink(
     self: *Self,
     alloc: Allocator,
@@ -1471,14 +1611,14 @@ fn backtrack(self: *Self, checkpoint_index: usize) void {
 // ----------------------------------------------------------------------------
 const testing = std.testing;
 
-fn parseIntoNodes(value: []const u8) ![]*ast.Node {
+fn parseIntoNodes(value: []const u8, link_defs: LinkDefMap) ![]*ast.Node {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const scratch = arena.allocator();
 
     var tokenizer = InlineTokenizer.init(value);
     var parser = Self.init(&tokenizer);
-    return try parser.parse(testing.allocator, scratch, .empty);
+    return try parser.parse(testing.allocator, scratch, link_defs);
 }
 
 fn freeNodes(nodes: []*ast.Node) void {
@@ -1490,7 +1630,7 @@ fn freeNodes(nodes: []*ast.Node) void {
 
 test "star emphasis" {
     const value = "This *is emphasized.*";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(2, nodes.len);
@@ -1507,7 +1647,7 @@ test "star emphasis" {
 
 test "intraword star emphasis" {
     const value = "em*pha*sis";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(3, nodes.len);
@@ -1525,7 +1665,7 @@ test "intraword star emphasis" {
 
 test "nested star emphasis" {
     const value = "This **is* emphasized.*";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(2, nodes.len);
@@ -1554,7 +1694,7 @@ test "nested star emphasis" {
 
 test "unmatched open star emphasis" {
     const value = "This *is unmatched.";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
@@ -1564,7 +1704,7 @@ test "unmatched open star emphasis" {
 
 test "unmatched close star emphasis" {
     const value = "This is unmatched.*";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
@@ -1574,7 +1714,7 @@ test "unmatched close star emphasis" {
 
 test "same delimiter run star emphasis" {
     const value = "This is not ** emphasis.";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
@@ -1584,7 +1724,7 @@ test "same delimiter run star emphasis" {
 
 test "same delimiter run star strong" {
     const value = "This is not **** strong.";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
@@ -1594,7 +1734,7 @@ test "same delimiter run star strong" {
 
 test "star strong" {
     const value = "This is **strongly emphasized**.";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(3, nodes.len);
@@ -1611,7 +1751,7 @@ test "star strong" {
 
 test "triple star strong nested" {
     const value = "This is ***a strong in an emphasis***.";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(3, nodes.len);
@@ -1637,7 +1777,7 @@ test "triple star strong nested" {
 
 test "unmatched nested emphasis" {
     const value = "**strong * with asterisk**";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
@@ -1656,7 +1796,7 @@ test "unmatched nested emphasis" {
 
 test "unmatched nested emphasis no spacing" {
     const value = "**foo*bar**";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
@@ -1677,7 +1817,7 @@ test "bad star strong given spacing" {
     // the space following "hello" means the last two asterisks shouldn't get
     // tokenized as a delimiter run
     const value = "**hello **";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
@@ -1686,7 +1826,7 @@ test "bad star strong given spacing" {
 
 test "unmatched nested underscore" {
     const value = "*foo _bar*";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
@@ -1708,7 +1848,7 @@ test "unmatched nested underscore" {
 
 test "triple underscore strong nested" {
     const value = "This is ___a strong in an emphasis___.";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(3, nodes.len);
@@ -1734,7 +1874,7 @@ test "triple underscore strong nested" {
 
 test "star strong nested inside star emphasis" {
     const value = "This ***is strong** that is also emphasized*.";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(3, nodes.len);
@@ -1768,7 +1908,7 @@ test "star strong nested inside star emphasis" {
 
 test "star emphasis nested inside star strong" {
     const value = "This ***is emphasis* that is also strong**.";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(3, nodes.len);
@@ -1802,7 +1942,7 @@ test "star emphasis nested inside star strong" {
 
 test "underscore emphasis" {
     const value = "This _is emphasized._";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(2, nodes.len);
@@ -1819,7 +1959,7 @@ test "underscore emphasis" {
 
 test "underscore right-delimiter emphasis" {
     const value = "This is _hyper_-cool!";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(3, nodes.len);
@@ -1838,7 +1978,7 @@ test "underscore right-delimiter emphasis" {
 // Unlike with star emphasis, this isn't valid
 test "intraword underscore emphasis" {
     const value = "snake_case_baby";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
@@ -1848,7 +1988,7 @@ test "intraword underscore emphasis" {
 
 test "underscore emphasis after punctuation" {
     const value = "(_\"emphasis\"_)";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(3, nodes.len);
@@ -1868,7 +2008,7 @@ test "underscore emphasis after punctuation" {
 
 test "underscore emphasis nested unmatched" {
     const value = "_foo *bar_";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
@@ -1890,7 +2030,7 @@ test "underscore emphasis nested unmatched" {
 
 test "underscore strong" {
     const value = "This is __strongly emphasized__.";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(3, nodes.len);
@@ -1907,7 +2047,7 @@ test "underscore strong" {
 
 test "underscore strong with nested unmatched" {
     const value = "__foo*bar__";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
@@ -1926,7 +2066,7 @@ test "underscore strong with nested unmatched" {
 
 test "nesting feast of insanity" {
     const value = "**_My, __**hello**___, *what a __feast!__***";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     // strong
@@ -2007,7 +2147,7 @@ test "nesting feast of insanity" {
 
 test "codespan and underscore emphasis" {
     const value = "`foo`_bim_`bar`";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(3, nodes.len);
@@ -2042,7 +2182,7 @@ test "codespan and underscore emphasis" {
 
 test "codespan strip space" {
     const value = "` ``foo`` `";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
@@ -2058,7 +2198,7 @@ test "codespan strip space" {
 
 test "inline link containing emphasis" {
     const value = "[*my link*]()";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
@@ -2081,7 +2221,7 @@ test "inline link containing emphasis" {
 
 test "inline link emphasis precedence" {
     const value = "*[foo*]()";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(2, nodes.len);
@@ -2114,7 +2254,7 @@ test "inline link emphasis precedence" {
 
 test "inline link nesting" {
     const value = "[foo [bar]()]()";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(3, nodes.len);
@@ -2139,7 +2279,7 @@ test "inline link nesting" {
 
 test "inline link destination angle brackets" {
     const value = "[foo](<bar>)";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
@@ -2150,7 +2290,7 @@ test "inline link destination angle brackets" {
 
 test "inline link destination no angle brackets" {
     const value = "[foo](bar)";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
@@ -2161,7 +2301,7 @@ test "inline link destination no angle brackets" {
 
 test "inline link with destination and title" {
     const value = "[foo](bar (baz))";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
@@ -2173,7 +2313,7 @@ test "inline link with destination and title" {
 
 test "inline link with exclamation mark" {
     const value = "[foo!](bar)";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
@@ -2192,7 +2332,7 @@ test "inline link with exclamation mark" {
 
 test "URI autolink" {
     const value = "<http://foo.com/bar?bim[]=baz>";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
@@ -2218,7 +2358,7 @@ test "URI autolink" {
 
 test "email autolink" {
     const value = "<person@gmail.com>";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
@@ -2244,7 +2384,7 @@ test "email autolink" {
 
 test "image" {
     const value = "![foo](/bar \"bim\")";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
@@ -2258,7 +2398,7 @@ test "image" {
 
 test "image complicated alt text" {
     const value = "![*foo* __bim__](/bar)";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
@@ -2271,7 +2411,7 @@ test "image complicated alt text" {
 
 test "image link" {
     const value = "[![](/foo.jpg)](/bar.com/baz)";
-    const nodes = try parseIntoNodes(value);
+    const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
@@ -2292,4 +2432,32 @@ test "image link" {
         "/foo.jpg",
         link_node.link.children[0].image.url,
     );
+}
+
+test "full reference link" {
+    const value = "[my text][foo]";
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+    var def: ast.LinkDefinition = .{
+        .url = "/bar",
+        .title = "bim",
+        .label = "foo",
+    };
+    try link_defs.add(testing.allocator, "foo", &def);
+
+    const nodes = try parseIntoNodes(value, link_defs);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[0].*));
+
+    const link_node = nodes[0];
+    try testing.expectEqualStrings("/bar", link_node.link.url);
+    try testing.expectEqualStrings("bim", link_node.link.title);
+
+    try testing.expectEqual(1, link_node.link.children.len);
+    const text_node = link_node.link.children[0];
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, text_node.*));
+    try testing.expectEqualStrings("my text", text_node.text.value);
 }
