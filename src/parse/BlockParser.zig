@@ -82,11 +82,7 @@ pub fn parse(
             if (
                 try self.parseLinkReferenceDefinition(alloc, scratch)
             ) |link_def| {
-                try link_defs.add(
-                    alloc,
-                    link_def.definition.label,
-                    &link_def.definition,
-                );
+                try link_defs.add(alloc, &link_def.definition);
                 break :blk link_def;
             }
 

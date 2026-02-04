@@ -2444,7 +2444,7 @@ test "full reference link" {
         .title = "bim",
         .label = "foo",
     };
-    try link_defs.add(testing.allocator, "foo", &def);
+    try link_defs.add(testing.allocator, &def);
 
     const nodes = try parseIntoNodes(value, link_defs);
     defer freeNodes(nodes);

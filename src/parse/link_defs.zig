@@ -40,17 +40,17 @@ pub const LinkDefMap = struct {
         self.backing_map.deinit(alloc);
     }
 
-    /// Adds a link definition to the map using the given label.
+    /// Adds a link definition to the map using the label on the given link
+    /// definition.
     ///
     /// If a link definition already exists with the same label, this is a
     /// no-op. (First definition takes precedence.)
     pub fn add(
         self: *Self,
         alloc: Allocator,
-        label: []const u8,
         def: *ast.LinkDefinition,
     ) Error!void {
-        const key = try normalize(alloc, label);
+        const key = try normalize(alloc, def.label);
         errdefer alloc.free(key);
 
         const result = try self.backing_map.getOrPut(alloc, key);
@@ -106,7 +106,7 @@ fn fillLinkDefs(
             }
         },
         .definition => |*n| {
-            try map.add(alloc, n.label, n);
+            try map.add(alloc, n);
         },
         .paragraph, .heading, .strong, .emphasis, .text, .code, .thematic_break,
         .inline_code, .link, .image => {},
