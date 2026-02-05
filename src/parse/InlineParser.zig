@@ -1051,11 +1051,63 @@ fn parseShortcutReferenceImage(
     scratch: Allocator,
     link_defs: LinkDefMap,
 ) Error!?*ast.Node {
-    _ = self;
-    _ = alloc;
-    _ = scratch;
-    _ = link_defs;
-    return null;
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+    };
+
+    _ = try self.consume(scratch, &.{.exclamation_mark}) orelse return null;
+
+    const label_begin_index = self.checkpoint();
+
+    // handle link label
+    const scanned_link_label = (
+        try self.scanLinkLabel(scratch) orelse return null
+    );
+
+    // lookup link def
+    const link_def = try link_defs.get(
+        scratch,
+        scanned_link_label,
+    ) orelse return null; // no matching def means parse failure
+
+    // !! re-parse label as inline content !!
+    self.backtrack(label_begin_index);
+    const inline_nodes = (
+        try self.parseLinkLabel(alloc, scratch) orelse return null
+    );
+    defer {
+        // We only need these nodes to produce the alt text. They won't end
+        // up in the final AST.
+        for (inline_nodes) |node| {
+            node.deinit(alloc);
+        }
+        alloc.free(inline_nodes);
+    }
+
+    // render "plain text" alt text
+    var running_text = Io.Writer.Allocating.init(alloc);
+    errdefer running_text.deinit();
+    for (inline_nodes) |node| {
+        try alttext.write(&running_text.writer, node);
+    }
+
+    const url = try alloc.dupe(u8, link_def.url);
+    errdefer alloc.free(url);
+    const title = try alloc.dupe(u8, link_def.title);
+    errdefer alloc.free(title);
+
+    const img_node = try alloc.create(ast.Node);
+    img_node.* = .{
+        .image = .{
+            .url = url,
+            .title = title,
+            .alt = try running_text.toOwnedSlice(),
+        },
+    };
+    did_parse = true;
+    return img_node;
 }
 
 // @ => link_text l_paren (link_dest link_title?)? r_paren
