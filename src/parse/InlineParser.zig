@@ -90,7 +90,9 @@ pub fn parse(
             continue;
         }
 
-        if (try self.parseCollapsedReferenceLink(alloc, scratch)) |link| {
+        if (
+            try self.parseCollapsedReferenceLink(alloc, scratch, link_defs)
+        ) |link| {
             try nodes.append(link);
             continue;
         }
@@ -1219,6 +1221,9 @@ fn scanLinkTitle(self: *Self, scratch: Allocator) !?[]const u8 {
     return try running_text.toOwnedSlice();
 }
 
+/// Parse link looking like `[foo][ref]`.
+///
+/// https://spec.commonmark.org/0.30/#full-reference-link
 fn parseFullReferenceLink(
     self: *Self,
     alloc: Allocator,
@@ -1270,15 +1275,69 @@ fn parseFullReferenceLink(
     return inline_link;
 }
 
+/// Parse link looking like `[ref][]`.
+///
+/// We parse the leading label twice, first as a string label and again as
+/// inline content.
+///
+/// https://spec.commonmark.org/0.30/#collapsed-reference-link
 fn parseCollapsedReferenceLink(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
+    link_defs: LinkDefMap,
 ) Error!?*ast.Node {
-    _ = self;
-    _ = alloc;
-    _ = scratch;
-    return null;
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+    };
+
+    // handle link label
+    const scanned_link_label = (
+        try self.scanLinkLabel(scratch) orelse return null
+    );
+
+    _ = try self.consume(scratch, &.{.l_square_bracket}) orelse return null;
+    _ = try self.consume(scratch, &.{.r_square_bracket}) orelse return null;
+
+    // lookup link def
+    const link_def = try link_defs.get(
+        scratch,
+        scanned_link_label,
+    ) orelse return null; // no matching def means parse failure
+
+    // !! re-parse label as inline content !!
+    self.backtrack(checkpoint_index);
+    const inline_nodes = (
+        try self.parseLinkLabel(alloc, scratch) orelse return null
+    );
+    defer if (!did_parse) {
+        for (inline_nodes) |node| {
+            node.deinit(alloc);
+        }
+        alloc.free(inline_nodes);
+    };
+
+    // re-consume trailing "[]"
+    _ = try self.consume(scratch, &.{.l_square_bracket}) orelse unreachable;
+    _ = try self.consume(scratch, &.{.r_square_bracket}) orelse unreachable;
+
+    const url = try alloc.dupe(u8, link_def.url);
+    errdefer alloc.free(url);
+    const title = try alloc.dupe(u8, link_def.title);
+    errdefer alloc.free(title);
+
+    const inline_link = try alloc.create(ast.Node);
+    inline_link.* = .{
+        .link = .{
+            .url = url,
+            .title = title,
+            .children = inline_nodes,
+        },
+    };
+    did_parse = true;
+    return inline_link;
 }
 
 fn parseShortcutReferenceLink(
@@ -1293,7 +1352,7 @@ fn parseShortcutReferenceLink(
 }
 
 /// Scans a link label, returning a string.
-fn scanLinkLabel(self: *Self, scratch: Allocator) !?[]const u8 {
+fn scanLinkLabel(self: *Self, scratch: Allocator) Error!?[]const u8 {
     var did_parse = false;
     const checkpoint_index = self.checkpoint();
     defer if (!did_parse) {
@@ -1343,6 +1402,74 @@ fn scanLinkLabel(self: *Self, scratch: Allocator) !?[]const u8 {
     }
     did_parse = true;
     return try running_text.toOwnedSlice();
+}
+
+/// Parses a link label as inline content.
+///
+/// This does not enforce some rules about link labels since this should only be
+/// used in concert with scanLinkLabel().
+fn parseLinkLabel(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) Error!?[]*ast.Node {
+    var nodes = NodeList.init(alloc, scratch, createTextNode);
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+        for (nodes.items()) |node| {
+            node.deinit(alloc);
+        }
+        nodes.deinit();
+    };
+
+    _ = try self.consume(scratch, &.{.l_square_bracket}) orelse return null;
+
+    for (0..util.safety.loop_bound) |_| {
+        // square brackets not permitted within link label
+        if (try self.peek(scratch)) |token| {
+            switch (token.token_type) {
+                .l_square_bracket => return null,
+                .r_square_bracket => break,
+                else => {},
+            }
+        }
+
+        if (try self.parseInlineCode(alloc, scratch)) |code| {
+            try nodes.append(code);
+            continue;
+        }
+
+        if (try self.parseAnyEmphasis(alloc, scratch)) |emph| {
+            try nodes.append(emph);
+            continue;
+        }
+
+        if (try self.parseAnyStrong(alloc, scratch)) |strong| {
+            try nodes.append(strong);
+            continue;
+        }
+
+        const text_value = try self.scanText(scratch);
+        if (text_value.len > 0) {
+            try nodes.appendText(text_value);
+            continue;
+        }
+
+        const text_fallback_value = try self.scanTextFallback(scratch);
+        if (text_fallback_value.len > 0) {
+            try nodes.appendText(text_fallback_value);
+            continue;
+        }
+
+        break;
+    } else @panic(util.safety.loop_bound_panic_msg);
+
+    _ = try self.consume(scratch, &.{.r_square_bracket}) orelse return null;
+
+    did_parse = true;
+    return try nodes.toOwnedSlice();
 }
 
 fn parseURIAutolink(
@@ -2460,4 +2587,43 @@ test "full reference link" {
     const text_node = link_node.link.children[0];
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, text_node.*));
     try testing.expectEqualStrings("my text", text_node.text.value);
+}
+
+test "collapsed reference link" {
+    const value = "[my *text*][]";
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+    var def: ast.LinkDefinition = .{
+        .url = "/bar",
+        .title = "bim",
+        .label = "my *text*",
+    };
+    try link_defs.add(testing.allocator, &def);
+
+    const nodes = try parseIntoNodes(value, link_defs);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[0].*));
+
+    const link_node = nodes[0];
+    try testing.expectEqualStrings("/bar", link_node.link.url);
+    try testing.expectEqualStrings("bim", link_node.link.title);
+
+    try testing.expectEqual(2, link_node.link.children.len);
+
+    const text_node = link_node.link.children[0];
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, text_node.*));
+    try testing.expectEqualStrings("my ", text_node.text.value);
+
+    const emph_node = link_node.link.children[1];
+    try testing.expectEqual(
+        ast.NodeType.emphasis,
+        @as(ast.NodeType, emph_node.*),
+    );
+    try testing.expectEqualStrings(
+        "text",
+        emph_node.emphasis.children[0].text.value,
+    );
 }
