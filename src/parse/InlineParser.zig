@@ -80,6 +80,27 @@ pub fn parse(
             continue;
         }
 
+        if (
+            try self.parseFullReferenceImage(alloc, scratch, link_defs)
+        ) |image| {
+            try nodes.append(image);
+            continue;
+        }
+
+        if (
+            try self.parseCollapsedReferenceImage(alloc, scratch, link_defs)
+        ) |image| {
+            try nodes.append(image);
+            continue;
+        }
+
+        if (
+            try self.parseShortcutReferenceImage(alloc, scratch, link_defs)
+        ) |image| {
+            try nodes.append(image);
+            continue;
+        }
+
         if (try self.parseInlineLink(alloc, scratch)) |link| {
             try nodes.append(link);
             continue;
@@ -774,7 +795,7 @@ fn parseInlineCode(
     return inline_code_node;
 }
 
-// @ => link_description l_paren (link_dest link_title?)? r_paren
+// @ => ! link_description l_paren (link_dest link_title?)? r_paren
 /// Parses an inline image link.
 fn parseInlineImage(
     self: *Self,
@@ -786,6 +807,8 @@ fn parseInlineImage(
     defer if (!did_parse) {
         self.backtrack(checkpoint_index);
     };
+
+    _ = try self.consume(scratch, &.{.exclamation_mark}) orelse return null;
 
     const img_desc_nodes = (
         try self.parseImageDescription(alloc, scratch) orelse return null
@@ -853,7 +876,6 @@ fn parseImageDescription(
         nodes.deinit();
     };
 
-    _ = try self.consume(scratch, &.{.exclamation_mark}) orelse return null;
     _ = try self.consume(scratch, &.{.l_square_bracket}) orelse return null;
 
     var bracket_depth: u32 = 0;
@@ -933,6 +955,107 @@ fn parseImageDescription(
 
     did_parse = true;
     return try nodes.toOwnedSlice();
+}
+
+/// Parses an image like `![my alt text][ref]`.
+fn parseFullReferenceImage(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+    link_defs: LinkDefMap,
+) Error!?*ast.Node {
+    _ = self;
+    _ = alloc;
+    _ = scratch;
+    _ = link_defs;
+    return null;
+}
+
+/// Parses an image like `![ref][]`.
+fn parseCollapsedReferenceImage(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+    link_defs: LinkDefMap,
+) Error!?*ast.Node {
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+    };
+
+    _ = try self.consume(scratch, &.{.exclamation_mark}) orelse return null;
+
+    const label_begin_index = self.checkpoint();
+
+    // handle link label
+    const scanned_link_label = (
+        try self.scanLinkLabel(scratch) orelse return null
+    );
+
+    _ = try self.consume(scratch, &.{.l_square_bracket}) orelse return null;
+    _ = try self.consume(scratch, &.{.r_square_bracket}) orelse return null;
+
+    // lookup link def
+    const link_def = try link_defs.get(
+        scratch,
+        scanned_link_label,
+    ) orelse return null; // no matching def means parse failure
+
+    // !! re-parse label as inline content !!
+    self.backtrack(label_begin_index);
+    const inline_nodes = (
+        try self.parseLinkLabel(alloc, scratch) orelse return null
+    );
+    defer {
+        // We only need these nodes to produce the alt text. They won't end
+        // up in the final AST.
+        for (inline_nodes) |node| {
+            node.deinit(alloc);
+        }
+        alloc.free(inline_nodes);
+    }
+
+    // re-consume trailing "[]"
+    _ = try self.consume(scratch, &.{.l_square_bracket}) orelse unreachable;
+    _ = try self.consume(scratch, &.{.r_square_bracket}) orelse unreachable;
+
+    // render "plain text" alt text
+    var running_text = Io.Writer.Allocating.init(alloc);
+    errdefer running_text.deinit();
+    for (inline_nodes) |node| {
+        try alttext.write(&running_text.writer, node);
+    }
+
+    const url = try alloc.dupe(u8, link_def.url);
+    errdefer alloc.free(url);
+    const title = try alloc.dupe(u8, link_def.title);
+    errdefer alloc.free(title);
+
+    const img_node = try alloc.create(ast.Node);
+    img_node.* = .{
+        .image = .{
+            .url = url,
+            .title = title,
+            .alt = try running_text.toOwnedSlice(),
+        },
+    };
+    did_parse = true;
+    return img_node;
+}
+
+/// Parses an image like `![ref]`.
+fn parseShortcutReferenceImage(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+    link_defs: LinkDefMap,
+) Error!?*ast.Node {
+    _ = self;
+    _ = alloc;
+    _ = scratch;
+    _ = link_defs;
+    return null;
 }
 
 // @ => link_text l_paren (link_dest link_title?)? r_paren
@@ -1265,8 +1388,8 @@ fn parseFullReferenceLink(
     const title = try alloc.dupe(u8, link_def.title);
     errdefer alloc.free(title);
 
-    const inline_link = try alloc.create(ast.Node);
-    inline_link.* = .{
+    const link_node = try alloc.create(ast.Node);
+    link_node.* = .{
         .link = .{
             .url = url,
             .title = title,
@@ -1274,7 +1397,7 @@ fn parseFullReferenceLink(
         },
     };
     did_parse = true;
-    return inline_link;
+    return link_node;
 }
 
 /// Parse link looking like `[ref][]`.
@@ -1330,8 +1453,8 @@ fn parseCollapsedReferenceLink(
     const title = try alloc.dupe(u8, link_def.title);
     errdefer alloc.free(title);
 
-    const inline_link = try alloc.create(ast.Node);
-    inline_link.* = .{
+    const link_node = try alloc.create(ast.Node);
+    link_node.* = .{
         .link = .{
             .url = url,
             .title = title,
@@ -1339,7 +1462,7 @@ fn parseCollapsedReferenceLink(
         },
     };
     did_parse = true;
-    return inline_link;
+    return link_node;
 }
 
 /// Parse link looking like `[ref]`.
@@ -1385,8 +1508,8 @@ fn parseShortcutReferenceLink(
     const title = try alloc.dupe(u8, link_def.title);
     errdefer alloc.free(title);
 
-    const inline_link = try alloc.create(ast.Node);
-    inline_link.* = .{
+    const link_node = try alloc.create(ast.Node);
+    link_node.* = .{
         .link = .{
             .url = url,
             .title = title,
@@ -1394,7 +1517,7 @@ fn parseShortcutReferenceLink(
         },
     };
     did_parse = true;
-    return inline_link;
+    return link_node;
 }
 
 /// Scans a link label, returning a string.
@@ -2711,4 +2834,76 @@ test "shortcut reference link" {
         "text",
         emph_node.emphasis.children[0].text.value,
     );
+}
+
+test "full reference image" {
+    const value = "![my image description][foo]";
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+    var def: ast.LinkDefinition = .{
+        .url = "/image.jpg",
+        .title = "bim",
+        .label = "foo",
+    };
+    try link_defs.add(testing.allocator, &def);
+
+    const nodes = try parseIntoNodes(value, link_defs);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.image, @as(ast.NodeType, nodes[0].*));
+
+    const img_node = nodes[0];
+    try testing.expectEqualStrings("/image.jpg", img_node.image.url);
+    try testing.expectEqualStrings("bim", img_node.image.title);
+    try testing.expectEqualStrings("my image description", img_node.image.alt);
+}
+
+test "collapsed reference image" {
+    const value = "![foo][]";
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+    var def: ast.LinkDefinition = .{
+        .url = "/image.jpg",
+        .title = "bim",
+        .label = "foo",
+    };
+    try link_defs.add(testing.allocator, &def);
+
+    const nodes = try parseIntoNodes(value, link_defs);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.image, @as(ast.NodeType, nodes[0].*));
+
+    const img_node = nodes[0];
+    try testing.expectEqualStrings("/image.jpg", img_node.image.url);
+    try testing.expectEqualStrings("bim", img_node.image.title);
+    try testing.expectEqualStrings("foo", img_node.image.alt);
+}
+
+test "shortcut reference image" {
+    const value = "![foo]";
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+    var def: ast.LinkDefinition = .{
+        .url = "/image.jpg",
+        .title = "bim",
+        .label = "foo",
+    };
+    try link_defs.add(testing.allocator, &def);
+
+    const nodes = try parseIntoNodes(value, link_defs);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.image, @as(ast.NodeType, nodes[0].*));
+
+    const img_node = nodes[0];
+    try testing.expectEqualStrings("/image.jpg", img_node.image.url);
+    try testing.expectEqualStrings("bim", img_node.image.title);
+    try testing.expectEqualStrings("foo", img_node.image.alt);
 }
