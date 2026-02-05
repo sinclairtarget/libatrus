@@ -97,7 +97,9 @@ pub fn parse(
             continue;
         }
 
-        if (try self.parseShortcutReferenceLink(alloc, scratch)) |link| {
+        if (
+            try self.parseShortcutReferenceLink(alloc, scratch, link_defs)
+        ) |link| {
             try nodes.append(link);
             continue;
         }
@@ -1340,15 +1342,59 @@ fn parseCollapsedReferenceLink(
     return inline_link;
 }
 
+/// Parse link looking like `[ref]`.
+///
+/// https://spec.commonmark.org/0.30/#shortcut-reference-link
 fn parseShortcutReferenceLink(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
+    link_defs: LinkDefMap,
 ) Error!?*ast.Node {
-    _ = self;
-    _ = alloc;
-    _ = scratch;
-    return null;
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+    };
+
+    // handle link label
+    const scanned_link_label = (
+        try self.scanLinkLabel(scratch) orelse return null
+    );
+
+    // lookup link def
+    const link_def = try link_defs.get(
+        scratch,
+        scanned_link_label,
+    ) orelse return null; // no matching def means parse failure
+
+    // !! re-parse label as inline content !!
+    self.backtrack(checkpoint_index);
+    const inline_nodes = (
+        try self.parseLinkLabel(alloc, scratch) orelse return null
+    );
+    defer if (!did_parse) {
+        for (inline_nodes) |node| {
+            node.deinit(alloc);
+        }
+        alloc.free(inline_nodes);
+    };
+
+    const url = try alloc.dupe(u8, link_def.url);
+    errdefer alloc.free(url);
+    const title = try alloc.dupe(u8, link_def.title);
+    errdefer alloc.free(title);
+
+    const inline_link = try alloc.create(ast.Node);
+    inline_link.* = .{
+        .link = .{
+            .url = url,
+            .title = title,
+            .children = inline_nodes,
+        },
+    };
+    did_parse = true;
+    return inline_link;
 }
 
 /// Scans a link label, returning a string.
@@ -2591,6 +2637,45 @@ test "full reference link" {
 
 test "collapsed reference link" {
     const value = "[my *text*][]";
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+    var def: ast.LinkDefinition = .{
+        .url = "/bar",
+        .title = "bim",
+        .label = "my *text*",
+    };
+    try link_defs.add(testing.allocator, &def);
+
+    const nodes = try parseIntoNodes(value, link_defs);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[0].*));
+
+    const link_node = nodes[0];
+    try testing.expectEqualStrings("/bar", link_node.link.url);
+    try testing.expectEqualStrings("bim", link_node.link.title);
+
+    try testing.expectEqual(2, link_node.link.children.len);
+
+    const text_node = link_node.link.children[0];
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, text_node.*));
+    try testing.expectEqualStrings("my ", text_node.text.value);
+
+    const emph_node = link_node.link.children[1];
+    try testing.expectEqual(
+        ast.NodeType.emphasis,
+        @as(ast.NodeType, emph_node.*),
+    );
+    try testing.expectEqualStrings(
+        "text",
+        emph_node.emphasis.children[0].text.value,
+    );
+}
+
+test "shortcut reference link" {
+    const value = "[my *text*]";
 
     var link_defs: LinkDefMap = .empty;
     defer link_defs.deinit(testing.allocator);
