@@ -17,6 +17,7 @@ const ast = @import("ast.zig");
 const BlockTokenizer = @import("../lex/BlockTokenizer.zig");
 const BlockToken = @import("../lex/tokens.zig").BlockToken;
 const BlockTokenType = @import("../lex/tokens.zig").BlockTokenType;
+const cmark = @import("../cmark/cmark.zig");
 const escape = @import("escape.zig");
 const LinkDefMap = @import("link_defs.zig").LinkDefMap;
 const link_label_max_chars = @import("link_defs.zig").label_max_chars;
@@ -354,6 +355,8 @@ fn parseLinkReferenceDefinition(
     const scanned_url = try self.scanLinkDefDestination(
         scratch,
     ) orelse return null;
+    const url = try cmark.uri.normalize(alloc, scratch, scanned_url);
+    errdefer alloc.free(url);
 
     // whitespace allowed and up to one newline
     var seen_any_separating_whitespace = false;
@@ -388,8 +391,6 @@ fn parseLinkReferenceDefinition(
 
     const label = try alloc.dupe(u8, scanned_label);
     errdefer alloc.free(label);
-    const url = try alloc.dupe(u8, scanned_url);
-    errdefer alloc.free(url);
     const title = try alloc.dupe(u8, scanned_title);
     errdefer alloc.free(title);
 

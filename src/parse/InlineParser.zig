@@ -825,7 +825,9 @@ fn parseInlineImage(
     _ = try self.consume(scratch, &.{.l_paren}) orelse return null;
 
     // link destination
-    const url = try self.scanLinkDestination(scratch) orelse "";
+    const raw_url = try self.scanLinkDestination(scratch) orelse "";
+    const url = try cmark.uri.normalize(alloc, scratch, raw_url);
+    errdefer alloc.free(url);
 
     const title = blk: {
         // link title, if present, must be separated from destination by
@@ -849,7 +851,7 @@ fn parseInlineImage(
     const image = try alloc.create(ast.Node);
     image.* = .{
         .image = .{
-            .url = try alloc.dupe(u8, url),
+            .url = url,
             .title = try alloc.dupe(u8, title),
             .alt = try running_text.toOwnedSlice(),
         },
