@@ -73,7 +73,9 @@ fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!bool {
             try out.print("</code>", .{});
         },
         .link => |n| {
-            try out.print("<a href=\"{s}\"", .{n.url});
+            try out.print("<a href=\"", .{});
+            try printHTMLEscapedAttrValue(out, n.url);
+            try out.print("\"", .{});
 
             if (n.title.len > 0) {
                 try out.print(" title=\"", .{});
@@ -90,7 +92,9 @@ fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!bool {
             try out.print("</a>", .{});
         },
         .image => |n| {
-            try out.print("<img src=\"{s}\" ", .{n.url});
+            try out.print("<img src=\"", .{});
+            try printHTMLEscapedAttrValue(out, n.url);
+            try out.print("\" ", .{});
 
             try out.print("alt=\"", .{});
             try printHTMLEscapedAttrValue(out, n.alt);

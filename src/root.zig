@@ -199,6 +199,7 @@ test {
     _ = @import("lex/BlockTokenizer.zig");
     _ = @import("lex/InlineTokenizer.zig");
     _ = @import("parse/BlockParser.zig");
+    _ = @import("parse/escape.zig");
     _ = @import("parse/InlineParser.zig");
     _ = @import("cmark/cmark.zig");
     _ = @import("util/util.zig");

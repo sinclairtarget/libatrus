@@ -162,7 +162,8 @@ fn parseATXHeading(
                 if (try self.peek(scratch)) |last| {
                     if (last.token_type != .newline) {
                         // Was not trailing pound, write it
-                        try inner.writer.print("{s}", .{current.lexeme});
+                        const value = try resolveText(scratch, current);
+                        try inner.writer.print("{s}", .{value});
                         self.backtrack(lookahead_checkpoint_index);
                     }
                 }
@@ -355,7 +356,8 @@ fn parseLinkReferenceDefinition(
     const scanned_url = try self.scanLinkDefDestination(
         scratch,
     ) orelse return null;
-    const url = try cmark.uri.normalize(alloc, scratch, scanned_url);
+    const escaped_url = try escape.copyEscape(scratch, scanned_url);
+    const url = try cmark.uri.normalize(alloc, scratch, escaped_url);
     errdefer alloc.free(url);
 
     // whitespace allowed and up to one newline
@@ -441,13 +443,14 @@ fn scanLinkDefLabel(self: *Self, scratch: Allocator) !?[]const u8 {
             .text => {
                 saw_non_blank = true;
                 _ = try self.consume(scratch, &.{.text});
-                const value = try escape.copyEscape(scratch, token.lexeme);
+                const value = try resolveText(scratch, token);
                 _ = try running_text.writer.write(value);
             },
             else => |t| {
                 saw_non_blank = true;
                 _ = try self.consume(scratch, &.{t});
-                _ = try running_text.writer.write(token.lexeme);
+                const value = try resolveText(scratch, token);
+                _ = try running_text.writer.write(value);
             },
         }
     }
@@ -488,7 +491,8 @@ fn scanLinkDefDestination(self: *Self, scratch: Allocator) !?[]const u8 {
                 .r_square_bracket, .l_paren, .r_paren, .double_quote,
                 .single_quote => |t| {
                     _ = try self.consume(scratch, &.{t});
-                    _ = try running_text.writer.write(token.lexeme);
+                    const value = try resolveText(scratch, token);
+                    _ = try running_text.writer.write(value);
                 },
             }
         }
@@ -523,10 +527,10 @@ fn scanLinkDefDestination(self: *Self, scratch: Allocator) !?[]const u8 {
                 .l_angle_bracket, .r_angle_bracket, .double_quote,
                 .single_quote => |t| {
                     _ = try self.consume(scratch, &.{t});
-                    const value = token.lexeme;
-                    if (util.strings.containsAsciiControl(value)) {
+                    if (util.strings.containsAsciiControl(token.lexeme)) {
                         return null;
                     }
+                    const value = try resolveText(scratch, token);
                     _ = try running_text.writer.write(value);
                 },
             }
@@ -588,7 +592,8 @@ fn scanLinkDefTitle(self: *Self, scratch: Allocator) !?[]const u8 {
                 }
 
                 _ = try self.consume(scratch, &.{t});
-                _ = try running_text.writer.write(token.lexeme);
+                const value = try resolveText(scratch, token);
+                _ = try running_text.writer.write(value);
                 blank_line_so_far = false;
             },
         }
@@ -695,6 +700,18 @@ fn createTextNode(alloc: Allocator, value: []const u8) !*ast.Node {
         },
     };
     return node;
+}
+
+/// Resolve token lexeme into actual string content for a block node.
+///
+/// This should only be used for strings that won't subsequently be parsed by
+/// the inline parser.
+fn resolveText(scratch: Allocator, token: BlockToken) ![]const u8 {
+    const value = switch (token.token_type) {
+        .text => try escape.copyEscape(scratch, token.lexeme),
+        else => token.lexeme,
+    };
+    return value;
 }
 
 fn peek(self: *Self, scratch: Allocator) !?BlockToken {
