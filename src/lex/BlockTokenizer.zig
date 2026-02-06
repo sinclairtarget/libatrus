@@ -3,6 +3,12 @@
 //! Takes a line reader over a MyST markdown document. Reads the document one
 //! line at a time, producing tokens on demand. Anything that isn't scanned as
 //! a meaningful block-level token is yielded as a generic "text" token.
+//!
+//! Note on backslash-escaping: A backslash will be respected by the tokenizer,
+//! such that the next character will not have its usual meaning (and probably
+//! lead to a different token being emitted). The backslash stays present in
+//! the lexeme for the token though and needs to be stripped out later if the
+//! backslash is not supposed to appear in the final output.
 
 const std = @import("std");
 const ascii = std.ascii;
@@ -313,7 +319,7 @@ fn matchWhitespace(self: Self, scratch: Allocator) !?TokenizeResult {
 fn matchText(self: Self, scratch: Allocator) !TokenizeResult {
     var lookahead_i = self.i;
 
-    const State = enum { start, text };
+    const State = enum { start, text, escaped };
     fsm: switch (State.start) {
         .start => {
             // We allow the first character to be something we'd otherwise break
@@ -321,6 +327,10 @@ fn matchText(self: Self, scratch: Allocator) !TokenizeResult {
             // else it already would have been.
             switch (self.line[lookahead_i]) {
                 '\n' => break :fsm,
+                '\\' => {
+                    lookahead_i += 1;
+                    continue :fsm .escaped;
+                },
                 else => {
                     lookahead_i += 1;
                     continue :fsm .text;
@@ -329,7 +339,20 @@ fn matchText(self: Self, scratch: Allocator) !TokenizeResult {
         },
         .text => {
             switch (self.line[lookahead_i]) {
-                '"', '<', '>', '[', ']', '\n', ' ', '\t' => break :fsm,
+                '"', '\'', '<', '>', '[', ']', '\n', ' ', '\t' => break :fsm,
+                '\\' => {
+                    lookahead_i += 1;
+                    continue :fsm .escaped;
+                },
+                else => {
+                    lookahead_i += 1;
+                    continue :fsm .text;
+                },
+            }
+        },
+        .escaped => {
+            switch (self.line[lookahead_i]) {
+                '\n' => break :fsm,
                 else => {
                     lookahead_i += 1;
                     continue :fsm .text;
@@ -477,6 +500,22 @@ test "link reference definition" {
         .double_quote,
         .text,
         .double_quote,
+        .newline,
+    }, md);
+}
+
+test "escaping" {
+    const md = "Just a \\- paragraph \\[\\].\n";
+    try expectEqualTokens(&.{
+        .text,
+        .whitespace,
+        .text,
+        .whitespace,
+        .text,
+        .whitespace,
+        .text,
+        .whitespace,
+        .text,
         .newline,
     }, md);
 }
