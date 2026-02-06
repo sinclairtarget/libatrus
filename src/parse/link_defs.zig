@@ -1,6 +1,7 @@
 //! Handles normalization, storage, and lookup of link references/destinations.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const StringHashMapUnmanaged = std.hash_map.StringHashMapUnmanaged;
@@ -62,7 +63,7 @@ pub const LinkDefMap = struct {
         try self.keys.append(alloc, key);
         result.value_ptr.* = def;
 
-        logger.debug("Added link definition under key \"{s}\"", .{key});
+        logger.debug("Added link definition under key \"{s}\".", .{key});
     }
 
     pub fn get(
@@ -72,6 +73,16 @@ pub const LinkDefMap = struct {
     ) Error!?*ast.LinkDefinition {
         const key = try normalize(alloc, label);
         defer alloc.free(key);
+
+        if (builtin.mode == .Debug) {
+            if (!self.backing_map.contains(key)) {
+                logger.debug(
+                    "Link definition lookup failed for key \"{s}\".",
+                    .{key},
+                );
+            }
+        }
+
         return self.backing_map.get(key);
     }
 
@@ -123,7 +134,7 @@ fn fillLinkDefs(
 ///
 /// Caller owns the returned string.
 fn normalize(alloc: Allocator, link_label: []const u8) Error![]const u8 {
-    // TODO: Non-ascii lowercase
+    // TODO: Full normalization logic
     return try std.ascii.allocLowerString(alloc, link_label);
 }
 
