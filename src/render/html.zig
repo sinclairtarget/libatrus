@@ -41,7 +41,7 @@ fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!bool {
             try out.print("</h{d}>", .{n.depth});
         },
         .text => |n| {
-            try printHTMLEscaped(out, n.value);
+            try printHTMLEscapedContent(out, n.value);
         },
         .emphasis => |n| {
             try out.print("<em>", .{});
@@ -60,7 +60,7 @@ fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!bool {
         .code => |n| {
             // TODO: Lang?
             try out.print("<pre><code>", .{});
-            try printHTMLEscaped(out, n.value); // TODO: Do we want to escape here??
+            try printHTMLEscapedContent(out, n.value);
             try out.print("\n", .{});
             try out.print("</code></pre>", .{});
         },
@@ -69,17 +69,15 @@ fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!bool {
         },
         .inline_code => |n| {
             try out.print("<code>", .{});
-            try printHTMLEscaped(out, n.value); // TODO: Do we want to escape here??
+            try printHTMLEscapedContent(out, n.value);
             try out.print("</code>", .{});
         },
         .link => |n| {
-            try out.print("<a href=\"", .{});
-            try printHTMLEscaped(out, n.url);
-            try out.print("\"", .{});
+            try out.print("<a href=\"{s}\"", .{n.url});
 
             if (n.title.len > 0) {
                 try out.print(" title=\"", .{});
-                try printHTMLEscaped(out, n.title);
+                try printHTMLEscapedAttrValue(out, n.title);
                 try out.print("\"", .{});
             }
 
@@ -92,17 +90,15 @@ fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!bool {
             try out.print("</a>", .{});
         },
         .image => |n| {
-            try out.print("<img src=\"", .{});
-            try printHTMLEscaped(out, n.url);
-            try out.print("\" ", .{});
+            try out.print("<img src=\"{s}\" ", .{n.url});
 
             try out.print("alt=\"", .{});
-            try printHTMLEscaped(out, n.alt);
+            try printHTMLEscapedAttrValue(out, n.alt);
             try out.print("\" ", .{});
 
             if (n.title.len > 0) {
                 try out.print("title=\"", .{});
-                try printHTMLEscaped(out, n.title);
+                try printHTMLEscapedAttrValue(out, n.title);
                 try out.print("\" ", .{});
             }
 
@@ -115,13 +111,32 @@ fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!bool {
     return true;
 }
 
-// HTML escaped output
-fn printHTMLEscaped(out: *Io.Writer, s: []const u8) Io.Writer.Error!void {
+/// HTML-escape output to appear as text content.
+fn printHTMLEscapedContent(
+    out: *Io.Writer,
+    s: []const u8,
+) Io.Writer.Error!void {
     for (s) |c| {
         switch (c) {
             '&' => try out.print("&amp;", .{}),
             '<' => try out.print("&lt;", .{}),
             '>' => try out.print("&gt;", .{}),
+            // Myst-spec tests seem to require escaping of double quotes but not
+            // single quotes for text content.
+            '"' => try out.print("&quot;", .{}),
+            else => try out.writeByte(c),
+        }
+    }
+}
+
+/// HTML-escape output to appear as an attribute value.
+fn printHTMLEscapedAttrValue(
+    out: *Io.Writer,
+    s: []const u8,
+) Io.Writer.Error!void {
+    for (s) |c| {
+        switch (c) {
+            '&' => try out.print("&amp;", .{}),
             '"' => try out.print("&quot;", .{}),
             '\'' => try out.print("&#39;", .{}),
             else => try out.writeByte(c),
