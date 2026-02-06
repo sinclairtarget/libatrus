@@ -361,17 +361,22 @@ fn parseLinkReferenceDefinition(
     // whitespace allowed and up to one newline
     var seen_any_separating_whitespace = false;
     seen_newline = false;
-    while (try self.consume(scratch, &.{
-        .newline,
-        .whitespace,
-        .indent,
-    })) |token| {
-        seen_any_separating_whitespace = true;
-        if (token.token_type == .newline) {
-            if (seen_newline) {
-                return null;
-            }
-            seen_newline = true;
+    while (try self.peek(scratch)) |token| {
+        switch (token.token_type) {
+            .indent, .whitespace => |t| {
+                seen_any_separating_whitespace = true;
+                _ = try self.consume(scratch, &.{t});
+            },
+            .newline => {
+                seen_any_separating_whitespace = true;
+                if (seen_newline) {
+                    break;
+                } else {
+                    seen_newline = true;
+                    _ = try self.consume(scratch, &.{.newline});
+                }
+            },
+            else => break,
         }
     }
 
