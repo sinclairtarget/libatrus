@@ -7,34 +7,36 @@ pub fn render(
     root: *ast.Node,
     out: *Io.Writer,
 ) Io.Writer.Error!void {
-    try renderNode(out, root);
+    _ = try renderNode(out, root);
     try out.flush();
 }
 
-fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
+/// Renders output, returning true if anything was written.
+fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!bool {
     switch (node.*) {
         .root => |n| {
             for (n.children) |child| {
-                try renderNode(out, child);
+                _ = try renderNode(out, child);
             }
         },
         .block => |n| {
             for (n.children) |child| {
-                try renderNode(out, child);
-                try out.print("\n", .{});
+                if (try renderNode(out, child)) {
+                    try out.print("\n", .{});
+                }
             }
         },
         .paragraph => |n| {
             try out.print("<p>", .{});
             for (n.children) |child| {
-                try renderNode(out, child);
+                _ = try renderNode(out, child);
             }
             try out.print("</p>", .{});
         },
         .heading => |n| {
             try out.print("<h{d}>", .{n.depth});
             for (n.children) |child| {
-                try renderNode(out, child);
+                _ = try renderNode(out, child);
             }
             try out.print("</h{d}>", .{n.depth});
         },
@@ -44,14 +46,14 @@ fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
         .emphasis => |n| {
             try out.print("<em>", .{});
             for (n.children) |child| {
-                try renderNode(out, child);
+                _ = try renderNode(out, child);
             }
             try out.print("</em>", .{});
         },
         .strong => |n| {
             try out.print("<strong>", .{});
             for (n.children) |child| {
-                try renderNode(out, child);
+                _ = try renderNode(out, child);
             }
             try out.print("</strong>", .{});
         },
@@ -84,7 +86,7 @@ fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
             try out.print(">", .{});
 
             for (n.children) |child| {
-                try renderNode(out, child);
+                _ = try renderNode(out, child);
             }
 
             try out.print("</a>", .{});
@@ -106,9 +108,11 @@ fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
 
             try out.print("/>", .{});
         },
-        // Don't get rendered
-        .definition => {},
+        // Doesn't get rendered
+        .definition => return false,
     }
+
+    return true;
 }
 
 // HTML escaped output

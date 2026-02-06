@@ -337,7 +337,11 @@ fn parseLinkReferenceDefinition(
 
     // whitespace allowed and up to one newline
     var seen_newline = false;
-    while (try self.consume(scratch, &.{.newline, .whitespace})) |token| {
+    while (try self.consume(scratch, &.{
+        .newline,
+        .whitespace,
+        .indent,
+    })) |token| {
         if (token.token_type == .newline) {
             if (seen_newline) {
                 return null;
@@ -353,7 +357,11 @@ fn parseLinkReferenceDefinition(
     // whitespace allowed and up to one newline
     var seen_any_separating_whitespace = false;
     seen_newline = false;
-    while (try self.consume(scratch, &.{.newline, .whitespace})) |token| {
+    while (try self.consume(scratch, &.{
+        .newline,
+        .whitespace,
+        .indent,
+    })) |token| {
         seen_any_separating_whitespace = true;
         if (token.token_type == .newline) {
             if (seen_newline) {
@@ -372,7 +380,9 @@ fn parseLinkReferenceDefinition(
         break :blk "";
     };
 
-    // "no further character can occur"
+    // "no further character can occur" says the spec, but then there's an example
+    // of spaces following the title, so we optionally consume whitespace here
+    _ = try self.consume(scratch, &.{.whitespace});
     _ = try self.consume(scratch, &.{.newline}) orelse return null;
 
     const label = try alloc.dupe(u8, scanned_label);
