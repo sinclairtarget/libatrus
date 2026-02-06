@@ -17,6 +17,7 @@ const ast = @import("ast.zig");
 const BlockTokenizer = @import("../lex/BlockTokenizer.zig");
 const BlockToken = @import("../lex/tokens.zig").BlockToken;
 const BlockTokenType = @import("../lex/tokens.zig").BlockTokenType;
+const escape = @import("escape.zig");
 const LinkDefMap = @import("link_defs.zig").LinkDefMap;
 const link_label_max_chars = @import("link_defs.zig").label_max_chars;
 const util = @import("../util/util.zig");
@@ -431,6 +432,12 @@ fn scanLinkDefLabel(self: *Self, scratch: Allocator) !?[]const u8 {
             },
             .l_square_bracket => return null,
             .r_square_bracket => break,
+            .text => {
+                saw_non_blank = true;
+                _ = try self.consume(scratch, &.{.text});
+                const value = try escape.copyEscape(scratch, token.lexeme);
+                _ = try running_text.writer.write(value);
+            },
             else => |t| {
                 saw_non_blank = true;
                 _ = try self.consume(scratch, &.{t});
