@@ -387,17 +387,33 @@ fn parseLinkReferenceDefinition(
     const scanned_title = blk: {
         // link title, if present, must be separated from destination by
         // whitespace
-        if (seen_any_separating_whitespace) {
-            break :blk try self.scanLinkDefTitle(scratch) orelse "";
+        if (!seen_any_separating_whitespace) {
+            break :blk "";
         }
-        break :blk "";
-    };
 
-    if (scanned_title.len > 0 or !seen_newline) {
+        const title_checkpoint_index = self.checkpoint();
+        const t = try self.scanLinkDefTitle(scratch) orelse break :blk "";
+
         // "no further character can occur" says the spec, but then there's an
         // example of spaces following the title, so we optionally consume
-        // whitespace here
+        // whitespace here.
         _ = try self.consume(scratch, &.{.whitespace});
+
+        if (seen_newline) {
+            _ = try self.consume(scratch, &.{.newline}) orelse {
+                // There was something after the title, but the title was
+                // already on a separate line, so just fail to parse the title.
+                self.backtrack(title_checkpoint_index);
+                break :blk "";
+            };
+        }
+
+        break :blk t;
+    };
+
+    if (!seen_newline) {
+        // We didn't see a newline before the title (or there was no title). We
+        // must see a newline now for this to be a valid link def.
         _ = try self.consume(scratch, &.{.newline}) orelse return null;
     }
 
