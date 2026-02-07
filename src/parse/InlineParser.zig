@@ -823,6 +823,7 @@ fn parseInlineImage(
     }
 
     _ = try self.consume(scratch, &.{.l_paren}) orelse return null;
+    _ = try self.scanSeparatingWhitespace(scratch) orelse return null;
 
     // link destination
     const raw_url = try self.scanLinkDestination(scratch) orelse "";
@@ -831,14 +832,19 @@ fn parseInlineImage(
         alloc.free(url);
     };
 
+    const whitespace = (
+        try self.scanSeparatingWhitespace(scratch) orelse return null
+    );
     const title = blk: {
         // link title, if present, must be separated from destination by
         // whitespace
-        if (try self.consume(scratch, &.{.newline, .whitespace})) |_| {
-            break :blk try self.scanLinkTitle(scratch) orelse "";
+        if (whitespace.len == 0) {
+            break :blk "";
         }
 
-        break :blk "";
+        const t = try self.scanLinkTitle(scratch) orelse "";
+        _ = try self.scanSeparatingWhitespace(scratch) orelse return null;
+        break :blk t;
     };
 
     _ = try self.consume(scratch, &.{.r_paren}) orelse return null;
@@ -1447,6 +1453,33 @@ fn scanLinkTitle(self: *Self, scratch: Allocator) !?[]const u8 {
         }
     }
     _ = try self.consume(scratch, &.{close_t}) orelse return null;
+
+    did_parse = true;
+    return try running_text.toOwnedSlice();
+}
+
+/// Scans spaces, tabs, and up to one newline.
+fn scanSeparatingWhitespace(self: *Self, scratch: Allocator) Error!?[]const u8 {
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+    };
+
+    var running_text = Io.Writer.Allocating.init(scratch);
+
+    var seen_newline = false;
+    while (try self.consume(scratch, &.{.newline, .whitespace})) |token| {
+        if (token.token_type == .newline) {
+            if (seen_newline) {
+                return null;
+            }
+            seen_newline = true;
+        }
+
+        const value = try resolveInlineText(scratch, token);
+        _ = try running_text.writer.write(value);
+    }
 
     did_parse = true;
     return try running_text.toOwnedSlice();
