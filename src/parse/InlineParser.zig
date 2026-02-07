@@ -827,7 +827,9 @@ fn parseInlineImage(
     // link destination
     const raw_url = try self.scanLinkDestination(scratch) orelse "";
     const url = try cmark.uri.normalize(alloc, scratch, raw_url);
-    errdefer alloc.free(url);
+    defer if (!did_parse) {
+        alloc.free(url);
+    };
 
     const title = blk: {
         // link title, if present, must be separated from destination by
@@ -1189,7 +1191,9 @@ fn parseInlineLink(
     // link destination
     const raw_url = try self.scanLinkDestination(scratch) orelse "";
     const url = try cmark.uri.normalize(alloc, scratch, raw_url);
-    errdefer alloc.free(url);
+    defer if (!did_parse) {
+        alloc.free(url);
+    };
 
     const title = blk: {
         // link title, if present, must be separated from destination by

@@ -358,7 +358,9 @@ fn parseLinkReferenceDefinition(
     ) orelse return null;
     const escaped_url = try escape.copyEscape(scratch, scanned_url);
     const url = try cmark.uri.normalize(alloc, scratch, escaped_url);
-    errdefer alloc.free(url);
+    defer if (!did_parse) {
+        alloc.free(url);
+    };
 
     // whitespace allowed and up to one newline
     var seen_any_separating_whitespace = false;
