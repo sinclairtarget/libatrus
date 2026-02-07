@@ -393,10 +393,13 @@ fn parseLinkReferenceDefinition(
         break :blk "";
     };
 
-    // "no further character can occur" says the spec, but then there's an example
-    // of spaces following the title, so we optionally consume whitespace here
-    _ = try self.consume(scratch, &.{.whitespace});
-    _ = try self.consume(scratch, &.{.newline}) orelse return null;
+    if (scanned_title.len > 0 or !seen_newline) {
+        // "no further character can occur" says the spec, but then there's an
+        // example of spaces following the title, so we optionally consume
+        // whitespace here
+        _ = try self.consume(scratch, &.{.whitespace});
+        _ = try self.consume(scratch, &.{.newline}) orelse return null;
+    }
 
     const label = try alloc.dupe(u8, scanned_label);
     errdefer alloc.free(label);
