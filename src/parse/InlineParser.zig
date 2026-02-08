@@ -1872,30 +1872,54 @@ fn parseEmailAutolink(
 fn scanText(self: *Self, scratch: Allocator) ![]const u8 {
     var running_text = Io.Writer.Allocating.init(scratch);
 
-    while (try self.peek(scratch)) |token| {
-        switch (token.token_type) {
-            .decimal_character_reference, .hexadecimal_character_reference,
-            .entity_reference, .newline, .whitespace, .text => |t| {
-                _ = try self.consume(scratch, &.{t});
+    const State = enum { normal, soft_break };
+    fsm: switch (State.normal) {
+        .normal => {
+            const token = try self.peek(scratch) orelse break :fsm;
+            switch (token.token_type) {
+                .decimal_character_reference,
+                .hexadecimal_character_reference, .entity_reference,
+                .text => |t| {
+                    _ = try self.consume(scratch, &.{t});
 
-                const value = try resolveInlineText(scratch, token);
-                _ = try running_text.writer.write(value);
-            },
-            .lr_delim_underscore => {
-                // Only allowed if cannot start or stop emphasis
-                if (
-                    token.context.delim_underscore.preceded_by_punct
-                    or token.context.delim_underscore.followed_by_punct
-                ) {
-                    break;
-                }
-                _ = try self.consume(scratch, &.{.lr_delim_underscore});
+                    const value = try resolveInlineText(scratch, token);
+                    _ = try running_text.writer.write(value);
+                },
+                .whitespace, .newline => {
+                    continue :fsm .soft_break;
+                },
+                .lr_delim_underscore => {
+                    // Only allowed if cannot start or stop emphasis
+                    if (
+                        token.context.delim_underscore.preceded_by_punct
+                        or token.context.delim_underscore.followed_by_punct
+                    ) {
+                        break :fsm;
+                    }
+                    _ = try self.consume(scratch, &.{.lr_delim_underscore});
 
-                const value = try resolveInlineText(scratch, token);
+                    const value = try resolveInlineText(scratch, token);
+                    _ = try running_text.writer.write(value);
+                },
+                else => break :fsm,
+            }
+
+            continue :fsm .normal;
+        },
+        .soft_break => {
+            const maybe_whitespace = try self.consume(scratch, &.{.whitespace});
+
+            if (try self.consume(scratch, &.{.newline})) |newline| {
+                _ = try self.consume(scratch, &.{.whitespace});
+                const value = try resolveInlineText(scratch, newline);
                 _ = try running_text.writer.write(value);
-            },
-            else => break,
-        }
+            } else if (maybe_whitespace) |whitespace| {
+                const value = try resolveInlineText(scratch, whitespace);
+                _ = try running_text.writer.write(value);
+            }
+
+            continue :fsm .normal;
+        },
     }
 
     return try running_text.toOwnedSlice();
@@ -3045,4 +3069,15 @@ test "shortcut reference image" {
     try testing.expectEqualStrings("/image.jpg", img_node.image.url);
     try testing.expectEqualStrings("bim", img_node.image.title);
     try testing.expectEqualStrings("foo", img_node.image.alt);
+}
+
+test "soft line break" {
+    const value = "foo bar \n bim bam";
+
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqualStrings("foo bar\nbim bam", nodes[0].text.value);
 }
