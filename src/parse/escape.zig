@@ -14,43 +14,54 @@ const Allocator = std.mem.Allocator;
 pub fn copyEscape(alloc: Allocator, s: []const u8) ![]const u8 {
     const copy = try alloc.alloc(u8, s.len);
 
-    var state: enum { normal, escape } = .normal;
+    const State = enum { normal, escape };
     var source_index: usize = 0;
     var dest_index: usize = 0;
-    while (source_index < s.len) {
-        switch (state) {
-            .normal => {
-                switch (s[source_index]) {
-                    '\\' => {
-                        source_index += 1;
-                        state = .escape;
-                    },
-                    else => {
-                        copy[dest_index] = s[source_index];
-                        source_index += 1;
-                        dest_index += 1;
-                    },
-                }
-            },
-            .escape => {
-                switch (s[source_index]) {
-                    // literal backslash
-                    '\\' => {
-                        copy[dest_index] = s[source_index];
-                        source_index += 1;
-                        dest_index += 1;
-                    },
-                    // ascii punctuation can be escaped
-                    '!'...'/', ':'...'@', '[', ']'...'`', '{'...'~' => {},
-                    // everything else is considered just a backslash
-                    else => {
-                        copy[dest_index] = '\\';
-                        dest_index += 1;
-                    },
-                }
-                state = .normal;
-            },
-        }
+    fsm: switch (State.normal) {
+        .normal => {
+            if (source_index >= s.len) {
+                break :fsm;
+            }
+
+            switch (s[source_index]) {
+                '\\' => {
+                    source_index += 1;
+                    continue :fsm .escape;
+                },
+                else => {
+                    copy[dest_index] = s[source_index];
+                    source_index += 1;
+                    dest_index += 1;
+                    continue :fsm .normal;
+                },
+            }
+        },
+        .escape => {
+            if (source_index >= s.len) {
+                // Backslash was last character
+                copy[dest_index] = '\\';
+                dest_index += 1;
+                break :fsm;
+            }
+
+            switch (s[source_index]) {
+                // literal backslash
+                '\\' => {
+                    copy[dest_index] = s[source_index];
+                    source_index += 1;
+                    dest_index += 1;
+                },
+                // ascii punctuation can be escaped
+                '!'...'/', ':'...'@', '[', ']'...'`', '{'...'~' => {},
+                // everything else is considered just a backslash
+                else => {
+                    copy[dest_index] = '\\';
+                    dest_index += 1;
+                },
+            }
+
+            continue :fsm .normal;
+        },
     }
 
     return try alloc.realloc(copy, dest_index);
@@ -75,4 +86,12 @@ test "escape escaped backslash" {
     defer testing.allocator.free(result);
 
     try testing.expectEqualStrings("foo\\bar", result);
+}
+
+test "terminating backslash not removed" {
+    const value = "foo\\";
+    const result = try copyEscape(testing.allocator, value);
+    defer testing.allocator.free(result);
+
+    try testing.expectEqualStrings("foo\\", result);
 }

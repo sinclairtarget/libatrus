@@ -119,8 +119,8 @@ fn fillLinkDefs(
         .definition => |*n| {
             try map.add(alloc, n);
         },
-        .paragraph, .heading, .strong, .emphasis, .text, .code, .thematic_break,
-        .inline_code, .link, .image => {},
+        .paragraph, .heading, .strong, .emphasis, .text, .code, .@"break",
+        .thematic_break, .inline_code, .link, .image => {},
     }
 }
 

@@ -135,6 +135,11 @@ pub fn parse(
             continue;
         }
 
+        if (try self.parseHardLineBreak(alloc, scratch)) |brk| {
+            try nodes.append(brk);
+            continue;
+        }
+
         const text_value = try self.scanText(scratch);
         if (text_value.len > 0) {
             try nodes.appendText(text_value);
@@ -195,6 +200,11 @@ fn parseStarStrong(
 
         if (try self.parseInlineLink(alloc, scratch)) |link| {
             try children.append(link);
+            continue;
+        }
+
+        if (try self.parseHardLineBreak(alloc, scratch)) |brk| {
+            try children.append(brk);
             continue;
         }
 
@@ -309,6 +319,10 @@ fn parseStarEmphasis(
 
             if (try self.parseInlineLink(alloc, scratch)) |link| {
                 break :blk link;
+            }
+
+            if (try self.parseHardLineBreak(alloc, scratch)) |brk| {
+                break :blk brk;
             }
 
             if (try self.parseUnderscoreEmphasis(alloc, scratch)) |emph| {
@@ -443,6 +457,11 @@ fn parseUnderscoreStrong(
             continue;
         }
 
+        if (try self.parseHardLineBreak(alloc, scratch)) |brk| {
+            try children.append(brk);
+            continue;
+        }
+
         if (try self.parseAnyEmphasis(alloc, scratch)) |emph| {
             try children.append(emph);
             continue;
@@ -572,6 +591,10 @@ fn parseUnderscoreEmphasis(
 
             if (try self.parseInlineLink(alloc, scratch)) |link| {
                 break :blk link;
+            }
+
+            if (try self.parseHardLineBreak(alloc, scratch)) |brk| {
+                break :blk brk;
             }
 
             if (try self.parseStarEmphasis(alloc, scratch)) |emph| {
@@ -757,13 +780,13 @@ fn parseInlineCode(
                     break;
                 }
 
-                const value = try resolveInlineCode(token);
+                const value = try resolveInlineCode(scratch, token);
                 try values.append(scratch, value);
             },
             else => |t| {
                 _ = try self.consume(scratch, &.{t});
 
-                const value = try resolveInlineCode(token);
+                const value = try resolveInlineCode(scratch, token);
                 try values.append(scratch, value);
             }
         }
@@ -929,6 +952,11 @@ fn parseImageDescription(
         };
         if (allowed_bracket.len > 0) {
             try nodes.appendText(allowed_bracket);
+            continue;
+        }
+
+        if (try self.parseHardLineBreak(alloc, scratch)) |brk| {
+            try nodes.append(brk);
             continue;
         }
 
@@ -1286,6 +1314,11 @@ fn parseLinkText(
         };
         if (allowed_bracket.len > 0) {
             try nodes.appendText(allowed_bracket);
+            continue;
+        }
+
+        if (try self.parseHardLineBreak(alloc, scratch)) |brk| {
+            try nodes.append(brk);
             continue;
         }
 
@@ -1749,6 +1782,11 @@ fn parseLinkLabel(
             continue;
         }
 
+        if (try self.parseHardLineBreak(alloc, scratch)) |brk| {
+            try nodes.append(brk);
+            continue;
+        }
+
         if (try self.parseAnyEmphasis(alloc, scratch)) |emph| {
             try nodes.append(emph);
             continue;
@@ -1869,6 +1907,31 @@ fn parseEmailAutolink(
     return inline_link;
 }
 
+/// https://spec.commonmark.org/0.30/#hard-line-breaks
+fn parseHardLineBreak(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) Error!?*ast.Node {
+    const token = try self.peek(scratch) orelse return null;
+    if (token.token_type != .hard_break) {
+        return null;
+    }
+
+    if (try self.peekAhead(scratch, 2) == null) {
+        // end of block, can't put hard line break here
+        return null;
+    }
+
+    _ = try self.consume(scratch, &.{token.token_type});
+
+    const break_node = try alloc.create(ast.Node);
+    break_node.* = .{
+        .@"break" = .{},
+    };
+    return break_node;
+}
+
 fn scanText(self: *Self, scratch: Allocator) ![]const u8 {
     var running_text = Io.Writer.Allocating.init(scratch);
 
@@ -1934,12 +1997,21 @@ fn scanTextFallback(self: *Self, scratch: Allocator) ![]const u8 {
 }
 
 /// Resolve token to actual string content within an inline code node.
-fn resolveInlineCode(token: InlineToken) ![]const u8 {
+fn resolveInlineCode(scratch: Allocator, token: InlineToken) ![]const u8 {
     const value = switch (token.token_type) {
         .decimal_character_reference, .hexadecimal_character_reference,
         .entity_reference, .absolute_uri, .email, .backtick, .whitespace,
-        .hard_break, .text => token.lexeme,
+        .text => token.lexeme,
         .newline => " ",
+        .hard_break => {
+            return try std.mem.replaceOwned(
+                u8,
+                scratch,
+                token.lexeme,
+                "\n",
+                " ",
+            );
+        },
         .l_delim_star, .r_delim_star, .lr_delim_star => "*",
         .l_delim_underscore, .r_delim_underscore, .lr_delim_underscore => "_",
         .l_square_bracket => "[",
@@ -3070,6 +3142,24 @@ test "shortcut reference image" {
     try testing.expectEqualStrings("/image.jpg", img_node.image.url);
     try testing.expectEqualStrings("bim", img_node.image.title);
     try testing.expectEqualStrings("foo", img_node.image.alt);
+}
+
+test "hard line break" {
+    const value = "foo bar  \n bim bam";
+
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(3, nodes.len);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqual(
+        ast.NodeType.@"break",
+        @as(ast.NodeType, nodes[1].*),
+    );
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
+
+    try testing.expectEqualStrings("foo bar", nodes[0].text.value);
+    try testing.expectEqualStrings("bim bam", nodes[2].text.value);
 }
 
 test "soft line break" {

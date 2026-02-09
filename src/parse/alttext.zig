@@ -23,6 +23,6 @@ pub fn write(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
         .image => |n| {
             _ = try out.write(n.alt);
         },
-        .thematic_break, .definition => {},
+        .@"break", .thematic_break, .definition => {},
     }
 }

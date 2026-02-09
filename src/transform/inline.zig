@@ -86,8 +86,8 @@ pub fn transform(
             };
             return node;
         },
-        .text, .code, .thematic_break, .emphasis, .strong, .inline_code,
-        .link, .image, .definition => {
+        .text, .code, .@"break", .thematic_break, .emphasis, .strong,
+        .inline_code, .link, .image, .definition => {
             return original_node;
         },
     }

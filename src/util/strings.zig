@@ -1,4 +1,5 @@
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 
 /// If s contains only the bytes in chars, returns true. False otherwise.
 pub fn containsOnly(s: []const u8, chars: []const u8) bool {

@@ -96,7 +96,7 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
                 try stringify.write(n.title);
             }
         },
-        .thematic_break => {},
+        .@"break", .thematic_break => {},
         .definition => unreachable,
     }
 

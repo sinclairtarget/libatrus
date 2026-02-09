@@ -13,11 +13,12 @@ pub const NodeType = enum {
     text,
     code,
     thematic_break,
+    @"break",       // line break
     emphasis,
     strong,
     inline_code,
     link,
-    definition, // link definition
+    definition,     // link definition
     image,
 };
 
@@ -29,6 +30,7 @@ pub const Node = union(NodeType) {
     text: Text,
     code: Code,
     thematic_break: Empty,
+    @"break": Empty,
     emphasis: Container,
     strong: Container,
     inline_code: Text,
@@ -40,7 +42,7 @@ pub const Node = union(NodeType) {
 
     pub fn deinit(self: *Self, alloc: Allocator) void {
         switch (self.*) {
-            .thematic_break => {},
+            .thematic_break, .@"break" => {},
             inline else => |*payload| payload.deinit(alloc),
         }
 
