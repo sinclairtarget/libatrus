@@ -1938,7 +1938,7 @@ fn resolveInlineCode(token: InlineToken) ![]const u8 {
     const value = switch (token.token_type) {
         .decimal_character_reference, .hexadecimal_character_reference,
         .entity_reference, .absolute_uri, .email, .backtick, .whitespace,
-        .text => token.lexeme,
+        .hard_break, .text => token.lexeme,
         .newline => " ",
         .l_delim_star, .r_delim_star, .lr_delim_star => "*",
         .l_delim_underscore, .r_delim_underscore, .lr_delim_underscore => "_",
@@ -1963,7 +1963,8 @@ fn resolveInlineText(scratch: Allocator, token: InlineToken) ![]const u8 {
             break :blk try resolveCharacterReference(scratch, token);
         },
         .newline => "\n",
-        .absolute_uri, .email, .backtick, .whitespace => token.lexeme,
+        .absolute_uri, .email, .backtick, .whitespace,
+        .hard_break => token.lexeme,
         .l_delim_star, .r_delim_star, .lr_delim_star => "*",
         .l_delim_underscore, .r_delim_underscore, .lr_delim_underscore => "_",
         .text => try escape.copyEscape(scratch, token.lexeme),

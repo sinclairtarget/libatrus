@@ -107,6 +107,10 @@ fn tokenize(self: *Self, scratch: Allocator) !InlineToken {
                 break :blk result;
             }
 
+            if (try self.matchHardLineBreak(scratch)) |result| {
+                break :blk result;
+            }
+
             if (try self.matchWhitespace(scratch)) |result| {
                 break :blk result;
             }
@@ -860,6 +864,84 @@ fn matchEmailAddress(self: Self, scratch: Allocator) !?TokenizeResult {
     };
 }
 
+fn matchHardLineBreak(self: Self, scratch: Allocator) !?TokenizeResult {
+    var lookahead_i = self.i;
+
+    const State = enum { start, whitespace, newline, end };
+    fsm: switch (State.start) {
+        .start => {
+            switch (self.in[lookahead_i]) {
+                '\\' => {
+                    lookahead_i += 1;
+                    continue :fsm .newline;
+                },
+                ' ' => {
+                    lookahead_i += 1;
+                    continue :fsm .whitespace;
+                },
+                else => return null,
+            }
+        },
+        .whitespace => {
+            if (lookahead_i >= self.in.len) {
+                return null;
+            }
+
+            switch (self.in[lookahead_i]) {
+                ' ' => {
+                    lookahead_i += 1;
+                    continue :fsm .whitespace;
+                },
+                '\n' => {
+                    if (lookahead_i - self.i >= 2) {
+                        continue :fsm .newline;
+                    } else {
+                        return null;
+                    }
+                },
+                else => return null,
+            }
+        },
+        .newline => {
+            if (lookahead_i >= self.in.len) {
+                return null;
+            }
+
+            switch (self.in[lookahead_i]) {
+                '\n' => {
+                    lookahead_i += 1;
+                    continue :fsm .end;
+                },
+                else => return null,
+            }
+        },
+        .end => {
+            if (lookahead_i >= self.in.len) {
+                break :fsm;
+            }
+
+            switch (self.in[lookahead_i]) {
+                ' ' => {
+                    lookahead_i += 1;
+                    continue :fsm .end;
+                },
+                else => break :fsm,
+            }
+        },
+    }
+
+    const tokens = try evaluateTokens(
+        scratch,
+        .hard_break,
+        .default,
+        self.in[self.i..lookahead_i],
+    );
+    return .{
+        .tokens = tokens,
+        .next_i = lookahead_i,
+    };
+}
+
 fn matchWhitespace(self: Self, scratch: Allocator) !?TokenizeResult {
     var lookahead_i = self.i;
     while (lookahead_i < self.in.len) {
@@ -917,6 +999,10 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
                 },
                 '*' => continue :fsm .delim_star,
                 '_' => continue :fsm .delim_underscore,
+                '\\' => {
+                    lookahead_i += 1;
+                    continue :fsm .escaped;
+                },
                 else => continue :fsm .normal,
             }
         },
@@ -927,12 +1013,8 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
 
             switch (self.in[lookahead_i]) {
                 '\n', ' ', '\t', '&', '`', '[', ']', '<', '>', '(', ')', '*',
-                '_', '\'', '"', '!' => {
+                '_', '\'', '"', '!', '\\' => {
                     break :fsm .normal;
-                },
-                '\\' => {
-                    lookahead_i += 1;
-                    continue :fsm .escaped;
                 },
                 '#'...'%', '+'...'/', ':', ';', '=', '?', '@', '^',
                 '{'...'~' => {
@@ -1288,4 +1370,14 @@ test "email address" {
 test "exclamation mark" {
     const line = "Hello!";
     try expectEqualTokens(&.{.text, .exclamation_mark}, line);
+}
+
+test "hard line break" {
+    const line = "hello  \n friend";
+    try expectEqualTokens(&.{.text, .hard_break, .text}, line);
+}
+
+test "hard line break with backslash" {
+    const line = "hello\\\n friend";
+    try expectEqualTokens(&.{.text, .hard_break, .text}, line);
 }

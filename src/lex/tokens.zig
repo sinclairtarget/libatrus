@@ -51,6 +51,7 @@ pub const InlineTokenType = enum {
     l_paren,
     r_paren,
     exclamation_mark,
+    hard_break,
 };
 
 pub const BlockToken = Token(BlockTokenType);
