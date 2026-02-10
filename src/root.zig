@@ -73,12 +73,12 @@ pub fn parse(
 
     // first pass; parse into blocks
     var timer = time.Timer.start() catch { @panic("timer unsupported"); };
-    logger.debug("Beginning block parsing...", .{});
+    logger.info("Beginning block parsing...", .{});
     var block_tokenizer = BlockTokenizer.init(line_reader);
     var block_parser = BlockParser.init(&block_tokenizer);
     var root, var link_defs = try block_parser.parse(alloc, scratch);
     defer link_defs.deinit(alloc);
-    logger.debug("Done in {D}.", .{timer.read()});
+    logger.info("Done in {D}.", .{timer.read()});
 
     if (options.parse_level == .block) {
         return root;
@@ -89,9 +89,9 @@ pub fn parse(
 
     // second pass; parse inline elements
     timer.reset();
-    logger.debug("Beginning inline parsing...", .{});
+    logger.info("Beginning inline parsing...", .{});
     root = try transform.parseInlines(alloc, &arena, root, link_defs);
-    logger.debug("Done in {D}.", .{timer.read()});
+    logger.info("Done in {D}.", .{timer.read()});
 
     if (options.parse_level == .pre) {
         return root;
@@ -101,9 +101,9 @@ pub fn parse(
 
     // third pass; MyST-specific transforms
     timer.reset();
-    logger.debug("Beginning post-processing...", .{});
+    logger.info("Beginning post-processing...", .{});
     root = try transform.postProcess(alloc, root);
-    logger.debug("Done in {D}.", .{timer.read()});
+    logger.info("Done in {D}.", .{timer.read()});
 
     return root;
 }

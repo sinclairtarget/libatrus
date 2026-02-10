@@ -12,6 +12,10 @@ const logger = log.scoped(.main);
 
 const max_line_len = 1024; // bytes
 
+pub const std_options: std.Options = .{
+    .log_level = if (builtin.mode == .Debug) .info else .warn,
+};
+
 pub fn main() !void {
     var stdout_buffer: [64]u8 = undefined;
     var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
@@ -69,7 +73,7 @@ pub fn main() !void {
             try cli.printUsage(stdout);
         },
         .parse => {
-            logger.debug("Parsing with options: {f}", .{options});
+            logger.info("Parsing with options: {f}", .{options});
 
             const myst = slurp(arena, options.filepath_or_input) catch |err| {
                 switch (err) {
@@ -90,12 +94,13 @@ pub fn main() !void {
             });
             defer ast.deinit(gpa);
 
-            logger.debug("Rendering...", .{});
+            logger.info("Rendering...", .{});
             switch (options.output_choice) {
                 .json => try atrus.renderJSON(stdout, ast, .{}),
                 .html => try atrus.renderHTML(stdout, ast),
             }
             try stdout.print("\n", .{});
+            logger.info("Done.", .{});
         },
         .tokenize => {
             if (builtin.mode == .Debug) {
