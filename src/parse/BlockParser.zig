@@ -21,6 +21,7 @@ const cmark = @import("../cmark/cmark.zig");
 const escape = @import("escape.zig");
 const LinkDefMap = @import("link_defs.zig").LinkDefMap;
 const link_label_max_chars = @import("link_defs.zig").label_max_chars;
+const logger = @import("../logging.zig").logger;
 const util = @import("../util/util.zig");
 
 const Error = error{
@@ -101,6 +102,7 @@ pub fn parse(
 
         // blank lines
         if (try self.consume(scratch, &.{.newline}) != null) {
+            logParseAttempt("blank line", true);
             continue;
         }
 
@@ -126,9 +128,12 @@ fn parseATXHeading(
 ) !?*ast.Node {
     var did_parse = false;
     const checkpoint_index = self.checkpoint();
-    defer if (!did_parse) {
-        self.backtrack(checkpoint_index);
-    };
+    defer {
+        logParseAttempt("parseATXHeading()", did_parse);
+        if (!did_parse) {
+            self.backtrack(checkpoint_index);
+        }
+    }
 
     // Handle allowed leading whitespace
     _ = try self.consume(scratch, &.{.whitespace});
@@ -204,6 +209,9 @@ fn parseThematicBreak(
     alloc: Allocator,
     scratch: Allocator,
 ) !?*ast.Node {
+    var did_parse = false;
+    defer logParseAttempt("parseThematicBreak()", did_parse);
+
     const token = try self.peek(scratch) orelse return null;
     switch (token.token_type) {
         .rule_star, .rule_underline, .rule_dash_with_whitespace => |t| {
@@ -223,6 +231,7 @@ fn parseThematicBreak(
 
     const node = try alloc.create(ast.Node);
     node.* = .{ .thematic_break = .{} };
+    did_parse = true;
     return node;
 }
 
@@ -231,6 +240,9 @@ fn parseIndentedCode(
     alloc: Allocator,
     scratch: Allocator,
 ) !?*ast.Node {
+    var did_parse = false;
+    defer logParseAttempt("parseIndentedCode()", did_parse);
+
     // Block has to start with an indent.
     // Consume token later; this is just a check for an easy bail condition.
     const block_start = try self.peek(scratch) orelse return null;
@@ -317,6 +329,7 @@ fn parseIndentedCode(
             .lang = "",
         },
     };
+    did_parse = true;
     return node;
 }
 
@@ -328,9 +341,12 @@ fn parseLinkReferenceDefinition(
 ) !?*ast.Node {
     var did_parse = false;
     const checkpoint_index = self.checkpoint();
-    defer if (!did_parse) {
-        self.backtrack(checkpoint_index);
-    };
+    defer {
+        logParseAttempt("parseLinkReferenceDefinition()", did_parse);
+        if (!did_parse) {
+            self.backtrack(checkpoint_index);
+        }
+    }
 
     // consume allowed leading whitespace
     _ = try self.consume(scratch, &.{.whitespace});
@@ -630,6 +646,9 @@ fn parseParagraph(
     alloc: Allocator,
     scratch: Allocator,
 ) !?*ast.Node {
+    var did_parse = false;
+    defer logParseAttempt("parseParagraph()", did_parse);
+
     var lines: ArrayList([]const u8) = .empty;
 
     for (0..util.safety.loop_bound) |_| {
@@ -661,6 +680,7 @@ fn parseParagraph(
             .children = try alloc.dupe(*ast.Node, &.{ text_node }),
         },
     };
+    did_parse = true;
     return node;
 }
 
@@ -786,6 +806,14 @@ fn checkpoint(self: *Self) usize {
 
 fn backtrack(self: *Self, checkpoint_index: usize) void {
     self.token_index = checkpoint_index;
+}
+
+fn logParseAttempt(comptime name: []const u8, did_parse: bool) void {
+    if (did_parse) {
+        logger.debug("BlockParser.{s} SUCCESS", .{name});
+    } else {
+        logger.debug("BlockParser.{s} FAIL", .{name});
+    }
 }
 
 // ----------------------------------------------------------------------------
