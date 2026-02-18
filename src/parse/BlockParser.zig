@@ -22,6 +22,7 @@ const escape = @import("escape.zig");
 const LinkDefMap = @import("link_defs.zig").LinkDefMap;
 const link_label_max_chars = @import("link_defs.zig").label_max_chars;
 const logger = @import("../logging.zig").logger;
+const NodeList = @import("NodeList.zig");
 const util = @import("../util/util.zig");
 
 const Error = error{
@@ -55,12 +56,12 @@ pub fn parse(
     alloc: Allocator,
     scratch: Allocator,
 ) Error!struct { *ast.Node, LinkDefMap } {
-    var children: ArrayList(*ast.Node) = .empty;
+    var children = NodeList.init(alloc, scratch, createParagraphNode);
     errdefer {
-        for (children.items) |child| {
+        for (children.items()) |child| {
             child.deinit(alloc);
         }
-        children.deinit(alloc);
+        children.deinit();
     }
 
     var link_defs: LinkDefMap = .empty;
@@ -69,40 +70,48 @@ pub fn parse(
     for (0..util.safety.loop_bound) |_| { // could hit if we forget to consume tokens
         _ = try self.peek(scratch) orelse break;
 
-        if (blk: {
-            if (try self.parseIndentedCode(alloc, scratch)) |indent_code| {
-                break :blk indent_code;
-            }
-
-            if (try self.parseATXHeading(alloc, scratch)) |heading| {
-                break :blk heading;
-            }
-
-            if (try self.parseThematicBreak(alloc, scratch)) |thematic_break| {
-                break :blk thematic_break;
-            }
-
-            if (
-                try self.parseLinkReferenceDefinition(alloc, scratch)
-            ) |link_def| {
-                try link_defs.add(alloc, &link_def.definition);
-                break :blk link_def;
-            }
-
-            if (try self.parseParagraph(alloc, scratch)) |paragraph| {
-                break :blk paragraph;
-            }
-
-            break :blk null;
-        }) |next| {
-            try children.append(alloc, next);
+        if (self.token_index > 0) {
             self.clear_consumed_tokens();
+        }
+
+        if (try self.parseIndentedCode(alloc, scratch)) |indent_code| {
+            try children.append(indent_code);
+            continue;
+        }
+
+        if (try self.parseATXHeading(alloc, scratch)) |heading| {
+            try children.append(heading);
+            continue;
+        }
+
+        if (try self.parseThematicBreak(alloc, scratch)) |thematic_break| {
+            try children.append(thematic_break);
+            continue;
+        }
+
+        if (try self.parseLinkReferenceDefinition(alloc, scratch)) |link_def| {
+            try link_defs.add(alloc, &link_def.definition);
+            try children.append(link_def);
             continue;
         }
 
         // blank lines
         if (try self.consume(scratch, &.{.newline}) != null) {
             logParseAttempt("blank line", true);
+            try children.flush(); // Blank lines close paragraphs
+            continue;
+        }
+
+        // Parse paragraph text
+        if (try self.scanParagraphText(scratch)) |text_value| {
+            try children.appendText(text_value);
+            continue;
+        }
+
+        // Parse paragraph text (last resort)
+        const text_value = try self.scanTextFallback(scratch);
+        if (text_value.len > 0) {
+            try children.appendText(text_value);
             continue;
         }
 
@@ -112,7 +121,7 @@ pub fn parse(
     const node = try alloc.create(ast.Node);
     node.* = .{
         .root = .{
-            .children = try children.toOwnedSlice(alloc),
+            .children = try children.toOwnedSlice(),
         },
     };
     return .{ node, link_defs };
@@ -167,16 +176,15 @@ fn parseATXHeading(
                 if (try self.peek(scratch)) |last| {
                     if (last.token_type != .newline) {
                         // Was not trailing pound, write it
-                        const value = try resolveText(scratch, current);
-                        try inner.writer.print("{s}", .{value});
+                        _ = try inner.writer.write(current.lexeme);
                         self.backtrack(lookahead_checkpoint_index);
                     }
                 }
             },
             .newline => break,
             else => {
-                const text = try self.scanText(scratch) orelse break;
-                try inner.writer.print("{s}", .{text});
+                _ = try inner.writer.write(current.lexeme);
+                _ = try self.consume(scratch, &.{current.token_type});
             }
         }
     } else @panic(util.safety.loop_bound_panic_msg);
@@ -641,103 +649,86 @@ fn scanLinkDefTitle(self: *Self, scratch: Allocator) !?[]const u8 {
     return try running_text.toOwnedSlice();
 }
 
-fn parseParagraph(
-    self: *Self,
-    alloc: Allocator,
-    scratch: Allocator,
-) !?*ast.Node {
-    var did_parse = false;
-    defer logParseAttempt("parseParagraph()", did_parse);
+/// Scan text for a paragraph.
+fn scanParagraphText(self: *Self, scratch: Allocator) !?[]const u8 {
+    var running_text = Io.Writer.Allocating.init(scratch);
 
-    var lines: ArrayList([]const u8) = .empty;
+    // Paragraph can start with anything. If the token could have been parsed as
+    // something else, it would have been parsed already.
+    const start_token = try self.peek(scratch) orelse return null;
+    _ = try self.consume(scratch, &.{start_token.token_type});
+    _ = try running_text.writer.write(start_token.lexeme);
 
-    for (0..util.safety.loop_bound) |_| {
-        var line = Io.Writer.Allocating.init(scratch);
-
-        const start_text = try self.scanTextStart(scratch) orelse break;
-        try line.writer.print("{s}", .{start_text});
-
-        for (0..util.safety.loop_bound) |_| {
-            const next_text = try self.scanText(scratch) orelse break;
-            try line.writer.print("{s}", .{next_text});
-        } else @panic(util.safety.loop_bound_panic_msg);
-
-        try lines.append(scratch, line.written());
-        _ = try self.consume(scratch, &.{.newline});
-    } else @panic(util.safety.loop_bound_panic_msg);
-
-    if (lines.items.len == 0) {
-        return null;
+    const State = enum { open, maybe_close };
+    fsm: switch (State.open) {
+        .open => {
+            const token = try self.peek(scratch) orelse break :fsm;
+            switch (token.token_type) {
+                .newline => {
+                    _ = try self.consume(scratch, &.{.newline});
+                    _ = try running_text.writer.write("\n");
+                    continue :fsm .maybe_close;
+                },
+                else => |t| {
+                    _ = try self.consume(scratch, &.{t});
+                    _ = try running_text.writer.write(token.lexeme);
+                    continue :fsm .open;
+                },
+            }
+        },
+        .maybe_close => {
+            const token = try self.peek(scratch) orelse break :fsm;
+            switch (token.token_type) {
+                .newline, .pound, .rule_star, .rule_underline,
+                .rule_dash_with_whitespace => {
+                    // These tokens can interrupt a paragraph.
+                    break :fsm;
+                },
+                else => continue :fsm .open,
+            }
+        },
     }
 
-    // Join lines by putting a newline between them
-    const buf = try std.mem.join(scratch, "\n", lines.items);
-    const text_node = try createTextNode(alloc, buf);
-
-    const node = try alloc.create(ast.Node);
-    node.* = .{
-        .paragraph = .{
-            .children = try alloc.dupe(*ast.Node, &.{ text_node }),
-        },
-    };
-    did_parse = true;
-    return node;
+    return try running_text.toOwnedSlice();
 }
 
-/// Consume text potentially starting later in a line.
-fn scanText(self: *Self, scratch: Allocator) !?[]const u8 {
-    const token = try self.consume(scratch, &.{
-        .text,
-        .whitespace,
-        .pound,
-        .rule_equals,
-        .rule_dash,
-        .single_quote,
-        .double_quote,
-        .colon,
-        .l_square_bracket,
-        .r_square_bracket,
-        .l_angle_bracket,
-        .r_angle_bracket,
-        .l_paren,
-        .r_paren,
-    }) orelse return null;
+fn scanTextFallback(self: *Self, scratch: Allocator) ![]const u8 {
+    const token = try self.peek(scratch) orelse return "";
+    _ = try self.consume(scratch, &.{token.token_type});
     return token.lexeme;
 }
 
-/// Consume text starting from the beginning of a line.
-fn scanTextStart(self: *Self, scratch: Allocator) !?[]const u8 {
-    const token = try self.peek(scratch) orelse return null;
-    switch (token.token_type) {
-        .pound => {
-            if (token.lexeme.len > 6) {
-                return self.scanText(scratch);
-            } else {
-                return null;
-            }
+/// Creates a paragraph node containing a single text node.
+fn createParagraphNode(alloc: Allocator, text_content: []const u8) !*ast.Node {
+    // Trim trailing newlines
+    const trimmed = std.mem.trimEnd(u8, text_content, "\n");
+
+    const text_node = try createTextNode(alloc, trimmed);
+    errdefer text_node.deinit(alloc);
+
+    const children = try alloc.dupe(*ast.Node, &.{text_node});
+    errdefer alloc.free(children);
+
+    const paragraph_node = try alloc.create(ast.Node);
+    paragraph_node.* = .{
+        .paragraph = .{
+            .children = children,
         },
-        .indent => {
-            // If we're already parsing a paragraph, leading indents are okay.
-            // https://spec.commonmark.org/0.30/#example-113
-            _ = try self.consume(scratch, &.{.indent});
-            return try self.scanText(scratch);
-        },
-        .text, .rule_equals, .rule_dash, .single_quote, .double_quote, .colon,
-        .l_square_bracket, .r_square_bracket, .l_angle_bracket,
-        .r_angle_bracket, .l_paren, .r_paren, .whitespace => {
-            return try self.scanText(scratch);
-        },
-        .newline, .rule_star, .rule_underline, .rule_dash_with_whitespace => {
-            return null;
-        },
-    }
+    };
+    return paragraph_node;
 }
 
+/// Creates a text node with the given text value.
+///
+/// The value is copied and owned by the returned node.
 fn createTextNode(alloc: Allocator, value: []const u8) !*ast.Node {
+    const copy = try alloc.dupe(u8, value);
+    errdefer alloc.free(copy);
+
     const node = try alloc.create(ast.Node);
     node.* = .{
         .text = .{
-            .value = try alloc.dupe(u8, value),
+            .value = copy,
         },
     };
     return node;
@@ -793,6 +784,7 @@ fn consume(
 
 fn clear_consumed_tokens(self: *Self) void {
     std.debug.assert(self.tokens.items.len > 0);
+    std.debug.assert(self.token_index > 0);
 
     // Copy unconsumed tokens to beginning of list
     const unparsed = self.tokens.items[self.token_index..];
