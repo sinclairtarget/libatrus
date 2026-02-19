@@ -115,7 +115,7 @@ fn matchSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
         else => return null,
     };
 
-    const lexeme = try evaluate_lexeme(self, scratch, token_type, self.i + 1);
+    const lexeme = try evaluateLexeme(self, scratch, token_type, self.i + 1);
     const token = BlockToken{
         .token_type = token_type,
         .lexeme = lexeme,
@@ -152,7 +152,7 @@ fn matchPound(self: Self, scratch: Allocator) !?TokenizeResult {
         },
     }
 
-    const lexeme = try evaluate_lexeme(self, scratch, .pound, lookahead_i);
+    const lexeme = try evaluateLexeme(self, scratch, .pound, lookahead_i);
     const token = BlockToken{
         .token_type = .pound,
         .lexeme = lexeme,
@@ -168,7 +168,7 @@ fn matchNewline(self: Self, scratch: Allocator) !?TokenizeResult {
         return null;
     }
 
-    const lexeme = try evaluate_lexeme(self, scratch, .newline, self.i + 1);
+    const lexeme = try evaluateLexeme(self, scratch, .newline, self.i + 1);
     const token = BlockToken{
         .token_type = .newline,
         .lexeme = lexeme,
@@ -204,7 +204,7 @@ fn matchIndent(self: Self, scratch: Allocator) !?TokenizeResult {
         }
     } else @panic(util.safety.loop_bound_panic_msg);
 
-    const lexeme = try evaluate_lexeme(self, scratch, .indent, lookahead_i);
+    const lexeme = try evaluateLexeme(self, scratch, .indent, lookahead_i);
     const token = BlockToken{
         .token_type = .indent,
         .lexeme = lexeme,
@@ -309,7 +309,7 @@ fn matchRule(self: Self, scratch: Allocator) !?TokenizeResult {
         else => unreachable,
     };
 
-    const lexeme = try evaluate_lexeme(self, scratch, token_type, lookahead_i);
+    const lexeme = try evaluateLexeme(self, scratch, token_type, lookahead_i);
     const token = BlockToken{
         .token_type = token_type,
         .lexeme = lexeme,
@@ -370,7 +370,7 @@ fn matchFence(self: Self, scratch: Allocator) !?TokenizeResult {
         },
     };
 
-    const lexeme = try evaluate_lexeme(self, scratch, token_type, lookahead_i);
+    const lexeme = try evaluateLexeme(self, scratch, token_type, lookahead_i);
     const token = BlockToken{
         .token_type = token_type,
         .lexeme = lexeme,
@@ -396,7 +396,7 @@ fn matchWhitespace(self: Self, scratch: Allocator) !?TokenizeResult {
         return null;
     }
 
-    const lexeme = try evaluate_lexeme(self, scratch, .whitespace, lookahead_i);
+    const lexeme = try evaluateLexeme(self, scratch, .whitespace, lookahead_i);
     const token = BlockToken{
         .token_type = .whitespace,
         .lexeme = lexeme,
@@ -452,7 +452,7 @@ fn matchText(self: Self, scratch: Allocator) !TokenizeResult {
         },
     }
 
-    const lexeme = try evaluate_lexeme(self, scratch, .text, lookahead_i);
+    const lexeme = try evaluateLexeme(self, scratch, .text, lookahead_i);
     const token = BlockToken{
         .token_type = .text,
         .lexeme = lexeme,
@@ -464,7 +464,7 @@ fn matchText(self: Self, scratch: Allocator) !TokenizeResult {
 }
 
 /// Constructs the lexeme given the token type and what we have scanned over.
-fn evaluate_lexeme(
+fn evaluateLexeme(
     self: Self,
     scratch: Allocator,
     token_type: BlockTokenType,
@@ -473,11 +473,12 @@ fn evaluate_lexeme(
     std.debug.assert(lookahead_i - self.i > 0);
 
     switch (token_type) {
-        .newline, .rule_star, .rule_underline, .rule_equals, .rule_dash,
-        .rule_dash_with_whitespace => {
+        .newline, .rule_star, .rule_underline, .rule_dash_with_whitespace => {
             return ""; // no lexeme
         },
-        .pound => {
+        // rule_dash and rule_equals need lexeme because parser needs to know
+        // length of rule.
+        .pound, .rule_dash, .rule_equals => {
             const lexeme = try scratch.dupe(
                 u8,
                 std.mem.trim(u8, self.line[self.i..lookahead_i], " \t"),
