@@ -447,7 +447,7 @@ fn evaluate_lexeme(
     std.debug.assert(lookahead_i - self.i > 0);
 
     switch (token_type) {
-        .newline, .rule_star, .rule_underline,
+        .newline, .rule_star, .rule_underline, .rule_equals, .rule_dash,
         .rule_dash_with_whitespace => {
             return ""; // no lexeme
         },

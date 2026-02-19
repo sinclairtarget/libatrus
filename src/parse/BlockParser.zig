@@ -107,6 +107,11 @@ pub fn parse(
             continue;
         }
 
+        if (try self.parseSetextHeading(alloc, scratch)) |heading| {
+            try children.append(heading);
+            continue;
+        }
+
         // Parse paragraph text
         if (try self.scanParagraphText(scratch)) |text_value| {
             try children.appendText(text_value);
@@ -210,6 +215,88 @@ fn parseATXHeading(
     node.* = .{
         .heading = .{
             .depth = @truncate(depth),
+            .children = children,
+        },
+    };
+    did_parse = true;
+    return node;
+}
+
+/// Parses a setext heading.
+///
+/// Will parse more than a setext heading if you let it... best to call this
+/// last, with low precedence.
+fn parseSetextHeading(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) !?*ast.Node {
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer {
+        logParseAttempt("parseSetextHeading()", did_parse);
+        if (!did_parse) {
+            self.backtrack(checkpoint_index);
+        }
+    }
+
+    var inner = Io.Writer.Allocating.init(scratch);
+
+    const State = enum { open, maybe_close };
+    fsm: switch (State.open) {
+        .open => {
+            const token = try self.peek(scratch) orelse break :fsm;
+            switch (token.token_type) {
+                .newline => {
+                    _ = try self.consume(scratch, &.{.newline});
+                    _ = try inner.writer.write("\n");
+                    continue :fsm .maybe_close;
+                },
+                else => |t| {
+                    _ = try self.consume(scratch, &.{t});
+                    _ = try inner.writer.write(token.lexeme);
+                    continue :fsm .open;
+                },
+            }
+        },
+        .maybe_close => {
+            const token = try self.peek(scratch) orelse break :fsm;
+            switch (token.token_type) {
+                .newline, .pound, .rule_star, .rule_underline,
+                .rule_dash_with_whitespace, .rule_dash, .rule_equals,
+                .backtick_fence, .tilde_fence => {
+                    // These tokens can interrupt a paragraph.
+                    break :fsm;
+                },
+                else => continue :fsm .open,
+            }
+        }
+    }
+
+    const depth: u8 = blk: {
+        if (try self.consume(scratch, &.{.rule_equals})) |_| {
+            break :blk 1;
+        } else if (try self.consume(scratch, &.{.rule_dash})) |_| {
+            break :blk 2;
+        } else {
+            return null;
+        }
+    };
+
+    const children: []*ast.Node = blk: {
+        const trimmed_inner = std.mem.trim(u8, inner.written(), " \t\n");
+        if (trimmed_inner.len == 0) {
+            break :blk &.{};
+        }
+        const text_node = try createTextNode(alloc, trimmed_inner);
+        break :blk try alloc.dupe(*ast.Node, &.{ text_node });
+    };
+    errdefer alloc.free(children);
+
+    const node = try alloc.create(ast.Node);
+    node.* = .{
+        .heading = .{
+            .depth = depth,
             .children = children,
         },
     };
@@ -822,7 +909,8 @@ fn scanParagraphText(self: *Self, scratch: Allocator) !?[]const u8 {
             const token = try self.peek(scratch) orelse break :fsm;
             switch (token.token_type) {
                 .newline, .pound, .rule_star, .rule_underline,
-                .rule_dash_with_whitespace, .backtick_fence => {
+                .rule_dash_with_whitespace, .rule_dash, .rule_equals,
+                .backtick_fence, .tilde_fence => {
                     // These tokens can interrupt a paragraph.
                     break :fsm;
                 },
@@ -991,8 +1079,12 @@ test "ATX heading and paragraphs" {
     try testing.expectEqual(.root, @as(ast.NodeType, root.*));
     try testing.expectEqual(4, root.root.children.len);
 
-    const heading = root.root.children[0];
-    try testing.expectEqual(.heading, @as(ast.NodeType, heading.*));
+    const h1 = root.root.children[0];
+    try testing.expectEqual(.heading, @as(ast.NodeType, h1.*));
+    try testing.expectEqual(1, h1.heading.depth);
+    const text_node = h1.heading.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
+    try testing.expectEqualStrings("This is a heading", text_node.text.value);
 
     const p1 = root.root.children[1];
     try testing.expectEqual(.paragraph, @as(ast.NodeType, p1.*));
@@ -1020,9 +1112,11 @@ test "ATX heading with leading whitespace" {
 
     const h1 = root.root.children[0];
     try testing.expectEqual(.heading, @as(ast.NodeType, h1.*));
+    try testing.expectEqual(3, h1.heading.depth);
 
-    const h2 = root.root.children[0];
+    const h2 = root.root.children[1];
     try testing.expectEqual(.heading, @as(ast.NodeType, h2.*));
+    try testing.expectEqual(1, h2.heading.depth);
 }
 
 test "ATX heading with trailing pounds" {
@@ -1037,6 +1131,84 @@ test "ATX heading with trailing pounds" {
 
     const h1 = root.root.children[0];
     try testing.expectEqual(.heading, @as(ast.NodeType, h1.*));
+    try testing.expectEqual(2, h1.heading.depth);
+    const text_node = h1.heading.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
+    try testing.expectEqualStrings("foo", text_node.text.value);
+}
+
+test "setext headings" {
+    const md =
+        \\foo
+        \\===
+        \\bar
+        \\---
+        \\bam
+        \\
+    ;
+
+    const root, var link_defs = try parseBlocks(md);
+    defer root.deinit(testing.allocator);
+    defer link_defs.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
+    try testing.expectEqual(3, root.root.children.len);
+
+    const h1 = root.root.children[0];
+    try testing.expectEqual(.heading, @as(ast.NodeType, h1.*));
+    try testing.expectEqual(1, h1.heading.depth);
+    {
+        const text_node = h1.heading.children[0];
+        try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
+        try testing.expectEqualStrings("foo", text_node.text.value);
+    }
+
+    const h2 = root.root.children[1];
+    try testing.expectEqual(.heading, @as(ast.NodeType, h2.*));
+    try testing.expectEqual(2, h2.heading.depth);
+    {
+        const text_node = h2.heading.children[0];
+        try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
+        try testing.expectEqualStrings("bar", text_node.text.value);
+    }
+
+    const p = root.root.children[2];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
+}
+
+test "indented setext headings" {
+    const md =
+        \\   foo *bar*
+        \\   ===
+        \\ bim _bam_
+        \\ ---
+        \\
+    ;
+
+    const root, var link_defs = try parseBlocks(md);
+    defer root.deinit(testing.allocator);
+    defer link_defs.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
+    try testing.expectEqual(2, root.root.children.len);
+
+    const h1 = root.root.children[0];
+    try testing.expectEqual(.heading, @as(ast.NodeType, h1.*));
+    try testing.expectEqual(1, h1.heading.depth);
+    {
+        const text_node = h1.heading.children[0];
+        try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
+        try testing.expectEqualStrings("foo *bar*", text_node.text.value);
+    }
+
+    const h2 = root.root.children[1];
+    try testing.expectEqual(.heading, @as(ast.NodeType, h2.*));
+    try testing.expectEqual(2, h2.heading.depth);
+    {
+        const text_node = h2.heading.children[0];
+        try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
+        try testing.expectEqualStrings("bim _bam_", text_node.text.value);
+    }
 }
 
 test "paragraph can contain punctuation" {
