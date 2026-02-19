@@ -226,37 +226,63 @@ fn matchRule(self: Self, scratch: Allocator) !?TokenizeResult {
     var lookahead_i = self.i;
 
     // Up to three leading spaces allowed
-    loop: for (0..util.safety.loop_bound) |_| {
+    loop: for (0..4) |_| {
         switch (self.line[lookahead_i]) {
             ' ' => {
                 lookahead_i += 1;
             },
             else => break :loop,
         }
-    } else @panic(util.safety.loop_bound_panic_msg);
+    }
     if (lookahead_i > 3) {
         return null;
     }
 
     const start_char = self.line[lookahead_i];
+    switch (start_char) {
+        '*', '_', '-', '=' => {},
+        else => return null,
+    }
+
     var num_chars: u32 = 0;
     var contains_whitespace = false;
-
-    while (self.line[lookahead_i] != '\n') {
-        if (self.line[lookahead_i] == start_char) {
-            num_chars += 1;
-        } else {
-            if (
-                self.line[lookahead_i] != ' '
-                and self.line[lookahead_i] != '\t'
+    const State = enum { normal, whitespace };
+    fsm: switch (State.normal) {
+        .normal => {
+            if (self.line[lookahead_i] == start_char) {
+                num_chars += 1;
+                lookahead_i += 1;
+                continue :fsm .normal;
+            } else if (self.line[lookahead_i] == '\n') {
+                break :fsm;
+            } else if (
+                self.line[lookahead_i] == ' '
+                or self.line[lookahead_i] == '\t'
             ) {
+                lookahead_i += 1;
+                continue :fsm .whitespace;
+            } else {
                 return null;
             }
-
-            contains_whitespace = true;
-        }
-
-        lookahead_i += 1;
+        },
+        .whitespace => {
+            if (self.line[lookahead_i] == start_char) {
+                contains_whitespace = true; // internal whitespace found
+                num_chars += 1;
+                lookahead_i += 1;
+                continue :fsm .normal;
+            } else if (self.line[lookahead_i] == '\n') {
+                break :fsm;
+            } else if (
+                self.line[lookahead_i] == ' '
+                or self.line[lookahead_i] == '\t'
+            ) {
+                lookahead_i += 1;
+                continue :fsm .whitespace;
+            } else {
+                return null;
+            }
+        },
     }
 
     if (start_char != '-' and start_char != '=' and num_chars < 3) {
@@ -280,7 +306,7 @@ fn matchRule(self: Self, scratch: Allocator) !?TokenizeResult {
                 break :blk .rule_equals;
             }
         },
-        else => return null,
+        else => unreachable,
     };
 
     const lexeme = try evaluate_lexeme(self, scratch, token_type, lookahead_i);
@@ -539,6 +565,12 @@ test "rule" {
         .rule_equals, .newline,
         .rule_dash_with_whitespace, .newline,
     }, md);
+}
+
+test "rule with trailing whitespace" {
+    const md = "   ---   \n";
+
+    try expectEqualTokens(&.{.rule_dash, .newline}, md);
 }
 
 test "indent" {
