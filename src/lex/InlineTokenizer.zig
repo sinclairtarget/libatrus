@@ -48,10 +48,13 @@ staged: ArrayList(InlineToken),
 const Self = @This();
 
 pub fn init(in: []const u8) Self {
+    // Leading or trailing whitespace is always trimmed from inline content.
+    const trimmed = std.mem.trim(u8, in, " \t");
+
     return .{
-        .in = in,
+        .in = trimmed,
         .i = 0,
-        .state = .whitespace, // Beginning of line treated as whitespace
+        .state = .whitespace, // Treat beginning of line as preceding whitespace
         .staged = .empty,
     };
 }
