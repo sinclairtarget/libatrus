@@ -458,13 +458,42 @@ fn parseFencedCode(
         &.{.backtick_fence, .tilde_fence},
     ) orelse return null;
 
-    const info = blk: {
-        _ = try self.consume(scratch, &.{.whitespace});
-        const text = try self.consume(scratch, &.{.text}) orelse break :blk "";
+    const info_lang = blk: {
+        // Whitespace allowed between fence and info string
         _ = try self.consume(scratch, &.{.whitespace});
 
-        if (std.mem.count(u8, text.lexeme, "`") > 0) {
-            break :blk "";
+        // First text token is treated as language
+        const text = try self.consume(scratch, &.{.text}) orelse break :blk "";
+        if (
+            open_fence.token_type == .backtick_fence
+            and std.mem.count(u8, text.lexeme, "`") > 0
+        ) {
+            return null;
+        }
+
+        // Following tokens are allowed, but ignored
+        while (try self.peek(scratch)) |next| {
+            switch (next.token_type) {
+                .text => {
+                    if (
+                        open_fence.token_type == .backtick_fence
+                        and std.mem.count(u8, next.lexeme, "`") > 0
+                    ) {
+                        return null;
+                    }
+                    _ = try self.consume(scratch, &.{.text});
+                },
+                .newline => break,
+                .backtick_fence => {
+                    if (open_fence.token_type == .backtick_fence) {
+                        return null;
+                    }
+                    _ = try self.consume(scratch, &.{.backtick_fence});
+                },
+                else => |t| {
+                    _ = try self.consume(scratch, &.{t});
+                },
+            }
         }
 
         break :blk text.lexeme;
@@ -472,15 +501,12 @@ fn parseFencedCode(
     _ = try self.consume(scratch, &.{.newline}) orelse return null;
 
     // Block content
-    var content = Io.Writer.Allocating.init(alloc);
-    errdefer content.deinit();
+    var content = Io.Writer.Allocating.init(scratch);
     loop: while (try self.peek(scratch)) |line_start_token| {
+        // First token in line
         switch (line_start_token.token_type) {
             .backtick_fence, .tilde_fence => |t| {
-                if (
-                    t == open_fence.token_type
-                    and line_start_token.lexeme.len >= open_fence.lexeme.len
-                ) {
+                if (try self.peekClosingFence(scratch, open_fence)) {
                     break :loop;
                 }
 
@@ -488,18 +514,8 @@ fn parseFencedCode(
                 _ = try content.writer.write(line_start_token.lexeme);
             },
             .whitespace => |t| {
-                if (try self.peekAhead(scratch, 2)) |next_token| {
-                    switch (next_token.token_type) {
-                        .backtick_fence, .tilde_fence => |fence_t| {
-                            if (
-                                fence_t == open_fence.token_type
-                                and next_token.lexeme.len >= open_fence.lexeme.len
-                            ) {
-                                break :loop;
-                            }
-                        },
-                        else => {},
-                    }
+                if (try self.peekClosingFence(scratch, open_fence)) {
+                    break :loop;
                 }
 
                 _ = try self.consume(scratch, &.{t});
@@ -530,6 +546,7 @@ fn parseFencedCode(
             }
         }
 
+        // Trailing tokens in line
         while (try self.peek(scratch)) |token| {
             switch (token.token_type) {
                 .newline => {
@@ -547,14 +564,21 @@ fn parseFencedCode(
     }
 
     // Closing code fence line
+    // Not needed if file ends
     _ = try self.consume(scratch, &.{.whitespace});
-    _ = try self.consume(scratch, &.{open_fence.token_type});
-    _ = try self.consume(scratch, &.{.whitespace});
-    _ = try self.consume(scratch, &.{.newline});
+    if (try self.consume(scratch, &.{open_fence.token_type})) |_| {
+        _ = try self.consume(scratch, &.{.whitespace});
+        _ = try self.consume(scratch, &.{.newline}) orelse return null;
+    }
 
-    const value = try content.toOwnedSlice();
+    // Myst tests require trailing newline to be trimmed for AST, even though it
+    // should be added back when rendered as HTML.
+    // https://spec.commonmark.org/0.30/#example-119
+    const trimmed = std.mem.trimEnd(u8, content.written(), "\n");
+
+    const value = try alloc.dupe(u8, trimmed);
     errdefer alloc.free(value);
-    const lang = try alloc.dupe(u8, info);
+    const lang = try alloc.dupe(u8, info_lang);
     errdefer alloc.free(lang);
 
     const node = try alloc.create(ast.Node);
@@ -566,6 +590,32 @@ fn parseFencedCode(
     };
     did_parse = true;
     return node;
+}
+
+/// Returns true if the next tokens can be parsed as the closing fence of a
+/// fenced code block.
+fn peekClosingFence(
+    self: *Self,
+    scratch: Allocator,
+    open_fence: BlockToken,
+) !bool {
+    const checkpoint_index = self.checkpoint();
+    defer self.backtrack(checkpoint_index);
+
+    _ = try self.consume(scratch, &.{.whitespace});
+
+    const close_fence = try self.consume(
+        scratch,
+        &.{open_fence.token_type},
+    ) orelse return false;
+    if (close_fence.lexeme.len < open_fence.lexeme.len) {
+        return false;
+    }
+
+    _ = try self.consume(scratch, &.{.whitespace});
+    _ = try self.consume(scratch, &.{.newline}) orelse return false;
+
+    return true;
 }
 
 /// https://spec.commonmark.org/0.30/#link-reference-definition
@@ -1307,7 +1357,7 @@ test "code fence with info string" {
     const code_node = root.root.children[0];
     try testing.expectEqual(.code, @as(ast.NodeType, code_node.*));
     try testing.expectEqualStrings(
-        "def foo():\n    pass\n",
+        "def foo():\n    pass",
         code_node.code.value,
     );
     try testing.expectEqualStrings("python", code_node.code.lang);
@@ -1333,7 +1383,7 @@ test "code fence with indentation" {
     const code_node = root.root.children[0];
     try testing.expectEqual(.code, @as(ast.NodeType, code_node.*));
     try testing.expectEqualStrings(
-        "def foo():\n    pass\n",
+        "def foo():\n    pass",
         code_node.code.value,
     );
     try testing.expectEqualStrings("python", code_node.code.lang);
@@ -1359,7 +1409,7 @@ test "tilde code fence" {
     const code_node = root.root.children[0];
     try testing.expectEqual(.code, @as(ast.NodeType, code_node.*));
     try testing.expectEqualStrings(
-        "def foo():\n    pass\n",
+        "def foo():\n    pass",
         code_node.code.value,
     );
     try testing.expectEqualStrings("python", code_node.code.lang);

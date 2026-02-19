@@ -58,10 +58,17 @@ fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!bool {
             try out.print("</strong>", .{});
         },
         .code => |n| {
-            // TODO: Lang?
-            try out.print("<pre><code>", .{});
+            if (n.lang.len > 0) {
+                try out.print("<pre><code class=\"language-{s}\">", .{n.lang});
+            } else {
+                try out.print("<pre><code>", .{});
+            }
+
             try printHTMLEscapedContent(out, n.value);
-            try out.print("\n", .{});
+            if (n.value.len > 0) {
+                try out.print("\n", .{});
+            }
+
             try out.print("</code></pre>", .{});
         },
         .@"break" => {
