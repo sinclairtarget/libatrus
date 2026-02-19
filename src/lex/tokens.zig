@@ -23,6 +23,8 @@ pub const BlockTokenType = enum {
     r_paren,
     single_quote,
     double_quote,
+    backtick_fence,              // three or more consecutive '`' symbols
+    tilde_fence,                 // three or more consecutive '~' symbols
 };
 
 /// Tokens recognized by the inline parser.

@@ -86,6 +86,10 @@ fn tokenize(self: *Self, scratch: Allocator) !BlockToken {
             break :blk result;
         }
 
+        if (try self.matchFence(scratch)) |result| {
+            break :blk result;
+        }
+
         if (try self.matchWhitespace(scratch)) |result| {
             break :blk result;
         }
@@ -290,6 +294,67 @@ fn matchRule(self: Self, scratch: Allocator) !?TokenizeResult {
     };
 }
 
+fn matchFence(self: Self, scratch: Allocator) !?TokenizeResult {
+    var lookahead_i = self.i;
+
+    const State = enum { start, backtick, tilde };
+    const token_type: BlockTokenType = fsm: switch (State.start) {
+        .start => {
+            switch (self.line[lookahead_i]) {
+                '`' => {
+                    lookahead_i += 1;
+                    continue :fsm .backtick;
+                },
+                '~' => {
+                    lookahead_i += 1;
+                    continue :fsm .tilde;
+                },
+                else => return null,
+            }
+        },
+        .backtick => {
+            switch (self.line[lookahead_i]) {
+                '`' => {
+                    lookahead_i += 1;
+                    continue :fsm .backtick;
+                },
+                else => {
+                    if (lookahead_i - self.i >= 3) {
+                        break :fsm .backtick_fence;
+                    } else {
+                        return null;
+                    }
+                },
+            }
+        },
+        .tilde => {
+            switch (self.line[lookahead_i]) {
+                '~' => {
+                    lookahead_i += 1;
+                    continue :fsm .tilde;
+                },
+                else => {
+                    if (lookahead_i - self.i >= 3) {
+                        break :fsm .tilde_fence;
+                    } else {
+                        return null;
+                    }
+                },
+            }
+        },
+    };
+
+    const lexeme = try evaluate_lexeme(self, scratch, token_type, lookahead_i);
+    const token = BlockToken{
+        .token_type = token_type,
+        .lexeme = lexeme,
+    };
+    return .{
+        .token = token,
+        .next_i = lookahead_i,
+    };
+}
+
 fn matchWhitespace(self: Self, scratch: Allocator) !?TokenizeResult {
     var lookahead_i = self.i;
     while (lookahead_i < self.line.len) {
@@ -382,7 +447,7 @@ fn evaluate_lexeme(
     std.debug.assert(lookahead_i - self.i > 0);
 
     switch (token_type) {
-        .newline, .indent, .rule_star, .rule_underline,
+        .newline, .rule_star, .rule_underline,
         .rule_dash_with_whitespace => {
             return ""; // no lexeme
         },
@@ -516,6 +581,38 @@ test "escaping" {
         .text,
         .whitespace,
         .text,
+        .newline,
+    }, md);
+}
+
+test "backtick code fence" {
+    const md = "  ``` \nfoo\nbar\n  ```  \n";
+    try expectEqualTokens(&.{
+        .whitespace,
+        .backtick_fence,
+        .whitespace,
+        .newline,
+        .text,
+        .newline,
+        .text,
+        .newline,
+        .whitespace,
+        .backtick_fence,
+        .whitespace,
+        .newline,
+    }, md);
+}
+
+test "tilde code fence" {
+    const md = "~~~~\nfoo\nbar\n~~~~\n";
+    try expectEqualTokens(&.{
+        .tilde_fence,
+        .newline,
+        .text,
+        .newline,
+        .text,
+        .newline,
+        .tilde_fence,
         .newline,
     }, md);
 }

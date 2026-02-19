@@ -74,8 +74,13 @@ pub fn parse(
             self.clear_consumed_tokens();
         }
 
-        if (try self.parseIndentedCode(alloc, scratch)) |indent_code| {
-            try children.append(indent_code);
+        if (try self.parseIndentedCode(alloc, scratch)) |code| {
+            try children.append(code);
+            continue;
+        }
+
+        if (try self.parseFencedCode(alloc, scratch)) |code| {
+            try children.append(code);
             continue;
         }
 
@@ -341,6 +346,141 @@ fn parseIndentedCode(
     return node;
 }
 
+/// https://spec.commonmark.org/0.30/#fenced-code-blocks
+fn parseFencedCode(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) !?*ast.Node {
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+    };
+
+    // Opening code fence line
+    const maybe_leading_whitespace = try self.consume(scratch, &.{.whitespace});
+    const indentation: usize =
+        if (maybe_leading_whitespace) |whitespace|
+            whitespace.lexeme.len
+        else
+            0;
+
+    const open_fence = try self.consume(
+        scratch,
+        &.{.backtick_fence, .tilde_fence},
+    ) orelse return null;
+
+    const info = blk: {
+        _ = try self.consume(scratch, &.{.whitespace});
+        const text = try self.consume(scratch, &.{.text}) orelse break :blk "";
+        _ = try self.consume(scratch, &.{.whitespace});
+
+        if (std.mem.count(u8, text.lexeme, "`") > 0) {
+            break :blk "";
+        }
+
+        break :blk text.lexeme;
+    };
+    _ = try self.consume(scratch, &.{.newline}) orelse return null;
+
+    // Block content
+    var content = Io.Writer.Allocating.init(alloc);
+    errdefer content.deinit();
+    loop: while (try self.peek(scratch)) |line_start_token| {
+        switch (line_start_token.token_type) {
+            .backtick_fence, .tilde_fence => |t| {
+                if (
+                    t == open_fence.token_type
+                    and line_start_token.lexeme.len >= open_fence.lexeme.len
+                ) {
+                    break :loop;
+                }
+
+                _ = try self.consume(scratch, &.{t});
+                _ = try content.writer.write(line_start_token.lexeme);
+            },
+            .whitespace => |t| {
+                if (try self.peekAhead(scratch, 2)) |next_token| {
+                    switch (next_token.token_type) {
+                        .backtick_fence, .tilde_fence => |fence_t| {
+                            if (
+                                fence_t == open_fence.token_type
+                                and next_token.lexeme.len >= open_fence.lexeme.len
+                            ) {
+                                break :loop;
+                            }
+                        },
+                        else => {},
+                    }
+                }
+
+                _ = try self.consume(scratch, &.{t});
+                const start = std.mem.min(
+                    usize,
+                    &.{indentation, line_start_token.lexeme.len},
+                );
+                const value = line_start_token.lexeme[start..];
+                _ = try content.writer.write(value);
+            },
+            .indent => {
+                _ = try self.consume(scratch, &.{.indent});
+                const start = std.mem.min(
+                    usize,
+                    &.{indentation, line_start_token.lexeme.len},
+                );
+                const value = line_start_token.lexeme[start..];
+                _ = try content.writer.write(value);
+            },
+            .newline => {
+                // TODO: all tokens should have lexemes
+                _ = try self.consume(scratch, &.{.newline});
+                _ = try content.writer.write("\n");
+            },
+            else => |t| {
+                _ = try self.consume(scratch, &.{t});
+                _ = try content.writer.write(line_start_token.lexeme);
+            }
+        }
+
+        while (try self.peek(scratch)) |token| {
+            switch (token.token_type) {
+                .newline => {
+                    // TODO: all tokens should have lexemes
+                    _ = try self.consume(scratch, &.{.newline});
+                    _ = try content.writer.write("\n");
+                    break;
+                },
+                else => {
+                    _ = try self.consume(scratch, &.{token.token_type});
+                    _ = try content.writer.write(token.lexeme);
+                },
+            }
+        }
+    }
+
+    // Closing code fence line
+    _ = try self.consume(scratch, &.{.whitespace});
+    _ = try self.consume(scratch, &.{open_fence.token_type});
+    _ = try self.consume(scratch, &.{.whitespace});
+    _ = try self.consume(scratch, &.{.newline});
+
+    const value = try content.toOwnedSlice();
+    errdefer alloc.free(value);
+    const lang = try alloc.dupe(u8, info);
+    errdefer alloc.free(lang);
+
+    const node = try alloc.create(ast.Node);
+    node.* = .{
+        .code = .{
+            .value = value,
+            .lang = lang,
+        },
+    };
+    did_parse = true;
+    return node;
+}
+
 /// https://spec.commonmark.org/0.30/#link-reference-definition
 fn parseLinkReferenceDefinition(
     self: *Self,
@@ -531,7 +671,8 @@ fn scanLinkDefDestination(self: *Self, scratch: Allocator) !?[]const u8 {
                 // None of these tokens should really be possible here, since
                 // they can only be matched at the beginning of a line.
                 .indent, .rule_star, .rule_underline, .rule_dash_with_whitespace,
-                .rule_dash, .rule_equals => return null,
+                .rule_dash, .rule_equals, .backtick_fence,
+                .tilde_fence => return null,
                 .text, .pound, .whitespace, .colon, .l_square_bracket,
                 .r_square_bracket, .l_paren, .r_paren, .double_quote,
                 .single_quote => |t| {
@@ -567,7 +708,8 @@ fn scanLinkDefDestination(self: *Self, scratch: Allocator) !?[]const u8 {
                 },
                 .newline, .whitespace => break,
                 .indent, .rule_star, .rule_underline, .rule_dash_with_whitespace,
-                .rule_dash, .rule_equals => return null,
+                .rule_dash, .rule_equals, .backtick_fence,
+                .tilde_fence => return null,
                 .text, .pound, .colon, .l_square_bracket, .r_square_bracket,
                 .l_angle_bracket, .r_angle_bracket, .double_quote,
                 .single_quote => |t| {
@@ -680,7 +822,7 @@ fn scanParagraphText(self: *Self, scratch: Allocator) !?[]const u8 {
             const token = try self.peek(scratch) orelse break :fsm;
             switch (token.token_type) {
                 .newline, .pound, .rule_star, .rule_underline,
-                .rule_dash_with_whitespace => {
+                .rule_dash_with_whitespace, .backtick_fence => {
                     // These tokens can interrupt a paragraph.
                     break :fsm;
                 },
@@ -950,4 +1092,103 @@ test "link reference definition" {
     try testing.expectEqualStrings("foo", definition.label);
     try testing.expectEqualStrings("/bar", definition.url);
     try testing.expectEqualStrings("baz bot", definition.title);
+}
+
+test "empty code fence" {
+    const md =
+        \\  ```
+        \\```
+        \\
+    ;
+
+    const root, var link_defs = try parseBlocks(md);
+    defer root.deinit(testing.allocator);
+    defer link_defs.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
+
+    try testing.expectEqual(1, root.root.children.len);
+
+    const code_node = root.root.children[0];
+    try testing.expectEqual(.code, @as(ast.NodeType, code_node.*));
+    try testing.expectEqualStrings("", code_node.code.value);
+    try testing.expectEqualStrings("", code_node.code.lang);
+}
+
+test "code fence with info string" {
+    const md =
+        \\````  python
+        \\def foo():
+        \\    pass
+        \\````
+        \\
+    ;
+
+    const root, var link_defs = try parseBlocks(md);
+    defer root.deinit(testing.allocator);
+    defer link_defs.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
+
+    try testing.expectEqual(1, root.root.children.len);
+
+    const code_node = root.root.children[0];
+    try testing.expectEqual(.code, @as(ast.NodeType, code_node.*));
+    try testing.expectEqualStrings(
+        "def foo():\n    pass\n",
+        code_node.code.value,
+    );
+    try testing.expectEqualStrings("python", code_node.code.lang);
+}
+
+test "code fence with indentation" {
+    const md =
+        \\  ```python
+        \\  def foo():
+        \\      pass
+        \\  ```
+        \\
+    ;
+
+    const root, var link_defs = try parseBlocks(md);
+    defer root.deinit(testing.allocator);
+    defer link_defs.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
+
+    try testing.expectEqual(1, root.root.children.len);
+
+    const code_node = root.root.children[0];
+    try testing.expectEqual(.code, @as(ast.NodeType, code_node.*));
+    try testing.expectEqualStrings(
+        "def foo():\n    pass\n",
+        code_node.code.value,
+    );
+    try testing.expectEqualStrings("python", code_node.code.lang);
+}
+
+test "tilde code fence" {
+    const md =
+        \\~~~python
+        \\def foo():
+        \\    pass
+        \\~~~
+        \\
+    ;
+
+    const root, var link_defs = try parseBlocks(md);
+    defer root.deinit(testing.allocator);
+    defer link_defs.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
+
+    try testing.expectEqual(1, root.root.children.len);
+
+    const code_node = root.root.children[0];
+    try testing.expectEqual(.code, @as(ast.NodeType, code_node.*));
+    try testing.expectEqualStrings(
+        "def foo():\n    pass\n",
+        code_node.code.value,
+    );
+    try testing.expectEqualStrings("python", code_node.code.lang);
 }
