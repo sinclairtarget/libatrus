@@ -13,7 +13,7 @@ const time = std.time;
 
 const LineReader = @import("lex/LineReader.zig");
 const BlockTokenizer = @import("lex/BlockTokenizer.zig");
-const BlockParser = @import("parse/BlockParser.zig");
+const LeafBlockParser = @import("parse/LeafBlockParser.zig");
 const InlineParser = @import("parse/InlineParser.zig");
 const transform = @import("transform/transform.zig");
 const json = @import("render/json.zig");
@@ -75,7 +75,7 @@ pub fn parse(
     var timer = time.Timer.start() catch { @panic("timer unsupported"); };
     logger.debug("Beginning block parsing...", .{});
     var block_tokenizer = BlockTokenizer.init(line_reader);
-    var block_parser = BlockParser.init(block_tokenizer.iterator());
+    var block_parser = LeafBlockParser.init(block_tokenizer.iterator());
     var root, var link_defs = try block_parser.parse(alloc, scratch);
     defer link_defs.deinit(alloc);
     logger.debug("Done in {D}.", .{timer.read()});
@@ -198,7 +198,7 @@ test {
     _ = @import("lex/LineReader.zig");
     _ = @import("lex/BlockTokenizer.zig");
     _ = @import("lex/InlineTokenizer.zig");
-    _ = @import("parse/BlockParser.zig");
+    _ = @import("parse/LeafBlockParser.zig");
     _ = @import("parse/escape.zig");
     _ = @import("parse/InlineParser.zig");
     _ = @import("cmark/cmark.zig");

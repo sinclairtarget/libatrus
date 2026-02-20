@@ -1,6 +1,6 @@
-//! Parser for the first parsing stage that handles block-level parsing.
+//! Parser for the first parsing stage that handles leaf block parsing.
 //!
-//! Parser pulls tokens from the tokenizer as needed. The tokens are stored in
+//! Parser pulls tokens from the iterator as needed. The tokens are stored in
 //! an array list. The array list is cleared of consumed tokens as each block is
 //! successfully parsed.
 //!
@@ -1082,9 +1082,9 @@ fn backtrack(self: *Self, checkpoint_index: usize) void {
 
 fn logParseAttempt(comptime name: []const u8, did_parse: bool) void {
     if (did_parse) {
-        logger.debug("BlockParser.{s} SUCCESS", .{name});
+        logger.debug("LeafBlockParser.{s} SUCCESS", .{name});
     } else {
-        logger.debug("BlockParser.{s} FAIL", .{name});
+        logger.debug("LeafBlockParser.{s} FAIL", .{name});
     }
 }
 
