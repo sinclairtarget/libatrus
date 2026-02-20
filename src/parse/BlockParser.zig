@@ -14,7 +14,6 @@ const Io = std.Io;
 const ArrayList = std.ArrayList;
 
 const ast = @import("ast.zig");
-const BlockTokenizer = @import("../lex/BlockTokenizer.zig");
 const BlockToken = @import("../lex/tokens.zig").BlockToken;
 const BlockTokenType = @import("../lex/tokens.zig").BlockTokenType;
 const cmark = @import("../cmark/cmark.zig");
@@ -23,6 +22,7 @@ const LinkDefMap = @import("link_defs.zig").LinkDefMap;
 const link_label_max_chars = @import("link_defs.zig").label_max_chars;
 const logger = @import("../logging.zig").logger;
 const NodeList = @import("NodeList.zig");
+const TokenIterator = @import("../lex/iterator.zig").TokenIterator;
 const util = @import("../util/util.zig");
 
 const Error = error{
@@ -31,15 +31,15 @@ const Error = error{
     WriteFailed,
 } || Allocator.Error;
 
-tokenizer: *BlockTokenizer,
+iterator: TokenIterator(BlockToken),
 tokens: ArrayList(BlockToken),
 token_index: usize,
 
 const Self = @This();
 
-pub fn init(tokenizer: *BlockTokenizer) Self {
+pub fn init(iterator: TokenIterator(BlockToken)) Self {
     return .{
-        .tokenizer = tokenizer,
+        .iterator = iterator,
         .tokens = .empty,
         .token_index = 0,
     };
@@ -1039,7 +1039,7 @@ fn peekAhead(
     const index = self.token_index + (count - 1);
     while (index >= self.tokens.items.len) {
         // Returning null here means end of token stream
-        const next = try self.tokenizer.next(scratch) orelse return null;
+        const next = try self.iterator.next(scratch) orelse return null;
         try self.tokens.append(scratch, next);
     }
 
@@ -1093,13 +1093,14 @@ fn logParseAttempt(comptime name: []const u8, did_parse: bool) void {
 // ----------------------------------------------------------------------------
 const testing = std.testing;
 const LineReader = @import("../lex/LineReader.zig");
+const BlockTokenizer = @import("../lex/BlockTokenizer.zig");
 
 fn parseBlocks(md: []const u8) !struct{*ast.Node, LinkDefMap} {
     var reader: Io.Reader = .fixed(md);
     var line_buf: [512]u8 = undefined;
     const line_reader: LineReader = .{ .in = &reader, .buf = &line_buf };
     var tokenizer = BlockTokenizer.init(line_reader);
-    var parser = Self.init(&tokenizer);
+    var parser = Self.init(tokenizer.iterator());
 
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();

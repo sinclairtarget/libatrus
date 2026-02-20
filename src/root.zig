@@ -75,7 +75,7 @@ pub fn parse(
     var timer = time.Timer.start() catch { @panic("timer unsupported"); };
     logger.debug("Beginning block parsing...", .{});
     var block_tokenizer = BlockTokenizer.init(line_reader);
-    var block_parser = BlockParser.init(&block_tokenizer);
+    var block_parser = BlockParser.init(block_tokenizer.iterator());
     var root, var link_defs = try block_parser.parse(alloc, scratch);
     defer link_defs.deinit(alloc);
     logger.debug("Done in {D}.", .{timer.read()});

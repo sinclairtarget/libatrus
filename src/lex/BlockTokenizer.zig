@@ -21,6 +21,7 @@ const ArrayList = std.ArrayList;
 const BlockToken = @import("tokens.zig").BlockToken;
 const BlockTokenType = @import("tokens.zig").BlockTokenType;
 const LineReader = @import("LineReader.zig");
+const TokenIterator = @import("iterator.zig").TokenIterator;
 const util = @import("../util/util.zig");
 
 pub const Error = error{
@@ -61,6 +62,18 @@ pub fn next(self: *Self, scratch: Allocator) Error!?BlockToken {
     }
 
     return try self.tokenize(scratch);
+}
+
+pub fn iterator(self: *Self) TokenIterator(BlockToken) {
+    return .{
+        .ctx = self,
+        .nextFn = &iteratorNext,
+    };
+}
+
+fn iteratorNext(ctx: *anyopaque, scratch: Allocator) Error!?BlockToken {
+    const self: *Self = @ptrCast(@alignCast(ctx));
+    return self.next(scratch);
 }
 
 /// Returns the next token starting at the current index.
