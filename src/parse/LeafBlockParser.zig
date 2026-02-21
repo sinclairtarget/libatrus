@@ -1,4 +1,4 @@
-//! Parser for the first parsing stage that handles leaf block parsing.
+//! Parser in the first parsing stage that handles leaf block parsing.
 //!
 //! Parser pulls tokens from the iterator as needed. The tokens are stored in
 //! an array list. The array list is cleared of consumed tokens as each block is
@@ -47,15 +47,16 @@ pub fn init(iterator: TokenIterator(BlockToken)) Self {
 
 /// Parse block nodes from the token stream.
 ///
-/// Returns the root node of the resulting AST. The AST may contain blocks of
+/// Returns a list of block nodes. The list may contain blocks containing
 /// unparsed inline text.
 ///
-/// Caller owns the returned AST.
+/// Caller owns the returned nodes.
 pub fn parse(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
-) Error!struct { *ast.Node, LinkDefMap } {
+    link_defs: *LinkDefMap,
+) Error![]*ast.Node {
     var children = NodeList.init(alloc, scratch, createParagraphNode);
     errdefer {
         for (children.items()) |child| {
@@ -63,9 +64,6 @@ pub fn parse(
         }
         children.deinit();
     }
-
-    var link_defs: LinkDefMap = .empty;
-    errdefer link_defs.deinit(alloc);
 
     for (0..util.safety.loop_bound) |_| { // could hit if we forget to consume tokens
         _ = try self.peek(scratch) orelse break;
@@ -128,13 +126,7 @@ pub fn parse(
         @panic("unable to parse block token");
     } else @panic(util.safety.loop_bound_panic_msg);
 
-    const node = try alloc.create(ast.Node);
-    node.* = .{
-        .root = .{
-            .children = try children.toOwnedSlice(),
-        },
-    };
-    return .{ node, link_defs };
+    return try children.toOwnedSlice();
 }
 
 // @     => pound inner? end?
@@ -1095,7 +1087,7 @@ const testing = std.testing;
 const LineReader = @import("../lex/LineReader.zig");
 const BlockTokenizer = @import("../lex/BlockTokenizer.zig");
 
-fn parseBlocks(md: []const u8) !struct{*ast.Node, LinkDefMap} {
+fn parseBlocks(md: []const u8, link_defs: *LinkDefMap) ![]*ast.Node {
     var reader: Io.Reader = .fixed(md);
     var line_buf: [512]u8 = undefined;
     const line_reader: LineReader = .{ .in = &reader, .buf = &line_buf };
@@ -1106,8 +1098,8 @@ fn parseBlocks(md: []const u8) !struct{*ast.Node, LinkDefMap} {
     defer arena.deinit();
     const scratch = arena.allocator();
 
-    const root, const link_defs = try parser.parse(testing.allocator, scratch);
-    return .{ root, link_defs };
+    const root = try parser.parse(testing.allocator, scratch, link_defs);
+    return root;
 }
 
 test "ATX heading and paragraphs" {
@@ -1123,27 +1115,33 @@ test "ATX heading and paragraphs" {
         \\
     ;
 
-    const root, var link_defs = try parseBlocks(md);
-    defer root.deinit(testing.allocator);
+    var link_defs: LinkDefMap = .empty;
     defer link_defs.deinit(testing.allocator);
 
-    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
-    try testing.expectEqual(4, root.root.children.len);
+    const nodes = try parseBlocks(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
 
-    const h1 = root.root.children[0];
+    try testing.expectEqual(4, nodes.len);
+
+    const h1 = nodes[0];
     try testing.expectEqual(.heading, @as(ast.NodeType, h1.*));
     try testing.expectEqual(1, h1.heading.depth);
     const text_node = h1.heading.children[0];
     try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
     try testing.expectEqualStrings("This is a heading", text_node.text.value);
 
-    const p1 = root.root.children[1];
+    const p1 = nodes[1];
     try testing.expectEqual(.paragraph, @as(ast.NodeType, p1.*));
 
-    const p2 = root.root.children[2];
+    const p2 = nodes[2];
     try testing.expectEqual(.paragraph, @as(ast.NodeType, p2.*));
 
-    const p3 = root.root.children[3];
+    const p3 = nodes[3];
     try testing.expectEqual(.paragraph, @as(ast.NodeType, p3.*));
 }
 
@@ -1154,18 +1152,24 @@ test "ATX heading with leading whitespace" {
         \\
     ;
 
-    const root, var link_defs = try parseBlocks(md);
-    defer root.deinit(testing.allocator);
+    var link_defs: LinkDefMap = .empty;
     defer link_defs.deinit(testing.allocator);
 
-    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
-    try testing.expectEqual(2, root.root.children.len);
+    const nodes = try parseBlocks(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
 
-    const h1 = root.root.children[0];
+    try testing.expectEqual(2, nodes.len);
+
+    const h1 = nodes[0];
     try testing.expectEqual(.heading, @as(ast.NodeType, h1.*));
     try testing.expectEqual(3, h1.heading.depth);
 
-    const h2 = root.root.children[1];
+    const h2 = nodes[1];
     try testing.expectEqual(.heading, @as(ast.NodeType, h2.*));
     try testing.expectEqual(1, h2.heading.depth);
 }
@@ -1173,14 +1177,20 @@ test "ATX heading with leading whitespace" {
 test "ATX heading with trailing pounds" {
     const md = "## foo ##    \n";
 
-    const root, var link_defs = try parseBlocks(md);
-    defer root.deinit(testing.allocator);
+    var link_defs: LinkDefMap = .empty;
     defer link_defs.deinit(testing.allocator);
 
-    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
-    try testing.expectEqual(1, root.root.children.len);
+    const nodes = try parseBlocks(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
 
-    const h1 = root.root.children[0];
+    try testing.expectEqual(1, nodes.len);
+
+    const h1 = nodes[0];
     try testing.expectEqual(.heading, @as(ast.NodeType, h1.*));
     try testing.expectEqual(2, h1.heading.depth);
     const text_node = h1.heading.children[0];
@@ -1198,14 +1208,20 @@ test "setext headings" {
         \\
     ;
 
-    const root, var link_defs = try parseBlocks(md);
-    defer root.deinit(testing.allocator);
+    var link_defs: LinkDefMap = .empty;
     defer link_defs.deinit(testing.allocator);
 
-    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
-    try testing.expectEqual(3, root.root.children.len);
+    const nodes = try parseBlocks(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
 
-    const h1 = root.root.children[0];
+    try testing.expectEqual(3, nodes.len);
+
+    const h1 = nodes[0];
     try testing.expectEqual(.heading, @as(ast.NodeType, h1.*));
     try testing.expectEqual(1, h1.heading.depth);
     {
@@ -1214,7 +1230,7 @@ test "setext headings" {
         try testing.expectEqualStrings("foo", text_node.text.value);
     }
 
-    const h2 = root.root.children[1];
+    const h2 = nodes[1];
     try testing.expectEqual(.heading, @as(ast.NodeType, h2.*));
     try testing.expectEqual(2, h2.heading.depth);
     {
@@ -1223,7 +1239,7 @@ test "setext headings" {
         try testing.expectEqualStrings("bar", text_node.text.value);
     }
 
-    const p = root.root.children[2];
+    const p = nodes[2];
     try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
 }
 
@@ -1236,14 +1252,20 @@ test "indented setext headings" {
         \\
     ;
 
-    const root, var link_defs = try parseBlocks(md);
-    defer root.deinit(testing.allocator);
+    var link_defs: LinkDefMap = .empty;
     defer link_defs.deinit(testing.allocator);
 
-    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
-    try testing.expectEqual(2, root.root.children.len);
+    const nodes = try parseBlocks(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
 
-    const h1 = root.root.children[0];
+    try testing.expectEqual(2, nodes.len);
+
+    const h1 = nodes[0];
     try testing.expectEqual(.heading, @as(ast.NodeType, h1.*));
     try testing.expectEqual(1, h1.heading.depth);
     {
@@ -1252,7 +1274,7 @@ test "indented setext headings" {
         try testing.expectEqualStrings("foo *bar*", text_node.text.value);
     }
 
-    const h2 = root.root.children[1];
+    const h2 = nodes[1];
     try testing.expectEqual(.heading, @as(ast.NodeType, h2.*));
     try testing.expectEqual(2, h2.heading.depth);
     {
@@ -1270,18 +1292,24 @@ test "paragraph can contain punctuation" {
         \\
     ;
 
-    const root, var link_defs = try parseBlocks(md);
-    defer root.deinit(testing.allocator);
+    var link_defs: LinkDefMap = .empty;
     defer link_defs.deinit(testing.allocator);
 
-    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
-    try testing.expectEqual(2, root.root.children.len);
+    const nodes = try parseBlocks(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
 
-    const h = root.root.children[0];
+    try testing.expectEqual(2, nodes.len);
+
+    const h = nodes[0];
     try testing.expectEqual(.heading, @as(ast.NodeType, h.*));
     try testing.expectEqual(1, h.heading.children.len);
 
-    const p = root.root.children[1];
+    const p = nodes[1];
     try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
 }
 
@@ -1293,19 +1321,24 @@ test "link reference definition" {
         \\
     ;
 
-    const root, var link_defs = try parseBlocks(md);
-    defer root.deinit(testing.allocator);
+    var link_defs: LinkDefMap = .empty;
     defer link_defs.deinit(testing.allocator);
 
-    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
+    const nodes = try parseBlocks(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
 
     // The link definition is added to the AST (even though it isn't rendered),
     // which is why we have two nodes.
-    try testing.expectEqual(2, root.root.children.len);
+    try testing.expectEqual(2, nodes.len);
 
     // Link should get parsed as a paragraph by the block parser; the inline
     // parser will later turn it into a link.
-    const p = root.root.children[0];
+    const p = nodes[0];
     try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
 
     try testing.expectEqual(1, link_defs.count());
@@ -1324,15 +1357,20 @@ test "empty code fence" {
         \\
     ;
 
-    const root, var link_defs = try parseBlocks(md);
-    defer root.deinit(testing.allocator);
+    var link_defs: LinkDefMap = .empty;
     defer link_defs.deinit(testing.allocator);
 
-    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
+    const nodes = try parseBlocks(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
 
-    try testing.expectEqual(1, root.root.children.len);
+    try testing.expectEqual(1, nodes.len);
 
-    const code_node = root.root.children[0];
+    const code_node = nodes[0];
     try testing.expectEqual(.code, @as(ast.NodeType, code_node.*));
     try testing.expectEqualStrings("", code_node.code.value);
     try testing.expectEqualStrings("", code_node.code.lang);
@@ -1347,15 +1385,20 @@ test "code fence with info string" {
         \\
     ;
 
-    const root, var link_defs = try parseBlocks(md);
-    defer root.deinit(testing.allocator);
+    var link_defs: LinkDefMap = .empty;
     defer link_defs.deinit(testing.allocator);
 
-    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
+    const nodes = try parseBlocks(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
 
-    try testing.expectEqual(1, root.root.children.len);
+    try testing.expectEqual(1, nodes.len);
 
-    const code_node = root.root.children[0];
+    const code_node = nodes[0];
     try testing.expectEqual(.code, @as(ast.NodeType, code_node.*));
     try testing.expectEqualStrings(
         "def foo():\n    pass",
@@ -1373,15 +1416,20 @@ test "code fence with indentation" {
         \\
     ;
 
-    const root, var link_defs = try parseBlocks(md);
-    defer root.deinit(testing.allocator);
+    var link_defs: LinkDefMap = .empty;
     defer link_defs.deinit(testing.allocator);
 
-    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
+    const nodes = try parseBlocks(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
 
-    try testing.expectEqual(1, root.root.children.len);
+    try testing.expectEqual(1, nodes.len);
 
-    const code_node = root.root.children[0];
+    const code_node = nodes[0];
     try testing.expectEqual(.code, @as(ast.NodeType, code_node.*));
     try testing.expectEqualStrings(
         "def foo():\n    pass",
@@ -1399,15 +1447,20 @@ test "tilde code fence" {
         \\
     ;
 
-    const root, var link_defs = try parseBlocks(md);
-    defer root.deinit(testing.allocator);
+    var link_defs: LinkDefMap = .empty;
     defer link_defs.deinit(testing.allocator);
 
-    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
+    const nodes = try parseBlocks(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
 
-    try testing.expectEqual(1, root.root.children.len);
+    try testing.expectEqual(1, nodes.len);
 
-    const code_node = root.root.children[0];
+    const code_node = nodes[0];
     try testing.expectEqual(.code, @as(ast.NodeType, code_node.*));
     try testing.expectEqualStrings(
         "def foo():\n    pass",
