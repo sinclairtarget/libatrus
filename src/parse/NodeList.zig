@@ -38,7 +38,7 @@ pub fn deinit(self: *Self) void {
 }
 
 pub fn len(self: *Self) usize {
-    if (self.running_text.written().len > 0) {
+    if (self.hasUnflushed()) {
         @panic("called len() on NodeList with unflushed text");
     }
 
@@ -47,6 +47,10 @@ pub fn len(self: *Self) usize {
 
 pub fn items(self: Self) []*ast.Node {
     return self.list.items;
+}
+
+pub fn hasUnflushed(self: *Self) bool {
+    return self.running_text.written().len > 0;
 }
 
 pub fn append(self: *Self, node: *ast.Node) !void {
@@ -74,7 +78,7 @@ pub fn toOwnedSlice(self: *Self) ![]*ast.Node {
 /// Appends a text node with any text content accumulated since we last appended
 /// a node.
 fn checkAppendCollected(self: *Self) !void {
-    if (self.running_text.written().len == 0) {
+    if (!self.hasUnflushed()) {
         return;
     }
 

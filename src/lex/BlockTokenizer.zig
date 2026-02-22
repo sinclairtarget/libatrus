@@ -64,11 +64,8 @@ pub fn next(self: *Self, scratch: Allocator) Error!?BlockToken {
     return try self.tokenize(scratch);
 }
 
-pub fn iterator(self: *Self) TokenIterator(BlockToken) {
-    return .{
-        .ctx = self,
-        .nextFn = &iteratorNext,
-    };
+pub fn iterator(self: *Self) TokenIterator(BlockTokenType) {
+    return TokenIterator(BlockTokenType).init(self, &iteratorNext);
 }
 
 fn iteratorNext(ctx: *anyopaque, scratch: Allocator) Error!?BlockToken {

@@ -2,11 +2,11 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Io = std.Io;
 
-/// Tokens recognized by the block parser.
+/// Tokens recognized by the block parsers.
 pub const BlockTokenType = enum {
     text,
-    indent,                     // indent at beginning of line
-    pound,                      // one or more consecutive '#' symbols
+    indent,                 // indent at beginning of line
+    pound,                 // one or more consecutive '#' symbols
     newline,
     whitespace,
     rule_star,
@@ -23,8 +23,9 @@ pub const BlockTokenType = enum {
     r_paren,
     single_quote,
     double_quote,
-    backtick_fence,              // three or more consecutive '`' symbols
-    tilde_fence,                 // three or more consecutive '~' symbols
+    backtick_fence,          // three or more consecutive '`' symbols
+    tilde_fence,             // three or more consecutive '~' symbols
+    close,                   // special token inserted by container block parser
 };
 
 /// Tokens recognized by the inline parser.
@@ -78,7 +79,7 @@ pub const DelimUnderscoreContext = struct {
     followed_by_punct: bool,
 };
 
-fn Token(comptime TokenType: type) type {
+pub fn Token(comptime TokenType: type) type {
     return struct {
         token_type: TokenType,
         lexeme: []const u8 = "",
