@@ -11,8 +11,8 @@ const ast = @import("ast.zig");
 /// Write node as alt text to writer.
 pub fn write(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
     switch (node.*) {
-        inline .root, .block, .paragraph, .emphasis, .strong, .heading,
-        .link => |n| {
+        inline .root, .block, .blockquote, .paragraph, .emphasis, .strong,
+        .heading, .link => |n| {
             for (n.children) |child| {
                 try write(out, child);
             }

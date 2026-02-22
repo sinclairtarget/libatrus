@@ -16,7 +16,7 @@ pub fn transform(
     link_defs: LinkDefMap,
 ) !*ast.Node {
     switch (original_node.*) {
-        inline .root, .block => |n| {
+        inline .root, .block, .blockquote => |n| {
             for (0..n.children.len) |i| {
                 n.children[i] = try transform(
                     alloc,

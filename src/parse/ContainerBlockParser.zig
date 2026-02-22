@@ -10,6 +10,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const ArrayList = std.ArrayList;
 const Io = std.Io;
 
 const ast = @import("ast.zig");
@@ -18,6 +19,7 @@ const BlockTokenizer = @import("../lex/BlockTokenizer.zig");
 const LeafBlockParser = @import("LeafBlockParser.zig");
 const LinkDefMap = @import("link_defs.zig").LinkDefMap;
 const TokenIterator = @import("../lex/iterator.zig").TokenIterator;
+const util = @import("../util/util.zig");
 
 const Error = error{
     LineTooLong,
@@ -25,13 +27,184 @@ const Error = error{
     WriteFailed,
 } || Allocator.Error;
 
+const LineState = enum {
+    start,
+    trailing,
+};
+
+const NextResult = struct {
+    token: ?BlockToken,
+    line_state: LineState,
+    container: ?OpenContainer = null,
+};
+
+const OpenContainer = union(enum) {
+    root: OpenRoot,
+    blockquote: OpenBlockquote,
+
+    pub fn add(
+        self: *OpenContainer,
+        scratch: Allocator,
+        child: *ast.Node,
+    ) !void {
+        switch (self.*) {
+            inline else => |*payload| {
+                try payload.children.append(scratch, child);
+            },
+        }
+    }
+
+    pub fn next(
+        self: *OpenContainer,
+        scratch: Allocator,
+        tokenizer: *BlockTokenizer,
+        line_state: LineState,
+    ) !NextResult {
+        switch (self.*) {
+            inline else => |*payload| {
+                return try payload.next(scratch, tokenizer, line_state);
+            },
+        }
+    }
+
+    pub fn close(self: OpenContainer, alloc: Allocator) !*ast.Node {
+        switch (self) {
+            inline else => |payload| return payload.close(alloc),
+        }
+    }
+};
+
+const OpenRoot = struct {
+    children: ArrayList(*ast.Node),
+
+    pub const empty: OpenRoot = .{ .children = .empty };
+
+    pub fn next(
+        self: *OpenRoot,
+        scratch: Allocator,
+        tokenizer: *BlockTokenizer,
+        line_state: LineState,
+    ) !NextResult {
+        _ = self;
+        const result: NextResult = fsm: switch (line_state) {
+            .start => {
+                const token = try tokenizer.next(scratch) orelse return .{
+                    .token = null,
+                    .line_state = .start,
+                };
+                switch (token.token_type) {
+                    .r_angle_bracket => {
+                        const next_token = try tokenizer.next(scratch);
+                        break :fsm .{
+                            .token = next_token,
+                            .line_state = .trailing,
+                            .container = .{
+                                .blockquote = OpenBlockquote.init(1),
+                            },
+                        };
+                    },
+                    .newline => {
+                        break :fsm .{
+                            .token = token,
+                            .line_state = .start,
+                        };
+                    },
+                    else => {
+                        break :fsm .{
+                            .token = token,
+                            .line_state = .trailing,
+                        };
+                    },
+                }
+            },
+            .trailing => {
+                const token = try tokenizer.next(scratch) orelse return .{
+                    .token = null,
+                    .line_state = .start,
+                };
+                switch (token.token_type) {
+                    .newline => {
+                        break :fsm .{
+                            .token = token,
+                            .line_state = .start,
+                        };
+                    },
+                    else => {
+                        break :fsm .{
+                            .token = token,
+                            .line_state = .trailing,
+                        };
+                    },
+                }
+            },
+        };
+
+        return result;
+    }
+
+    pub fn close(self: OpenRoot, alloc: Allocator) !*ast.Node {
+        const children = try alloc.dupe(*ast.Node, self.children.items);
+        errdefer alloc.free(children);
+
+        const node = try alloc.create(ast.Node);
+        node.* = .{
+            .root = .{
+                .children = children,
+            },
+        };
+        return node;
+    }
+};
+
+const OpenBlockquote = struct {
+    children: ArrayList(*ast.Node),
+    depth: usize,
+
+    pub fn init(depth: usize) OpenBlockquote {
+        return .{
+            .children = .empty,
+            .depth = depth,
+        };
+    }
+
+    pub fn next(
+        self: *OpenBlockquote,
+        scratch: Allocator,
+        tokenizer: *BlockTokenizer,
+        line_state: LineState,
+    ) !NextResult {
+        _ = self;
+        const token = try tokenizer.next(scratch);
+        return .{
+            .token = token,
+            .line_state = line_state,
+        };
+    }
+
+    pub fn close(self: OpenBlockquote, alloc: Allocator) !*ast.Node {
+        const children = try alloc.dupe(*ast.Node, self.children.items);
+        errdefer alloc.free(children);
+
+        const node = try alloc.create(ast.Node);
+        node.* = .{
+            .blockquote = .{
+                .children = children,
+            },
+        };
+        return node;
+    }
+};
+
 tokenizer: *BlockTokenizer,
+container_stack: ArrayList(OpenContainer),
+line_state: LineState = .start,
 
 const Self = @This();
 
 pub fn init(tokenizer: *BlockTokenizer) Self {
     return .{
         .tokenizer = tokenizer,
+        .container_stack = .empty,
     };
 }
 
@@ -46,22 +219,35 @@ pub fn parse(
     scratch: Allocator,
     link_defs: *LinkDefMap,
 ) Error!*ast.Node {
-    var leaf_parser = LeafBlockParser.init(self.iterator());
-    const nodes = try leaf_parser.parse(alloc, scratch, link_defs);
-    errdefer {
-        for (nodes) |node| {
-            node.deinit(alloc);
-        }
-        alloc.free(nodes);
-    }
+    try self.container_stack.append(scratch, .{
+        .root = OpenRoot.empty,
+    });
 
-    const root = try alloc.create(ast.Node);
-    root.* = .{
-        .root = .{
-            .children = nodes,
-        },
-    };
-    return root;
+    for (0..util.safety.loop_bound) |_| {
+        var leaf_parser = LeafBlockParser.init(self.iterator());
+        const nodes = try leaf_parser.parse(alloc, scratch, link_defs);
+        errdefer {
+            for (nodes) |node| {
+                node.deinit(alloc);
+            }
+        }
+        defer alloc.free(nodes);
+
+        for (nodes) |node| {
+            try self.top().add(scratch, node);
+        }
+
+        if (self.container_stack.items.len > 1) {
+            const popped = self.container_stack.pop() orelse unreachable;
+            const node = try popped.close(alloc);
+            errdefer node.deinit(alloc);
+            try self.top().add(scratch, node);
+        } else {
+            break;
+        }
+    } else @panic(util.safety.loop_bound_panic_msg);
+
+    return try self.top().close(alloc);
 }
 
 fn iterator(self: *Self) TokenIterator(BlockToken) {
@@ -71,9 +257,29 @@ fn iterator(self: *Self) TokenIterator(BlockToken) {
     };
 }
 
+/// Called by LeafBlockParser to get next token.
 fn next(ctx: *anyopaque, scratch: Allocator) Error!?BlockToken {
     const self: *Self = @ptrCast(@alignCast(ctx));
-    return try self.tokenizer.next(scratch);
+
+    const result = try self.top().next(
+        scratch,
+        self.tokenizer,
+        self.line_state,
+    );
+
+    self.line_state = result.line_state;
+    if (result.container) |container| {
+        try self.container_stack.append(scratch, container);
+    }
+
+    return result.token;
+}
+
+fn top(self: *Self) *OpenContainer {
+    std.debug.assert(self.container_stack.items.len > 0);
+    return &self.container_stack.items[
+        self.container_stack.items.len - 1
+    ];
 }
 
 // ----------------------------------------------------------------------------
@@ -126,14 +332,35 @@ test "simple paragraph" {
     try testing.expectEqual(.paragraph, @as(ast.NodeType, p1.*));
 }
 
-// test "blockquote" {
-//     const md =
-//         \\> This is a paragraph. It goes on for
-//         \\> multiple lines.
-//         \\
-//     ;
-// }
-//
+test "blockquote" {
+    const md =
+        \\>This is a paragraph. It goes on for
+        \\>multiple lines.
+        \\
+    ;
+
+    const root = try parseBlocks(md);
+    defer root.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
+    try testing.expectEqual(1, root.root.children.len);
+
+    const bq = root.root.children[0];
+    try testing.expectEqual(.blockquote, @as(ast.NodeType, bq.*));
+    try testing.expectEqual(1, bq.blockquote.children.len);
+
+    const p = bq.blockquote.children[0];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
+    try testing.expectEqual(1, p.paragraph.children.len);
+
+    const txt = p.paragraph.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, txt.*));
+    try testing.expectEqualStrings(
+        "This is a paragraph. It goes on for multiple lines.",
+        txt.text.value,
+    );
+}
+
 // test "double blockquote" {
 //     const md =
 //         \\>> This is a paragraph. It goes on for

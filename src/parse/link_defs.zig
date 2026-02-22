@@ -111,7 +111,7 @@ fn fillLinkDefs(
     map: *LinkDefMap,
 ) Error!void {
     switch (root.*) {
-        inline .root, .block => |n| {
+        inline .root, .block, .blockquote => |n| {
             for (n.children) |node| {
                 try fillLinkDefs(alloc, node, map);
             }

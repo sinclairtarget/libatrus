@@ -20,6 +20,7 @@ pub const NodeType = enum {
     link,
     definition,     // link definition
     image,
+    blockquote,
 };
 
 pub const Node = union(NodeType) {
@@ -37,6 +38,7 @@ pub const Node = union(NodeType) {
     link: Link,
     definition: LinkDefinition,
     image: Image,
+    blockquote: Container,
 
     const Self = @This();
 
