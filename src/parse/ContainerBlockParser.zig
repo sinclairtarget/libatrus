@@ -5,8 +5,10 @@
 //! * Instead, it sets up a token stream for a LeafBlockParser.
 //! * As the LeafBlockParser advances, this parser intercepts tokens that are
 //!   meaningful for container-level parsing.
-//! * The state of this parser is adjusted so that the parsed leaf blocks are
-//!   added to the appropriate container.
+//! * This parser maintains a stack of open container blocks, adding parsed
+//!   leaf nodes to the container topmost on the stack.
+//!
+//! This is a predictive parser with no backtracking.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

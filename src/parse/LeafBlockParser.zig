@@ -1,4 +1,4 @@
-//! Parser that handles leaf blocks.
+//! Parser in the first parsing stage that handles leaf blocks.
 //!
 //! Parser pulls tokens from the iterator as needed. The tokens are stored in
 //! an array list. The array list is cleared of consumed tokens as each block is
@@ -10,7 +10,7 @@
 //! special "CLOSE" tokens. A CLOSE token indicates that the parser should not
 //! parse any more blocks. This is similar to but different from the actual end
 //! of the token stream: Whereas the end of the stream obviously means that the
-//! parser can't parse ANYTHING more, the CLOSE token allows the parser to keep
+//! parser can't parse anything more, the CLOSE token allows the parser to keep
 //! parsing an open paragraph but nothing else. (CLOSE tokens are used to
 //! implement lazy continuation lines.)
 
