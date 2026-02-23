@@ -119,9 +119,8 @@ const OpenRoot = struct {
         };
         switch (token.token_type) {
             .r_angle_bracket => {
-                const next_token = try tokenizer.next(scratch);
                 return .{
-                    .token = next_token,
+                    .token = null,
                     .line_state = .trailing,
                     .container = .{
                         .blockquote = OpenBlockquote.init(1),
@@ -253,6 +252,9 @@ pub fn parse(
     var it = self.iterator();
     for (0..util.safety.loop_bound) |_| {
         var leaf_parser: LeafBlockParser = .{ .it = &it };
+        const original_top = self.top();
+
+        // Internal iterator logic runs, potentially pushing onto stack
         const nodes = try leaf_parser.parse(alloc, scratch, link_defs);
         errdefer {
             for (nodes) |node| {
@@ -262,9 +264,17 @@ pub fn parse(
         defer alloc.free(nodes);
 
         for (nodes) |node| {
-            try self.top().add(scratch, node);
+            try original_top.add(scratch, node);
         }
 
+        if (self.top() != original_top) {
+            // We pushed a new container
+            std.debug.assert(it.is_exhausted);
+            it = self.iterator(); // reset iterator
+            continue;
+        }
+
+        // Pop top container, unless we're at root
         if (self.container_stack.items.len > 1) {
             const popped = self.container_stack.pop() orelse unreachable;
             const node = try popped.toNode(alloc);
@@ -279,12 +289,28 @@ pub fn parse(
 }
 
 fn iterator(self: *Self) TokenIterator(BlockTokenType) {
-    return TokenIterator(BlockTokenType).init(self, &next);
+    return TokenIterator(BlockTokenType).init(self, &nextIterator);
 }
 
+const debug_stream = false;
+
 /// Called by LeafBlockParser to get next token.
-fn next(ctx: *anyopaque, scratch: Allocator) Error!?BlockToken {
+fn nextIterator(ctx: *anyopaque, scratch: Allocator) Error!?BlockToken {
     const self: *Self = @ptrCast(@alignCast(ctx));
+
+    const maybe_token = try self.next(scratch);
+    if (debug_stream) {
+        if (maybe_token) |token| {
+            std.debug.print("{f}\n", .{token});
+        } else {
+            std.debug.print("NULL\n", .{});
+        }
+    }
+
+    return maybe_token;
+}
+
+fn next(self: *Self, scratch: Allocator) Error!?BlockToken {
     if (self.saved_next_token) |token| {
         self.saved_next_token = null;
         return token;
@@ -298,15 +324,17 @@ fn next(ctx: *anyopaque, scratch: Allocator) Error!?BlockToken {
 
     self.line_state = result.line_state;
     if (result.container) |container| {
+        std.debug.assert(!result.send_close);
+        std.debug.assert(result.token == null);
         try self.container_stack.append(scratch, container);
     }
 
     if (result.send_close) {
         self.saved_next_token = result.token;
         return .{ .token_type = .close };
-    } else {
-        return result.token;
     }
+
+    return result.token;
 }
 
 fn top(self: *Self) *OpenContainer {
@@ -450,37 +478,37 @@ test "blockquote lazy continuation" {
     try testing.expectEqual(.heading, @as(ast.NodeType, h.*));
 }
 
-//test "blockquote after paragraph" {
-//    const md =
-//        \\This is a paragraph outside the blockquote.
-//        \\>This is a paragraph inside the blockquote.
-//        \\
-//    ;
-//
-//    const root = try parseBlocks(md);
-//    defer root.deinit(testing.allocator);
-//
-//    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
-//    try testing.expectEqual(2, root.root.children.len);
-//
-//    const p = root.root.children[0];
-//    try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
-//
-//    const bq = root.root.children[1];
-//    try testing.expectEqual(.blockquote, @as(ast.NodeType, bq.*));
-//    try testing.expectEqual(1, bq.blockquote.children.len);
-//    {
-//        const bq_p = bq.blockquote.children[0];
-//        try testing.expectEqual(.paragraph, @as(ast.NodeType, bq_p.*));
-//
-//        const bq_txt = bq_p.paragraph.children[0];
-//        try testing.expectEqual(.text, @as(ast.NodeType, bq_txt.*));
-//        try testing.expectEqualStrings(
-//            "This is a paragraph inside the blockquote.",
-//            bq_txt.text.value,
-//        );
-//    }
-//}
+test "blockquote after paragraph" {
+    const md =
+        \\This is a paragraph outside the blockquote.
+        \\>This is a paragraph inside the blockquote.
+        \\
+    ;
+
+    const root = try parseBlocks(md);
+    defer root.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
+    try testing.expectEqual(2, root.root.children.len);
+
+    const p = root.root.children[0];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
+
+    const bq = root.root.children[1];
+    try testing.expectEqual(.blockquote, @as(ast.NodeType, bq.*));
+    try testing.expectEqual(1, bq.blockquote.children.len);
+    {
+        const bq_p = bq.blockquote.children[0];
+        try testing.expectEqual(.paragraph, @as(ast.NodeType, bq_p.*));
+
+        const bq_txt = bq_p.paragraph.children[0];
+        try testing.expectEqual(.text, @as(ast.NodeType, bq_txt.*));
+        try testing.expectEqualStrings(
+            "This is a paragraph inside the blockquote.",
+            bq_txt.text.value,
+        );
+    }
+}
 
 // test "double blockquote" {
 //     const md =

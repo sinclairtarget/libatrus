@@ -19,6 +19,7 @@ pub fn TokenIterator(comptime TokenType: type) type {
         nextFn: *const fn (*anyopaque, Allocator) Error!?Token(TokenType),
         tokens: ArrayList(Token(TokenType)),
         token_index: usize,
+        is_exhausted: bool = false,
 
         const Self = @This();
 
@@ -46,10 +47,15 @@ pub fn TokenIterator(comptime TokenType: type) type {
         ) !?Token(TokenType) {
             const index = self.token_index + (count - 1);
             while (index >= self.tokens.items.len) {
-                const next = try self.nextFn(
-                    self.ctx,
-                    scratch,
-                ) orelse return null; // end of stream
+                if (self.is_exhausted) {
+                    return null;
+                }
+
+                const next = try self.nextFn(self.ctx, scratch) orelse {
+                    // end of stream
+                    self.is_exhausted = true;
+                    return null;
+                };
                 try self.tokens.append(scratch, next);
             }
 
@@ -94,6 +100,7 @@ pub fn TokenIterator(comptime TokenType: type) type {
         }
 
         pub fn backtrack(self: *Self, checkpoint_index: usize) void {
+            std.debug.assert(checkpoint_index <= self.token_index);
             self.token_index = checkpoint_index;
         }
     };
