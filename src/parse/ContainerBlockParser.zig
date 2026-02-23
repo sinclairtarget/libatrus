@@ -223,7 +223,7 @@ const OpenBlockquote = struct {
 tokenizer: *BlockTokenizer,
 container_stack: ArrayList(OpenContainer),
 line_state: LineState,
-saved_next_token: ?BlockToken,
+staged_token: ?BlockToken,
 
 const Self = @This();
 
@@ -232,7 +232,7 @@ pub fn init(tokenizer: *BlockTokenizer) Self {
         .tokenizer = tokenizer,
         .container_stack = .empty,
         .line_state = .start,
-        .saved_next_token = null,
+        .staged_token = null,
     };
 }
 
@@ -313,8 +313,8 @@ fn nextIterator(ctx: *anyopaque, scratch: Allocator) Error!?BlockToken {
 }
 
 fn next(self: *Self, scratch: Allocator) Error!?BlockToken {
-    if (self.saved_next_token) |token| {
-        self.saved_next_token = null;
+    if (self.staged_token) |token| {
+        self.staged_token = null;
         return token;
     }
 
@@ -332,7 +332,7 @@ fn next(self: *Self, scratch: Allocator) Error!?BlockToken {
     }
 
     if (result.send_close) {
-        self.saved_next_token = result.token;
+        self.staged_token = result.token;
         return .{ .token_type = .close };
     }
 
