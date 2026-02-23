@@ -23,6 +23,7 @@ const html = @import("render/html.zig");
 const logger = @import("logging.zig").logger;
 
 // Maximum allowed length for a single line in a Markdown document.
+// TODO: Do we need this?
 const max_line_len = 4096; // bytes
 
 // The below `pub` variable and function declarations define the public
