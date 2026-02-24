@@ -16,10 +16,23 @@ a C API.
 
 ## Roadmap
 Atrus can currently parse the following Markdown document:
-```
+
+~~~md
 # Heading
-This is a paragraph.
+This is a paragraph, containing `code`, *emphasis*, and **strong** text.
+
+```python This is a code block.
+def foo():
+   pass
 ```
+
+> This is a blockquote.
+
+## Subheading
+Checkout my cool [link][google].
+
+[google]: https://google.com
+~~~
 
 This is exciting!
 
@@ -29,7 +42,8 @@ Much more work remains:
 - [x] Set up basic build
 - [x] Set up MyST spec test suite
 - [x] Get basic C API working
-- [ ] ...actually implement a spec-compliant parser
-- [ ] Implement HTML renderer
+- [ ] Finish implementing commonmark spec
+- [ ] Finish implementing MyST extensions
 - [ ] Implement JSON AST parser
 - [ ] Add benchmarks
+- [ ] Expose AST via C API
