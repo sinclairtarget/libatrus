@@ -18,7 +18,6 @@ const Io = std.Io;
 const ast = @import("ast.zig");
 const BlockToken = @import("../lex/tokens.zig").BlockToken;
 const BlockTokenType = @import("../lex/tokens.zig").BlockTokenType;
-const BlockTokenizer = @import("../lex/BlockTokenizer.zig");
 const LeafBlockParser = @import("LeafBlockParser.zig");
 const LinkDefMap = @import("link_defs.zig").LinkDefMap;
 const TokenIterator = @import("../lex/iterator.zig").TokenIterator;
@@ -62,15 +61,16 @@ const OpenContainer = union(enum) {
     pub fn next(
         self: *OpenContainer,
         scratch: Allocator,
-        tokenizer: *BlockTokenizer,
+        it: *TokenIterator(BlockTokenType),
         line_state: LineState,
     ) !NextResult {
         // This case is the same for all containers, so handle it here
         if (line_state == .trailing) {
-            const token = try tokenizer.next(scratch) orelse return .{
+            const token = try it.peek(scratch) orelse return .{
                 .token = null,
                 .line_state = .start,
             };
+            _ = try it.consume(scratch, &.{token.token_type});
 
             switch (token.token_type) {
                 .newline => {
@@ -90,7 +90,7 @@ const OpenContainer = union(enum) {
 
         switch (self.*) {
             inline else => |*payload| {
-                return try payload.next(scratch, tokenizer);
+                return try payload.next(scratch, it);
             },
         }
     }
@@ -111,11 +111,11 @@ const OpenRoot = struct {
     pub fn next(
         self: *OpenRoot,
         scratch: Allocator,
-        tokenizer: *BlockTokenizer,
+        it: *TokenIterator(BlockTokenType),
     ) !NextResult {
         _ = self;
 
-        const token = try tokenizer.next(scratch) orelse return .{
+        const token = try it.peek(scratch) orelse return .{
             .token = null,
             .line_state = .start,
         };
@@ -123,19 +123,40 @@ const OpenRoot = struct {
             .r_angle_bracket => {
                 return .{
                     .token = null,
-                    .line_state = .trailing,
+                    .line_state = .start,
                     .container = .{
                         .blockquote = OpenBlockquote.init(1),
                     },
                 };
             },
             .newline => {
+                _ = try it.consume(scratch, &.{.newline});
                 return .{
                     .token = token,
                     .line_state = .start,
                 };
             },
+            .whitespace => {
+                if (try it.peekAhead(scratch, 2)) |next_token| {
+                    if (next_token.token_type == .r_angle_bracket) {
+                        return .{
+                            .token = null,
+                            .line_state = .start,
+                            .container = .{
+                                .blockquote = OpenBlockquote.init(1),
+                            },
+                        };
+                    }
+                }
+
+                _ = try it.consume(scratch, &.{.whitespace});
+                return .{
+                    .token = token,
+                    .line_state = .trailing,
+                };
+            },
             else => {
+                _ = try it.consume(scratch, &.{token.token_type});
                 return .{
                     .token = token,
                     .line_state = .trailing,
@@ -173,30 +194,65 @@ const OpenBlockquote = struct {
     pub fn next(
         self: *OpenBlockquote,
         scratch: Allocator,
-        tokenizer: *BlockTokenizer,
+        it: *TokenIterator(BlockTokenType),
     ) !NextResult {
         _ = self;
 
-        const token = try tokenizer.next(scratch) orelse return .{
+        const eof: NextResult = .{
             .token = null,
             .line_state = .start,
         };
+
+        const token = try it.peek(scratch) orelse return eof;
         switch (token.token_type) {
             .r_angle_bracket => {
-                const next_token = try tokenizer.next(scratch);
+                // Skip it and up to one following whitespace
+                _ = try it.consume(scratch, &.{.r_angle_bracket});
+                _ = try it.consume(scratch, &.{.whitespace});
+
+                const next_token = try it.peek(scratch) orelse return eof;
+                _ = try it.consume(scratch, &.{next_token.token_type});
                 return .{
                     .token = next_token,
                     .line_state = .trailing,
                 };
             },
             .newline => {
+                // Blank line
+                _ = try it.consume(scratch, &.{.newline});
                 return .{
                     .token = token,
                     .send_close = true,
                     .line_state = .start,
                 };
             },
+            .whitespace => {
+                // Leading whitespace allowed
+                if (try it.peekAhead(scratch, 2)) |next_token| {
+                    if (next_token.token_type == .r_angle_bracket) {
+                        _ = try it.consume(scratch, &.{.whitespace});
+                        _ = try it.consume(scratch, &.{.r_angle_bracket});
+                        _ = try it.consume(scratch, &.{.whitespace});
+                    }
+
+                    const nnext_token = try it.peek(scratch) orelse return eof;
+                    _ = try it.consume(scratch, &.{nnext_token.token_type});
+                    return .{
+                        .token = nnext_token,
+                        .line_state = .trailing,
+                    };
+                }
+
+                _ = try it.consume(scratch, &.{.whitespace});
+                return .{
+                    .token = token,
+                    .send_close = true,
+                    .line_state = .trailing,
+                };
+            },
             else => {
+                // Line starting without a leading >
+                _ = try it.consume(scratch, &.{token.token_type});
                 return .{
                     .token = token,
                     .send_close = true,
@@ -220,19 +276,19 @@ const OpenBlockquote = struct {
     }
 };
 
-tokenizer: *BlockTokenizer,
+it: *TokenIterator(BlockTokenType), // Iterator that the container block parser consumes
 container_stack: ArrayList(OpenContainer),
 line_state: LineState,
-staged_token: ?BlockToken,
+maybe_staged_token: ?BlockToken,
 
 const Self = @This();
 
-pub fn init(tokenizer: *BlockTokenizer) Self {
+pub fn init(it: *TokenIterator(BlockTokenType)) Self {
     return .{
-        .tokenizer = tokenizer,
+        .it = it,
         .container_stack = .empty,
         .line_state = .start,
-        .staged_token = null,
+        .maybe_staged_token = null
     };
 }
 
@@ -251,9 +307,9 @@ pub fn parse(
         .root = OpenRoot.empty,
     });
 
-    var it = self.iterator();
+    var leaf_it = self.iterator();
     for (0..util.safety.loop_bound) |_| {
-        var leaf_parser: LeafBlockParser = .{ .it = &it };
+        var leaf_parser: LeafBlockParser = .{ .it = &leaf_it };
         const original_top = self.top();
 
         // Internal iterator logic runs, potentially pushing onto stack
@@ -271,8 +327,8 @@ pub fn parse(
 
         if (self.top() != original_top) {
             // We pushed a new container
-            std.debug.assert(it.is_exhausted);
-            it = self.iterator(); // reset iterator
+            std.debug.assert(leaf_it.is_exhausted);
+            leaf_it = self.iterator(); // reset iterator
             continue;
         }
 
@@ -290,10 +346,12 @@ pub fn parse(
     return try self.top().toNode(alloc);
 }
 
+/// Iterator for the leaf block parser to consume
 fn iterator(self: *Self) TokenIterator(BlockTokenType) {
     return TokenIterator(BlockTokenType).init(self, &nextIterator);
 }
 
+// Set to true to print tokens sent to leaf block parser.
 const debug_stream = false;
 
 /// Called by LeafBlockParser to get next token.
@@ -313,26 +371,24 @@ fn nextIterator(ctx: *anyopaque, scratch: Allocator) Error!?BlockToken {
 }
 
 fn next(self: *Self, scratch: Allocator) Error!?BlockToken {
-    if (self.staged_token) |token| {
-        self.staged_token = null;
-        return token;
+    if (self.maybe_staged_token) |staged_token| {
+        self.maybe_staged_token = null;
+        return staged_token;
     }
 
-    const result = try self.top().next(
-        scratch,
-        self.tokenizer,
-        self.line_state,
-    );
+    const result = try self.top().next(scratch, self.it, self.line_state);
 
     self.line_state = result.line_state;
     if (result.container) |container| {
-        std.debug.assert(!result.send_close);
+        // Pushing a new container should coincide with ending the token stream
         std.debug.assert(result.token == null);
+        std.debug.assert(!result.send_close);
+
         try self.container_stack.append(scratch, container);
     }
 
     if (result.send_close) {
-        self.staged_token = result.token;
+        self.maybe_staged_token = result.token;
         return .{ .token_type = .close };
     }
 
@@ -351,13 +407,15 @@ fn top(self: *Self) *OpenContainer {
 // ----------------------------------------------------------------------------
 const testing = std.testing;
 const LineReader = @import("../lex/LineReader.zig");
+const BlockTokenizer = @import("../lex/BlockTokenizer.zig");
 
 fn parseBlocks(md: []const u8) !*ast.Node {
     var reader: Io.Reader = .fixed(md);
     var line_buf: [512]u8 = undefined;
     const line_reader: LineReader = .{ .in = &reader, .buf = &line_buf };
     var tokenizer = BlockTokenizer.init(line_reader);
-    var parser = Self.init(&tokenizer);
+    var it = tokenizer.iterator();
+    var parser = Self.init(&it);
 
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
@@ -509,6 +567,79 @@ test "blockquote after paragraph" {
             "This is a paragraph inside the blockquote.",
             bq_txt.text.value,
         );
+    }
+}
+
+test "whitespace blockquote" {
+    const md =
+        \\> This is a paragraph inside the blockquote.
+        \\>So is this line.
+        \\ > And this line.
+        \\
+    ;
+
+    const root = try parseBlocks(md);
+    defer root.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
+    try testing.expectEqual(1, root.root.children.len);
+
+    const bq = root.root.children[0];
+    try testing.expectEqual(.blockquote, @as(ast.NodeType, bq.*));
+    try testing.expectEqual(1, bq.blockquote.children.len);
+    {
+        const bq_p = bq.blockquote.children[0];
+        try testing.expectEqual(.paragraph, @as(ast.NodeType, bq_p.*));
+
+        const bq_txt = bq_p.paragraph.children[0];
+        try testing.expectEqual(.text, @as(ast.NodeType, bq_txt.*));
+        try testing.expectEqualStrings(
+            \\This is a paragraph inside the blockquote.
+            \\So is this line.
+            \\And this line.
+            ,
+            bq_txt.text.value,
+        );
+    }
+}
+
+test "blockquote with nested blocks" {
+    const md =
+        \\># Heading
+        \\>Paragraph text.
+        \\>```python
+        \\>def foo():
+        \\>    pass
+        \\>```
+        \\
+    ;
+
+    const root = try parseBlocks(md);
+    defer root.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
+    try testing.expectEqual(1, root.root.children.len);
+
+    const bq = root.root.children[0];
+    try testing.expectEqual(.blockquote, @as(ast.NodeType, bq.*));
+    try testing.expectEqual(3, bq.blockquote.children.len);
+    {
+        const bq_h = bq.blockquote.children[0];
+        try testing.expectEqual(.heading, @as(ast.NodeType, bq_h.*));
+
+        const h_txt = bq_h.heading.children[0];
+        try testing.expectEqual(.text, @as(ast.NodeType, h_txt.*));
+        try testing.expectEqualStrings("Heading", h_txt.text.value);
+
+        const bq_p = bq.blockquote.children[1];
+        try testing.expectEqual(.paragraph, @as(ast.NodeType, bq_p.*));
+
+        const p_txt = bq_p.paragraph.children[0];
+        try testing.expectEqual(.text, @as(ast.NodeType, p_txt.*));
+        try testing.expectEqualStrings("Paragraph text.", p_txt.text.value);
+
+        const bq_code = bq.blockquote.children[2];
+        try testing.expectEqual(.code, @as(ast.NodeType, bq_code.*));
     }
 }
 

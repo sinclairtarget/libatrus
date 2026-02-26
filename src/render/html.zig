@@ -29,9 +29,11 @@ fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!bool {
         .blockquote => |n| {
             try out.print("<blockquote>\n", .{});
             for (n.children) |child| {
-                _ = try renderNode(out, child);
+                if (try renderNode(out, child)) {
+                    try out.print("\n", .{});
+                }
             }
-            try out.print("</blockquote>\n", .{});
+            try out.print("</blockquote>", .{});
         },
         .paragraph => |n| {
             try out.print("<p>", .{});
