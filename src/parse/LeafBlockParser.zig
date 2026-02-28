@@ -73,14 +73,28 @@ pub fn parse(
             break; // end of parsing in response to CLOSE token
         }
 
-        if (try self.parseIndentedCode(alloc, scratch)) |code| {
-            try children.append(code);
-            continue;
+        {
+            const result = try self.parseIndentedCode(alloc, scratch);
+            if (result.maybe_node) |code| {
+                try children.append(code);
+                if (result.should_end) {
+                    break;
+                } else {
+                    continue;
+                }
+            }
         }
 
-        if (try self.parseFencedCode(alloc, scratch)) |code| {
-            try children.append(code);
-            continue;
+        {
+            const result = try self.parseFencedCode(alloc, scratch);
+            if (result.maybe_node) |code| {
+                try children.append(code);
+                if (result.should_end) {
+                    break;
+                } else {
+                    continue;
+                }
+            }
         }
 
         if (try self.parseATXHeading(alloc, scratch)) |heading| {
@@ -340,19 +354,27 @@ fn parseThematicBreak(
     return node;
 }
 
+// A parsed node that could end parsing.
+const EndingParseResult = struct {
+    maybe_node: ?*ast.Node = null,
+    should_end: bool = false,
+};
+
 fn parseIndentedCode(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
-) !?*ast.Node {
+) !EndingParseResult {
     var did_parse = false;
     defer logParseAttempt("parseIndentedCode()", did_parse);
 
+    const fail: EndingParseResult = .{ .maybe_node = null };
+
     // Block has to start with an indent.
     // Consume token later; this is just a check for an easy bail condition.
-    const block_start = try self.it.peek(scratch) orelse return null;
+    const block_start = try self.it.peek(scratch) orelse return fail;
     if (block_start.token_type != .indent) {
-        return null;
+        return fail;
     }
 
     // Parse one or more indented lines
@@ -401,7 +423,7 @@ fn parseIndentedCode(
     } else @panic(util.safety.loop_bound_panic_msg);
 
     if (lines.items.len == 0) {
-        return null;
+        return fail;
     }
 
     // Skip leading and trailing blank lines
@@ -435,7 +457,9 @@ fn parseIndentedCode(
         },
     };
     did_parse = true;
-    return node;
+    return .{
+        .maybe_node = node,
+    };
 }
 
 /// https://spec.commonmark.org/0.30/#fenced-code-blocks
@@ -443,12 +467,15 @@ fn parseFencedCode(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
-) !?*ast.Node {
+) !EndingParseResult {
     var did_parse = false;
     const checkpoint_index = self.it.checkpoint();
     defer if (!did_parse) {
         self.it.backtrack(checkpoint_index);
     };
+
+    const fail: EndingParseResult = .{ .maybe_node = null };
+    var should_end = false;
 
     // Opening code fence line
     const maybe_leading_whitespace = try self.it.consume(scratch, &.{.whitespace});
@@ -461,7 +488,7 @@ fn parseFencedCode(
     const open_fence = try self.it.consume(
         scratch,
         &.{.backtick_fence, .tilde_fence},
-    ) orelse return null;
+    ) orelse return fail;
 
     const info_lang = blk: {
         // Whitespace allowed between fence and info string
@@ -473,7 +500,7 @@ fn parseFencedCode(
             open_fence.token_type == .backtick_fence
             and std.mem.count(u8, text.lexeme, "`") > 0
         ) {
-            return null;
+            return fail;
         }
 
         // Following tokens are allowed, but ignored
@@ -484,14 +511,14 @@ fn parseFencedCode(
                         open_fence.token_type == .backtick_fence
                         and std.mem.count(u8, next.lexeme, "`") > 0
                     ) {
-                        return null;
+                        return fail;
                     }
                     _ = try self.it.consume(scratch, &.{.text});
                 },
                 .newline => break,
                 .backtick_fence => {
                     if (open_fence.token_type == .backtick_fence) {
-                        return null;
+                        return fail;
                     }
                     _ = try self.it.consume(scratch, &.{.backtick_fence});
                 },
@@ -503,7 +530,7 @@ fn parseFencedCode(
 
         break :blk text.lexeme;
     };
-    _ = try self.it.consume(scratch, &.{.newline}) orelse return null;
+    _ = try self.it.consume(scratch, &.{.newline}) orelse return fail;
 
     // Block content
     var content = Io.Writer.Allocating.init(scratch);
@@ -545,6 +572,12 @@ fn parseFencedCode(
                 _ = try self.it.consume(scratch, &.{.newline});
                 _ = try content.writer.write("\n");
             },
+            .close => {
+                // Container is closing, can't keep parsing fenced code
+                _ = try self.it.consume(scratch, &.{.close});
+                should_end = true;
+                break :loop;
+            },
             else => |t| {
                 _ = try self.it.consume(scratch, &.{t});
                 _ = try content.writer.write(line_start_token.lexeme);
@@ -568,12 +601,14 @@ fn parseFencedCode(
         }
     }
 
-    // Closing code fence line
-    // Not needed if file ends
-    _ = try self.it.consume(scratch, &.{.whitespace});
-    if (try self.it.consume(scratch, &.{open_fence.token_type})) |_| {
+    if (!should_end) {
+        // Closing code fence line
+        // Not needed if file ends
         _ = try self.it.consume(scratch, &.{.whitespace});
-        _ = try self.it.consume(scratch, &.{.newline}) orelse return null;
+        if (try self.it.consume(scratch, &.{open_fence.token_type})) |_| {
+            _ = try self.it.consume(scratch, &.{.whitespace});
+            _ = try self.it.consume(scratch, &.{.newline}) orelse return fail;
+        }
     }
 
     // Myst tests require trailing newline to be trimmed for AST, even though it
@@ -594,7 +629,10 @@ fn parseFencedCode(
         },
     };
     did_parse = true;
-    return node;
+    return .{
+        .maybe_node = node,
+        .should_end = should_end,
+    };
 }
 
 /// Returns true if the next tokens can be parsed as the closing fence of a
@@ -935,7 +973,8 @@ fn scanLinkDefTitle(self: *Self, scratch: Allocator) !?[]const u8 {
     return try running_text.toOwnedSlice();
 }
 
-const ParagraphResult = struct {
+// Scanned text that could end parsing.
+const EndingScanResult = struct {
     maybe_text_value: ?[]const u8 = null,
     should_end: bool = false,
 };
@@ -949,7 +988,7 @@ const ParagraphResult = struct {
 /// end. We need to return this indicator because we consume the CLOSE token
 /// when it appears. (In a lazy continuation line, we need to consume the CLOSE
 /// token to parse everything after it in the line.)
-fn scanParagraphText(self: *Self, scratch: Allocator) !ParagraphResult {
+fn scanParagraphText(self: *Self, scratch: Allocator) !EndingScanResult {
     var running_text = Io.Writer.Allocating.init(scratch);
     var should_end = false;
 
