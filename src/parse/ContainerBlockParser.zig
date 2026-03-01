@@ -196,69 +196,75 @@ const OpenBlockquote = struct {
         scratch: Allocator,
         it: *TokenIterator(BlockTokenType),
     ) !NextResult {
-        _ = self;
-
         const eof: NextResult = .{
             .token = null,
             .line_state = .start,
         };
 
-        const token = try it.peek(scratch) orelse return eof;
-        switch (token.token_type) {
-            .r_angle_bracket => {
-                // Skip it and up to one following whitespace
-                _ = try it.consume(scratch, &.{.r_angle_bracket});
+        // Consume leading '>' tokens
+        const checkpoint_index = it.checkpoint();
+        const maybe_next_token = try it.peekAhead(scratch, 2);
+        if (maybe_next_token) |next_token| {
+            if (next_token.token_type == .r_angle_bracket) {
+                 // Leading space allowed before first '>'
                 _ = try it.consume(scratch, &.{.whitespace});
+            }
+        }
+        const met_depth = for (0..self.depth) |_| {
+            if (try it.consume(scratch, &.{.r_angle_bracket})) |_| {
+                // Trailing space allowed after each '>'
+                _ = try it.consume(scratch, &.{.whitespace});
+            } else {
+                break false;
+            }
+        } else true;
 
-                const next_token = try it.peek(scratch) orelse return eof;
-                _ = try it.consume(scratch, &.{next_token.token_type});
-                return .{
-                    .token = next_token,
-                    .line_state = .trailing,
-                };
-            },
-            .newline => {
-                // Blank line
-                _ = try it.consume(scratch, &.{.newline});
-                return .{
-                    .token = token,
-                    .send_close = true,
-                    .line_state = .start,
-                };
-            },
-            .whitespace => {
-                // Leading whitespace allowed
-                if (try it.peekAhead(scratch, 2)) |next_token| {
-                    if (next_token.token_type == .r_angle_bracket) {
-                        _ = try it.consume(scratch, &.{.whitespace});
-                        _ = try it.consume(scratch, &.{.r_angle_bracket});
-                        _ = try it.consume(scratch, &.{.whitespace});
-                    }
-
-                    const nnext_token = try it.peek(scratch) orelse return eof;
-                    _ = try it.consume(scratch, &.{nnext_token.token_type});
+        if (met_depth) {
+            const token = try it.peek(scratch) orelse return eof;
+            switch (token.token_type) {
+                .r_angle_bracket => {
+                    // Another level of blockquote! We backtrack and let the new
+                    // blockquote container parse the whole line.
+                    it.backtrack(checkpoint_index);
                     return .{
-                        .token = nnext_token,
+                        .token = null,
+                        .line_state = .start,
+                        .container = .{
+                            .blockquote = OpenBlockquote.init(self.depth + 1),
+                        },
+                    };
+                },
+                else => {
+                    // Beginning of line proper
+                    _ = try it.consume(scratch, &.{token.token_type});
+                    return .{
+                        .token = token,
                         .line_state = .trailing,
                     };
-                }
-
-                _ = try it.consume(scratch, &.{.whitespace});
-                return .{
-                    .token = token,
-                    .send_close = true,
-                    .line_state = .trailing,
-                };
-            },
-            else => {
-                // Line starting without a leading >
-                _ = try it.consume(scratch, &.{token.token_type});
-                return .{
-                    .token = token,
-                    .send_close = true,
-                    .line_state = .trailing,
-                };
-            },
+                },
+            }
+        } else {
+            const token = try it.peek(scratch) orelse return eof;
+            switch (token.token_type) {
+                .newline => {
+                    // Blank line
+                    _ = try it.consume(scratch, &.{.newline});
+                    return .{
+                        .token = token,
+                        .send_close = true,
+                        .line_state = .start,
+                    };
+                },
+                else => {
+                    // Line starting without a leading >
+                    _ = try it.consume(scratch, &.{token.token_type});
+                    return .{
+                        .token = token,
+                        .send_close = true,
+                        .line_state = .trailing,
+                    };
+                },
+            }
         }
     }
 
@@ -275,6 +281,9 @@ const OpenBlockquote = struct {
         return node;
     }
 };
+
+// Set to true to print tokens sent to leaf block parser.
+const debug_stream = false;
 
 it: *TokenIterator(BlockTokenType), // Iterator that the container block parser consumes
 container_stack: ArrayList(OpenContainer),
@@ -350,9 +359,6 @@ pub fn parse(
 fn iterator(self: *Self) TokenIterator(BlockTokenType) {
     return TokenIterator(BlockTokenType).init(self, &nextIterator);
 }
-
-// Set to true to print tokens sent to leaf block parser.
-const debug_stream = false;
 
 /// Called by LeafBlockParser to get next token.
 fn nextIterator(ctx: *anyopaque, scratch: Allocator) Error!?BlockToken {
@@ -643,10 +649,83 @@ test "blockquote with nested blocks" {
     }
 }
 
-// test "double blockquote" {
-//     const md =
-//         \\>> This is a paragraph. It goes on for
-//         \\>> multiple lines.
-//         \\
-//     ;
-// }
+test "double blockquote" {
+    const md =
+        \\This is a paragraph.
+        \\
+        \\> This is blockquoted.
+        \\> > This is double-blockquoted.
+        \\> Still double-blockquoted (lazy).
+        \\>
+        \\> This is single blockquoted again.
+        \\
+        \\This is another regular paragraph.
+        \\
+    ;
+
+    const root = try parseBlocks(md);
+    defer root.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
+    try testing.expectEqual(3, root.root.children.len);
+
+    {
+        const p = root.root.children[0];
+        try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
+        const p_txt = p.paragraph.children[0];
+        try testing.expectEqual(.text, @as(ast.NodeType, p_txt.*));
+        try testing.expectEqualStrings(
+            "This is a paragraph.",
+            p_txt.text.value,
+        );
+    }
+
+    const bq_outer = root.root.children[1];
+    try testing.expectEqual(.blockquote, @as(ast.NodeType, bq_outer.*));
+    try testing.expectEqual(3, bq_outer.blockquote.children.len);
+    {
+        const p1 = bq_outer.blockquote.children[0];
+        try testing.expectEqual(.paragraph, @as(ast.NodeType, p1.*));
+        try testing.expectEqual(1, p1.paragraph.children.len);
+        const p1_txt = p1.paragraph.children[0];
+        try testing.expectEqual(.text, @as(ast.NodeType, p1_txt.*));
+        try testing.expectEqualStrings(
+            "This is blockquoted.",
+            p1_txt.text.value,
+        );
+
+        const bq_inner = bq_outer.blockquote.children[1];
+        try testing.expectEqual(.blockquote, @as(ast.NodeType, bq_inner.*));
+        try testing.expectEqual(1, bq_inner.blockquote.children.len);
+        const bq_inner_p = bq_inner.blockquote.children[0];
+        try testing.expectEqual(.paragraph, @as(ast.NodeType, bq_inner_p.*));
+        try testing.expectEqual(1, bq_inner_p.paragraph.children.len);
+        const bq_inner_p_txt = bq_inner_p.paragraph.children[0];
+        try testing.expectEqual(.text, @as(ast.NodeType, bq_inner_p_txt.*));
+        try testing.expectEqualStrings(
+            "This is double-blockquoted.\nStill double-blockquoted (lazy).",
+            bq_inner_p_txt.text.value,
+        );
+
+        const p2 = bq_outer.blockquote.children[2];
+        try testing.expectEqual(.paragraph, @as(ast.NodeType, p2.*));
+        try testing.expectEqual(1, p2.paragraph.children.len);
+        const p2_txt = p2.paragraph.children[0];
+        try testing.expectEqual(.text, @as(ast.NodeType, p2_txt.*));
+        try testing.expectEqualStrings(
+            "This is single blockquoted again.",
+            p2_txt.text.value,
+        );
+    }
+
+    {
+        const p = root.root.children[2];
+        try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
+        const p_txt = p.paragraph.children[0];
+        try testing.expectEqual(.text, @as(ast.NodeType, p_txt.*));
+        try testing.expectEqualStrings(
+            "This is another regular paragraph.",
+            p_txt.text.value,
+        );
+    }
+}
