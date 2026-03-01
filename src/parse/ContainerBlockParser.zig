@@ -234,6 +234,14 @@ const OpenBlockquote = struct {
                         },
                     };
                 },
+                .newline => {
+                    // Blank line after '>'
+                    _ = try it.consume(scratch, &.{.newline});
+                    return .{
+                        .token = token,
+                        .line_state = .start,
+                    };
+                },
                 else => {
                     // Beginning of line proper
                     _ = try it.consume(scratch, &.{token.token_type});

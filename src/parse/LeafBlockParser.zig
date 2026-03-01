@@ -70,6 +70,7 @@ pub fn parse(
 
         const next = try self.it.peek(scratch) orelse break;
         if (next.token_type == .close) {
+            _ = try self.it.consume(scratch, &.{.close});
             break; // end of parsing in response to CLOSE token
         }
 
@@ -1644,6 +1645,9 @@ test "close token in setext heading" {
 
 // This is a case where the parser has to detect the close token in the body of
 // parse() because it comes immediately after another block has been parsed.
+//
+// > # foo
+// bar
 test "close token after atx heading" {
     var link_defs: LinkDefMap = .empty;
     defer link_defs.deinit(testing.allocator);
