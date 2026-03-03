@@ -63,6 +63,7 @@ const OpenContainer = union(enum) {
         scratch: Allocator,
         it: *TokenIterator(BlockTokenType),
         line_state: LineState,
+        interruptible: bool,
     ) !NextResult {
         // This case is the same for all containers, so handle it here
         if (line_state == .trailing) {
@@ -90,7 +91,7 @@ const OpenContainer = union(enum) {
 
         switch (self.*) {
             inline else => |*payload| {
-                return try payload.next(scratch, it);
+                return try payload.next(scratch, it, interruptible);
             },
         }
     }
@@ -112,6 +113,7 @@ const OpenRoot = struct {
         self: *OpenRoot,
         scratch: Allocator,
         it: *TokenIterator(BlockTokenType),
+        interruptible: bool,
     ) !NextResult {
         _ = self;
 
@@ -119,8 +121,11 @@ const OpenRoot = struct {
             .token = null,
             .line_state = .start,
         };
-        switch (token.token_type) {
+        swtch: switch (token.token_type) {
             .r_angle_bracket => {
+                if (!interruptible) {
+                    break :swtch;
+                }
                 return .{
                     .token = null,
                     .line_state = .start,
@@ -137,6 +142,13 @@ const OpenRoot = struct {
                 };
             },
             .whitespace => {
+                if (
+                    util.strings.whitespaceIndentLen(token.lexeme) >= 4
+                    or !interruptible
+                ) {
+                    break :swtch;
+                }
+
                 if (try it.peekAhead(scratch, 2)) |next_token| {
                     if (next_token.token_type == .r_angle_bracket) {
                         return .{
@@ -148,21 +160,16 @@ const OpenRoot = struct {
                         };
                     }
                 }
-
-                _ = try it.consume(scratch, &.{.whitespace});
-                return .{
-                    .token = token,
-                    .line_state = .trailing,
-                };
             },
-            else => {
-                _ = try it.consume(scratch, &.{token.token_type});
-                return .{
-                    .token = token,
-                    .line_state = .trailing,
-                };
-            },
+            else => {},
         }
+
+        // Fallback case
+        _ = try it.consume(scratch, &.{token.token_type});
+        return .{
+            .token = token,
+            .line_state = .trailing,
+        };
     }
 
     pub fn toNode(self: OpenRoot, alloc: Allocator) !*ast.Node {
@@ -195,6 +202,7 @@ const OpenBlockquote = struct {
         self: *OpenBlockquote,
         scratch: Allocator,
         it: *TokenIterator(BlockTokenType),
+        interruptible: bool,
     ) !NextResult {
         const eof: NextResult = .{
             .token = null,
@@ -206,14 +214,14 @@ const OpenBlockquote = struct {
         const maybe_next_token = try it.peekAhead(scratch, 2);
         if (maybe_next_token) |next_token| {
             if (next_token.token_type == .r_angle_bracket) {
-                 // Leading space allowed before first '>'
-                _ = try it.consume(scratch, &.{.whitespace});
+                 // Up to 3 leading spaces allowed before first '>'
+                _ = try consumeWhitespaceUpTo(scratch, it, 3);
             }
         }
         const met_depth = for (0..self.depth) |_| {
             if (try it.consume(scratch, &.{.r_angle_bracket})) |_| {
-                // Trailing space allowed after each '>'
-                _ = try it.consume(scratch, &.{.whitespace});
+                // Trailing space allowed after each '>', up to four spaces
+                _ = try consumeWhitespaceUpTo(scratch, it, 4);
             } else {
                 break false;
             }
@@ -223,6 +231,15 @@ const OpenBlockquote = struct {
             const token = try it.peek(scratch) orelse return eof;
             switch (token.token_type) {
                 .r_angle_bracket => {
+                    if (!interruptible) {
+                        // Just pass on the token
+                        _ = try it.consume(scratch, &.{token.token_type});
+                        return .{
+                            .token = token,
+                            .line_state = .trailing,
+                        };
+                    }
+
                     // Another level of blockquote! We backtrack and let the new
                     // blockquote container parse the whole line.
                     it.backtrack(checkpoint_index);
@@ -239,6 +256,18 @@ const OpenBlockquote = struct {
                     _ = try it.consume(scratch, &.{.newline});
                     return .{
                         .token = token,
+                        .line_state = .start,
+                    };
+                },
+                .whitespace => {
+                    // Enough whitespace following the '>' to be significant
+                    // We need to trim one allowed space from the token
+                    _ = try it.consume(scratch, &.{.whitespace});
+                    return .{
+                        .token = .{
+                            .token_type = .whitespace,
+                            .lexeme = try scratch.dupe(u8, token.lexeme[1..]),
+                        },
                         .line_state = .start,
                     };
                 },
@@ -264,7 +293,7 @@ const OpenBlockquote = struct {
                     };
                 },
                 else => {
-                    // Line starting without a leading >
+                    // Line starting without enough leading >
                     _ = try it.consume(scratch, &.{token.token_type});
                     return .{
                         .token = token,
@@ -297,6 +326,7 @@ it: *TokenIterator(BlockTokenType), // Iterator that the container block parser 
 container_stack: ArrayList(OpenContainer),
 line_state: LineState,
 maybe_staged_token: ?BlockToken,
+leaf_parser: ?LeafBlockParser,
 
 const Self = @This();
 
@@ -305,7 +335,8 @@ pub fn init(it: *TokenIterator(BlockTokenType)) Self {
         .it = it,
         .container_stack = .empty,
         .line_state = .start,
-        .maybe_staged_token = null
+        .maybe_staged_token = null,
+        .leaf_parser = null,
     };
 }
 
@@ -326,11 +357,11 @@ pub fn parse(
 
     var leaf_it = self.iterator();
     for (0..util.safety.loop_bound) |_| {
-        var leaf_parser: LeafBlockParser = .{ .it = &leaf_it };
+        self.leaf_parser = .{ .it = &leaf_it };
         const original_top = self.top();
 
         // Internal iterator logic runs, potentially pushing onto stack
-        const nodes = try leaf_parser.parse(alloc, scratch, link_defs);
+        const nodes = try self.leaf_parser.?.parse(alloc, scratch, link_defs);
         errdefer {
             for (nodes) |node| {
                 node.deinit(alloc);
@@ -390,7 +421,12 @@ fn next(self: *Self, scratch: Allocator) Error!?BlockToken {
         return staged_token;
     }
 
-    const result = try self.top().next(scratch, self.it, self.line_state);
+    const result = try self.top().next(
+        scratch,
+        self.it,
+        self.line_state,
+        self.leaf_parser.?.interruptible,
+    );
 
     self.line_state = result.line_state;
     if (result.container) |container| {
@@ -414,6 +450,25 @@ fn top(self: *Self) *OpenContainer {
     return &self.container_stack.items[
         self.container_stack.items.len - 1
     ];
+}
+
+/// Consumes a whitespace token, but only if it's no longer than the given len
+/// (in spaces).
+fn consumeWhitespaceUpTo(
+    scratch: Allocator,
+    it: *TokenIterator(BlockTokenType),
+    len: usize,
+) !void {
+    const token = try it.peek(scratch) orelse return;
+    if (token.token_type != .whitespace) {
+        return;
+    }
+
+    if (util.strings.whitespaceIndentLen(token.lexeme) > len) {
+        return;
+    }
+
+    _ = try it.consume(scratch, &.{.whitespace});
 }
 
 // ----------------------------------------------------------------------------
@@ -736,4 +791,23 @@ test "double blockquote" {
             p_txt.text.value,
         );
     }
+}
+
+test "angle brackets in fenced code block" {
+    const md =
+        \\```md
+        \\> foo
+        \\```
+        \\
+    ;
+
+    const root = try parseBlocks(md);
+    defer root.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
+    try testing.expectEqual(1, root.root.children.len);
+
+    const code = root.root.children[0];
+    try testing.expectEqual(.code, @as(ast.NodeType, code.*));
+    try testing.expectEqualStrings("> foo", code.code.value);
 }

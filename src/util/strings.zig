@@ -36,3 +36,36 @@ pub fn isPunctuation(s: []const u8) bool {
         else => false,
     };
 }
+
+/// How long a whitespace token is for the purposes of indentation.
+///
+/// Counts tabs as four spaces.
+pub fn whitespaceIndentLen(s: []const u8) usize {
+    var len: usize = 0;
+    for (s) |byte| {
+        switch (byte) {
+            ' '  => len += 1,
+            '\t' => len += 4,
+            else => unreachable,
+        }
+    }
+
+    return len;
+}
+
+/// Removes whitespace from the start of the string, up to the given number of
+/// spaces.
+///
+/// Tabs count as four spaces.
+pub fn trimWhitespaceStart(s: []const u8, count: usize) []const u8 {
+    var begin: usize = 0;
+    var count_used: usize = 0;
+    while (count_used < count and begin < s.len) : (begin += 1) {
+        if (s[begin] == '\t') {
+            count_used += 4;
+        } else {
+            count_used += 1;
+        }
+    }
+    return s[begin..];
+}

@@ -42,6 +42,7 @@ const Error = error{
 const close_token_panic_msg = "encountered unexpected CLOSE token";
 
 it: *TokenIterator(BlockTokenType),
+interruptible: bool = true, // Whether a new container block can open now
 
 const Self = @This();
 
@@ -168,7 +169,7 @@ fn parseATXHeading(
     }
 
     // Handle allowed leading whitespace
-    _ = try self.it.consume(scratch, &.{.whitespace});
+    _ = try self.consumeOptionalLeadingWhitespace(scratch);
 
     // Just peek, don't consume until we know the depth is valid
     const start_token = try self.it.peek(scratch) orelse return null;
@@ -374,7 +375,10 @@ fn parseIndentedCode(
     // Block has to start with an indent.
     // Consume token later; this is just a check for an easy bail condition.
     const block_start = try self.it.peek(scratch) orelse return fail;
-    if (block_start.token_type != .indent) {
+    if (
+        block_start.token_type != .whitespace
+        or util.strings.whitespaceIndentLen(block_start.lexeme) < 4
+    ) {
         return fail;
     }
 
@@ -385,37 +389,42 @@ fn parseIndentedCode(
 
         const line_start = try self.it.peek(scratch) orelse break :block_loop;
         switch (line_start.token_type) {
-            .indent => {
-                // Parse a single indented line
-                _ = try self.it.consume(scratch, &.{.indent});
-                line_loop: while (try self.it.peek(scratch)) |next| {
-                    if (next.token_type == .newline) {
-                        break :line_loop;
+            .whitespace => {
+                if (util.strings.whitespaceIndentLen(line_start.lexeme) >= 4) {
+                    // Parse a single indented line
+                    const wspc = try self.it.consume(scratch, &.{.whitespace});
+                    try line.writer.print("{s}", .{
+                        util.strings.trimWhitespaceStart(wspc.?.lexeme, 4),
+                    });
+                    line_loop: while (try self.it.peek(scratch)) |next| {
+                        if (next.token_type == .newline) {
+                            break :line_loop;
+                        }
+
+                        _ = try self.it.consume(scratch, &.{next.token_type});
+                        try line.writer.print("{s}", .{next.lexeme});
                     }
 
-                    _ = try self.it.consume(scratch, &.{next.token_type});
-                    try line.writer.print("{s}", .{next.lexeme});
+                    _ = try self.it.consume(scratch, &.{.newline});
+                } else {
+                    // Try to accept a blank line
+                    const lookahead_checkpoint_index = self.it.checkpoint();
+                    _ = try self.it.consume(scratch, &.{.whitespace});
+                    if (try self.it.peek(scratch)) |token| {
+                        if (token.token_type == .newline) {
+                            _ = try self.it.consume(scratch, &.{.newline});
+                            try line.writer.print("", .{});
+                        } else {
+                            // Unindented, non-blank line does end block
+                            self.it.backtrack(lookahead_checkpoint_index);
+                            break :block_loop;
+                        }
+                    }
                 }
-
-                _ = try self.it.consume(scratch, &.{.newline});
             },
             .newline => { // newline doesn't end indented block
                 _ = try self.it.consume(scratch, &.{.newline});
                 try line.writer.print("", .{});
-            },
-            .whitespace => {
-                const lookahead_checkpoint_index = self.it.checkpoint();
-                while (try self.it.consume(scratch, &.{.whitespace})) |_| {}
-                if (try self.it.peek(scratch)) |token| {
-                    if (token.token_type == .newline) {
-                        _ = try self.it.consume(scratch, &.{.newline});
-                        try line.writer.print("", .{});
-                    } else {
-                        // Unindented, non-blank line does end block
-                        self.it.backtrack(lookahead_checkpoint_index);
-                        break :block_loop;
-                    }
-                }
             },
             else => break :block_loop,
         }
@@ -479,10 +488,10 @@ fn parseFencedCode(
     var should_end = false;
 
     // Opening code fence line
-    const maybe_leading_whitespace = try self.it.consume(scratch, &.{.whitespace});
+    const maybe_whitespace = try self.consumeOptionalLeadingWhitespace(scratch);
     const indentation: usize =
-        if (maybe_leading_whitespace) |whitespace|
-            whitespace.lexeme.len
+        if (maybe_whitespace) |whitespace|
+            util.strings.whitespaceIndentLen(whitespace.lexeme)
         else
             0;
 
@@ -496,7 +505,10 @@ fn parseFencedCode(
         _ = try self.it.consume(scratch, &.{.whitespace});
 
         // First text token is treated as language
-        const text = try self.it.consume(scratch, &.{.text}) orelse break :blk "";
+        const text = try self.it.consume(
+            scratch,
+            &.{.text},
+        ) orelse break :blk "";
         if (
             open_fence.token_type == .backtick_fence
             and std.mem.count(u8, text.lexeme, "`") > 0
@@ -535,6 +547,8 @@ fn parseFencedCode(
 
     // Block content
     var content = Io.Writer.Allocating.init(scratch);
+    self.interruptible = false;
+    defer self.interruptible = true;
     loop: while (try self.it.peek(scratch)) |line_start_token| {
         // First token in line
         switch (line_start_token.token_type) {
@@ -546,26 +560,17 @@ fn parseFencedCode(
                 _ = try self.it.consume(scratch, &.{t});
                 _ = try content.writer.write(line_start_token.lexeme);
             },
-            .whitespace => |t| {
+            .whitespace => {
                 if (try self.peekClosingFence(scratch, open_fence)) {
+                    // found closing fence
                     break :loop;
                 }
 
-                _ = try self.it.consume(scratch, &.{t});
-                const start = std.mem.min(
-                    usize,
-                    &.{indentation, line_start_token.lexeme.len},
+                _ = try self.it.consume(scratch, &.{.whitespace});
+                const value = util.strings.trimWhitespaceStart(
+                    line_start_token.lexeme,
+                    indentation,
                 );
-                const value = line_start_token.lexeme[start..];
-                _ = try content.writer.write(value);
-            },
-            .indent => {
-                _ = try self.it.consume(scratch, &.{.indent});
-                const start = std.mem.min(
-                    usize,
-                    &.{indentation, line_start_token.lexeme.len},
-                );
-                const value = line_start_token.lexeme[start..];
                 _ = try content.writer.write(value);
             },
             .newline => {
@@ -605,7 +610,7 @@ fn parseFencedCode(
     if (!should_end) {
         // Closing code fence line
         // Not needed if file ends
-        _ = try self.it.consume(scratch, &.{.whitespace});
+        _ = try self.consumeOptionalLeadingWhitespace(scratch);
         if (try self.it.consume(scratch, &.{open_fence.token_type})) |_| {
             _ = try self.it.consume(scratch, &.{.whitespace});
             _ = try self.it.consume(scratch, &.{.newline}) orelse return fail;
@@ -646,7 +651,7 @@ fn peekClosingFence(
     const checkpoint_index = self.it.checkpoint();
     defer self.it.backtrack(checkpoint_index);
 
-    _ = try self.it.consume(scratch, &.{.whitespace});
+    _ = try self.consumeOptionalLeadingWhitespace(scratch);
 
     const close_fence = try self.it.consume(
         scratch,
@@ -678,7 +683,7 @@ fn parseLinkReferenceDefinition(
     }
 
     // consume allowed leading whitespace
-    _ = try self.it.consume(scratch, &.{.whitespace});
+    _ = try self.consumeOptionalLeadingWhitespace(scratch);
 
     const scanned_label = try self.scanLinkDefLabel(scratch) orelse return null;
     _ = try self.it.consume(scratch, &.{.colon}) orelse return null;
@@ -688,7 +693,6 @@ fn parseLinkReferenceDefinition(
     while (try self.it.consume(scratch, &.{
         .newline,
         .whitespace,
-        .indent,
     })) |token| {
         if (token.token_type == .newline) {
             if (seen_newline) {
@@ -712,7 +716,7 @@ fn parseLinkReferenceDefinition(
     seen_newline = false;
     while (try self.it.peek(scratch)) |token| {
         switch (token.token_type) {
-            .indent, .whitespace => |t| {
+            .whitespace => |t| {
                 seen_any_separating_whitespace = true;
                 _ = try self.it.consume(scratch, &.{t});
             },
@@ -852,7 +856,7 @@ fn scanLinkDefDestination(self: *Self, scratch: Allocator) !?[]const u8 {
                 .r_angle_bracket => break,
                 // None of these tokens should really be possible here, since
                 // they can only be matched at the beginning of a line.
-                .indent, .rule_star, .rule_underline, .rule_dash_with_whitespace,
+                .rule_star, .rule_underline, .rule_dash_with_whitespace,
                 .rule_dash, .rule_equals, .backtick_fence,
                 .tilde_fence => return null,
                 .text, .pound, .whitespace, .colon, .l_square_bracket,
@@ -890,7 +894,7 @@ fn scanLinkDefDestination(self: *Self, scratch: Allocator) !?[]const u8 {
                     _ = try running_text.writer.write(token.lexeme);
                 },
                 .newline, .whitespace => break,
-                .indent, .rule_star, .rule_underline, .rule_dash_with_whitespace,
+                .rule_star, .rule_underline, .rule_dash_with_whitespace,
                 .rule_dash, .rule_equals, .backtick_fence,
                 .tilde_fence => return null,
                 .text, .pound, .colon, .l_square_bracket, .r_square_bracket,
@@ -1051,6 +1055,23 @@ fn scanTextFallback(self: *Self, scratch: Allocator) ![]const u8 {
     const token = try self.it.peek(scratch) orelse return "";
     _ = try self.it.consume(scratch, &.{token.token_type});
     return token.lexeme;
+}
+
+/// Consumes leading whitespace if it isn't significant.
+fn consumeOptionalLeadingWhitespace(
+    self: *Self,
+    scratch: Allocator,
+) !?BlockToken {
+    const token = try self.it.peek(scratch) orelse return null;
+    if (token.token_type != .whitespace) {
+        return null;
+    }
+
+    if (util.strings.whitespaceIndentLen(token.lexeme) >= 4) {
+        return null;
+    }
+
+    return try self.it.consume(scratch, &.{.whitespace});
 }
 
 /// Creates a paragraph node containing a single text node.

@@ -88,10 +88,6 @@ fn tokenize(self: *Self, scratch: Allocator) !BlockToken {
             break :blk result;
         }
 
-        if (try self.matchIndent(scratch)) |result| {
-            break :blk result;
-        }
-
         if (try self.matchRule(scratch)) |result| {
             break :blk result;
         }
@@ -186,42 +182,6 @@ fn matchNewline(self: Self, scratch: Allocator) !?TokenizeResult {
     return .{
         .token = token,
         .next_i = self.i + 1,
-    };
-}
-
-fn matchIndent(self: Self, scratch: Allocator) !?TokenizeResult {
-    if (self.i > 0) {
-        // valid only at beginning of line
-        return null;
-    }
-
-    var lookahead_i = self.i;
-    loop: for (0..util.safety.loop_bound) |_| {
-        switch (self.line[lookahead_i]) {
-            '\t' => {
-                lookahead_i += 1;
-                break :loop;
-            },
-            ' ' => {
-                lookahead_i += 1;
-                if (lookahead_i - self.i == 4) {
-                    break :loop;
-                }
-
-                continue :loop;
-            },
-            else => return null,
-        }
-    } else @panic(util.safety.loop_bound_panic_msg);
-
-    const lexeme = try evaluateLexeme(self, scratch, .indent, lookahead_i);
-    const token = BlockToken{
-        .token_type = .indent,
-        .lexeme = lexeme,
-    };
-    return .{
-        .token = token,
-        .next_i = lookahead_i,
     };
 }
 
@@ -588,10 +548,10 @@ test "indent" {
     // In Zig, can't use \t in multiline string literal :(
     const md = "    a simple\n      space-indented block\n\n\ttab indent\n";
     try expectEqualTokens(&.{
-        .indent, .text, .whitespace, .text, .newline,
-        .indent, .whitespace, .text, .whitespace, .text, .newline,
+        .whitespace, .text, .whitespace, .text, .newline,
+        .whitespace, .text, .whitespace, .text, .newline,
         .newline,
-        .indent, .text, .whitespace, .text, .newline,
+        .whitespace, .text, .whitespace, .text, .newline,
     }, md);
 }
 
