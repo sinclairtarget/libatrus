@@ -30,13 +30,27 @@ void atrus_free(atrus_ast_node* root);
  */
 int atrus_render_html(atrus_ast_node* root, char** out);
 
+typedef enum {
+    ATURS_JSON_MINIFIED = 0,
+    ATRUS_JSON_INDENT_2 = 1,
+    ATRUS_JSON_INDENT_4 = 2,
+} atrus_json_option_whitespace_t;
+
+struct atrus_json_options {
+    atrus_json_option_whitespace_t whitespace;
+};
+
 /*
  * Given a MyST AST, renders the tree as JSON into a string. Returns the length
  * of the string or -1 on error.
  *
  * The caller is responsible for freeing the string.
  */
-int atrus_render_json(atrus_ast_node* root, char** out);
+int atrus_render_json(
+    atrus_ast_node* root, 
+    struct atrus_json_options options,
+    char** out
+);
 
 typedef enum {
     ATRUS_LOAD_SUCCESS = 0,

@@ -6,8 +6,8 @@ const Stringify = std.json.Stringify;
 
 const ast = @import("../ast.zig");
 
-pub const Options = struct {
-    whitespace: enum {
+pub const Options = extern struct {
+    whitespace: enum(c_int) {
         minified,
         indent_2,
         indent_4,

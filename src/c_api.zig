@@ -1,6 +1,6 @@
-//! Exported API for C.
+//! Exported interface for linking using the C ABI.
 //!
-//! See include/atrus.h for C API documentation.
+//! See include/atrus.h for full documentation.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -47,9 +47,13 @@ export fn atrus_render_html(root: *atrus.ast.Node, out: *[*:0]const u8) c_int {
     return @intCast(s.len);
 }
 
-export fn atrus_render_json(root: *atrus.ast.Node, out: *[*:0]const u8) c_int {
+export fn atrus_render_json(
+    root: *atrus.ast.Node,
+    options: atrus.JSONOptions,
+    out: *[*:0]const u8,
+) c_int {
     var buf = Io.Writer.Allocating.init(alloc);
-    atrus.renderJSON(root, &buf.writer, .{}) catch |err| {
+    atrus.renderJSON(root, &buf.writer, options) catch |err| {
         switch (err) {
             RenderJSONError.WriteFailed => return -1,
             RenderJSONError.OutOfMemory => return -1,
