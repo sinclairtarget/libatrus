@@ -4,7 +4,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-const ast = @import("../parse/ast.zig");
+const ast = @import("../ast.zig");
 
 pub fn transform(alloc: Allocator, node: *ast.Node) !*ast.Node {
     const block = try alloc.create(ast.Node);

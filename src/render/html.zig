@@ -1,7 +1,7 @@
 const std = @import("std");
 const Io = std.Io;
 
-const ast = @import("../parse/ast.zig");
+const ast = @import("../ast.zig");
 
 pub fn render(
     root: *ast.Node,

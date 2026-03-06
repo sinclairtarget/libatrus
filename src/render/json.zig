@@ -4,7 +4,7 @@ const std = @import("std");
 const Io = std.Io;
 const Stringify = std.json.Stringify;
 
-const ast = @import("../parse/ast.zig");
+const ast = @import("../ast.zig");
 
 pub const Options = struct {
     whitespace: enum {

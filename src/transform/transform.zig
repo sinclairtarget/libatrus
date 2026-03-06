@@ -4,7 +4,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
 
-const ast = @import("../parse/ast.zig");
+const ast = @import("../ast.zig");
 const LinkDefMap = @import("../parse/link_defs.zig").LinkDefMap;
 const post = @import("post.zig");
 const @"inline" = @import("inline.zig");

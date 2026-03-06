@@ -6,7 +6,7 @@ const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const Io = std.Io;
 
-const ast = @import("ast.zig");
+const ast = @import("../ast.zig");
 
 const Self = @This();
 const CreateTextNodeFunc = *const fn (

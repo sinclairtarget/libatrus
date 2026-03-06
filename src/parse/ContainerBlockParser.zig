@@ -15,7 +15,7 @@ const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const Io = std.Io;
 
-const ast = @import("ast.zig");
+const ast = @import("../ast.zig");
 const BlockToken = @import("../lex/tokens.zig").BlockToken;
 const BlockTokenType = @import("../lex/tokens.zig").BlockTokenType;
 const LeafBlockParser = @import("LeafBlockParser.zig");

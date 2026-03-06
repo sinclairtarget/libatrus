@@ -6,7 +6,7 @@
 const std = @import("std");
 const Io = std.Io;
 
-const ast = @import("ast.zig");
+const ast = @import("../ast.zig");
 
 /// Write node as alt text to writer.
 pub fn write(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {

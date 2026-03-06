@@ -3,7 +3,7 @@ const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
 const ArrayList = std.ArrayList;
 
-const ast = @import("../parse/ast.zig");
+const ast = @import("../ast.zig");
 const InlineTokenizer = @import("../lex/InlineTokenizer.zig");
 const InlineParser = @import("../parse/InlineParser.zig");
 const LinkDefMap = @import("../parse/link_defs.zig").LinkDefMap;
