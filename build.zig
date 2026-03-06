@@ -105,6 +105,12 @@ pub fn build(b: *std.Build) void {
     const spec_test_step = b.step("test-spec", "Run MyST spec tests");
     spec_test_step.dependOn(&test_cmds.spec.step);
 
+    const c_api_test_step = b.step("test-lib", "Run C API tests");
+    c_api_test_step.dependOn(&test_cmds.c_api.step);
+
+    const cli_test_step = b.step("test-cli", "Run CLI tests");
+    cli_test_step.dependOn(&test_cmds.cli.step);
+
     const test_step = b.step(
         "test",
         "Run all tests (unit, MyST spec, CLI, C API)",
