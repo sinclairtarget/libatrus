@@ -12,7 +12,7 @@ int main() {
     char* md = "# Heading\nThis is a paragraph.\n";
 
     atrus_ast_node* node;
-    atrus_parse_error_t err = atrus_ast_parse(md, &node);
+    atrus_parse_error_t err = atrus_parse(md, &node);
     if (err != ATRUS_PARSE_SUCCESS) {
         fprintf(stderr, "Failed to parse. Got error: %d.\n", err);
         exit(1);
@@ -35,7 +35,7 @@ int main() {
 
     free(out);
 
-    atrus_ast_free(node);
+    atrus_free(node);
 
     return 0;
 }

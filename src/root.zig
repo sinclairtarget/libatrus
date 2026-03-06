@@ -53,13 +53,13 @@ pub const ParseOptions = struct {
     scratch_arena: ?ArenaAllocator = null,
 };
 
-/// Parses the input string (containing MyST markdown) into a MyST AST. Returns
+/// Parses the input (containing MyST markdown) into a MyST AST. Returns
 /// a pointer to the root node.
 ///
 /// The caller is responsible for freeing the memory used by the AST nodes.
 pub fn parse(
     alloc: Allocator,
-    in: []const u8,
+    in: *Io.Reader,
     options: ParseOptions,
 ) ParseError!*ast.Node {
     // Set up internal scratch allocator. We default to an arena allocator but
@@ -69,9 +69,8 @@ pub fn parse(
     defer arena.deinit();
     const scratch = arena.allocator();
 
-    var reader: Io.Reader = .fixed(in);
     var line_buf: [max_line_len]u8 = undefined;
-    const line_reader: LineReader = .{ .in = &reader, .buf = &line_buf };
+    const line_reader: LineReader = .{ .in = in, .buf = &line_buf };
 
     var link_defs: LinkDefMap = .empty;
     defer link_defs.deinit(alloc);
@@ -113,14 +112,27 @@ pub fn parse(
     return root;
 }
 
-/// Parses the input string (containing a MyST AST in JSON form) into a MYST
-/// AST. Returns a pointer to the root node.
-///
-/// The caller is responsible for freeing the memory used by the AST nodes.
-pub fn parseJSON(alloc: Allocator, in: []const u8) !*ast.Node {
-    _ = alloc;
-    _ = in;
-    return error.NotImplemented;
+pub const HTMLOptions = struct {}; // No options (yet!)
+
+pub const RenderHTMLError = error{
+    WriteFailed,
+    OutOfMemory,
+    NotPostProcessed,
+};
+
+/// Renders the AST as HTML, writing to the given writer.
+pub fn renderHTML(
+    root: *ast.Node,
+    out: *Io.Writer,
+    options: HTMLOptions,
+) RenderHTMLError!void {
+    _ = options;
+
+    if (!root.root.is_post_processed) {
+        return RenderHTMLError.NotPostProcessed;
+    }
+
+    try html.render(root, out);
 }
 
 pub const JSONOptions = json.Options;
@@ -130,56 +142,23 @@ pub const RenderJSONError = error{
     OutOfMemory,
 };
 
-/// Renders the AST as JSON, writing to a string.
-///
-/// The caller is responsible for freeing the returned string.
-pub fn renderJSONString(
-    alloc: Allocator,
-    root: *ast.Node,
-    options: JSONOptions,
-) RenderJSONError![]const u8 {
-    var buf = Io.Writer.Allocating.init(alloc);
-    try renderJSON(&buf.writer, root, options);
-    return buf.toOwnedSlice();
-}
-
 /// Renders the AST as JSON, writing to the given writer.
 pub fn renderJSON(
-    writer: *Io.Writer,
     root: *ast.Node,
+    out: *Io.Writer,
     options: JSONOptions,
 ) RenderJSONError!void {
-    try json.render(writer, root, options);
+    try json.render(root, out, options);
 }
 
-pub const RenderHTMLError = error{
-    WriteFailed,
-    OutOfMemory,
-    NotPostProcessed,
-};
-
-/// Renders the AST as HTML, writing to a string.
+/// Parses the input string (containing a MyST AST in JSON form) into a MYST
+/// AST. Returns a pointer to the root node.
 ///
-/// The caller is responsible for freeing the returned string.
-pub fn renderHTMLString(
-    alloc: Allocator,
-    root: *ast.Node,
-) RenderHTMLError![]const u8 {
-    var buf = Io.Writer.Allocating.init(alloc);
-    try renderHTML(&buf.writer, root);
-    return buf.toOwnedSlice();
-}
-
-/// Renders the AST as HTML, writing to the given writer.
-pub fn renderHTML(
-    writer: *Io.Writer,
-    root: *ast.Node,
-) RenderHTMLError!void {
-    if (!root.root.is_post_processed) {
-        return RenderHTMLError.NotPostProcessed;
-    }
-
-    try html.render(root, writer);
+/// The caller is responsible for freeing the memory used by the AST nodes.
+pub fn loadJSON(alloc: Allocator, in: *Io.Reader) !*ast.Node {
+    _ = alloc;
+    _ = in;
+    return error.NotImplemented;
 }
 
 // Tokenization is part of the public interface of the library only in debug
@@ -192,11 +171,13 @@ pub const lex =
             pub const LineReader = @import("lex/LineReader.zig");
         }
     else
-        @compileError("tokenziation is only supported in the debug release mode");
+        @compileError("tokenziation is only supported in debug release mode");
 
 // ----------------------------------------------------------------------------
 // Unit Tests
 // ----------------------------------------------------------------------------
+const testing = std.testing;
+
 test {
     // Ensures all unit tests are reachable even when filtering only for tests
     // in imported structs/namespaces and not in this file.
@@ -211,7 +192,21 @@ test {
     _ = @import("util/util.zig");
 }
 
-test renderHTMLString {
+test parse {
+    const md =
+        \\# I am a heading
+        \\I am a paragraph containing *emphasis*.
+        \\
+    ;
+
+    var in: Io.Reader = .fixed(md);
+    const root = try parse(testing.allocator, &in, .{});
+    defer root.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
+}
+
+test renderHTML {
     const md =
         \\# I am a heading
         \\I am a paragraph containing *emphasis*.
@@ -223,30 +218,110 @@ test renderHTMLString {
         \\
     ;
 
-    const root = try parse(std.testing.allocator, md, .{});
-    defer root.deinit(std.testing.allocator);
+    var in: Io.Reader = .fixed(md);
+    const root = try parse(testing.allocator, &in, .{});
+    defer root.deinit(testing.allocator);
 
-    const result = try renderHTMLString(std.testing.allocator, root);
-    defer std.testing.allocator.free(result);
+    var buf = Io.Writer.Allocating.init(testing.allocator);
+    try renderHTML(root, &buf.writer, .{});
+    const result = try buf.toOwnedSlice();
+    defer testing.allocator.free(result);
 
-    try std.testing.expectEqualStrings(expected, result);
+    try testing.expectEqualStrings(expected, result);
 }
 
-test "emphasis" {
+test renderJSON {
     const md =
         \\I am a paragraph containing *emphasis*.
         \\
     ;
+
     const expected =
-        \\<p>I am a paragraph containing <em>emphasis</em>.</p>
-        \\
+        \\{
+        \\  "type": "root",
+        \\  "children": [
+        \\    {
+        \\      "type": "block",
+        \\      "children": [
+        \\        {
+        \\          "type": "paragraph",
+        \\          "children": [
+        \\            {
+        \\              "type": "text",
+        \\              "value": "I am a paragraph containing "
+        \\            },
+        \\            {
+        \\              "type": "emphasis",
+        \\              "children": [
+        \\                {
+        \\                  "type": "text",
+        \\                  "value": "emphasis"
+        \\                }
+        \\              ]
+        \\            },
+        \\            {
+        \\              "type": "text",
+        \\              "value": "."
+        \\            }
+        \\          ]
+        \\        }
+        \\      ]
+        \\    }
+        \\  ]
+        \\}
     ;
 
-    const root = try parse(std.testing.allocator, md, .{});
-    defer root.deinit(std.testing.allocator);
+    var in: Io.Reader = .fixed(md);
+    const root = try parse(testing.allocator, &in, .{});
+    defer root.deinit(testing.allocator);
 
-    const result = try renderHTMLString(std.testing.allocator, root);
-    defer std.testing.allocator.free(result);
+    var buf = Io.Writer.Allocating.init(testing.allocator);
+    try renderJSON(root, &buf.writer, .{ .whitespace = .indent_2 });
+    const result = try buf.toOwnedSlice();
+    defer testing.allocator.free(result);
 
-    try std.testing.expectEqualStrings(expected, result);
+    try testing.expectEqualStrings(expected, result);
+}
+
+test loadJSON {
+    const jsonAST =
+        \\{
+        \\  "type": "root",
+        \\  "children": [
+        \\    {
+        \\      "type": "block",
+        \\      "children": [
+        \\        {
+        \\          "type": "paragraph",
+        \\          "children": [
+        \\            {
+        \\              "type": "text",
+        \\              "value": "I am a paragraph containing "
+        \\            },
+        \\            {
+        \\              "type": "emphasis",
+        \\              "children": [
+        \\                {
+        \\                  "type": "text",
+        \\                  "value": "emphasis"
+        \\                }
+        \\              ]
+        \\            },
+        \\            {
+        \\              "type": "text",
+        \\              "value": "."
+        \\            }
+        \\          ]
+        \\        }
+        \\      ]
+        \\    }
+        \\  ]
+        \\}
+    ;
+
+    var in: Io.Reader = .fixed(jsonAST);
+    try testing.expectError(
+        error.NotImplemented,
+        loadJSON(testing.allocator, &in),
+    );
 }

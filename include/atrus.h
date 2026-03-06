@@ -6,8 +6,8 @@ typedef struct atrus_ast_node atrus_ast_node;
 
 typedef enum {
     ATRUS_PARSE_SUCCESS = 0,
-    ATRUS_PARSE_READ_FAILED = 1,
-    ATRUS_PARSE_OTHER_ERROR = 2,
+    ATRUS_PARSE_READ_FAILED = -1,
+    ATRUS_PARSE_OTHER_ERROR = -2,
 } atrus_parse_error_t;
 
 /*
@@ -15,12 +15,20 @@ typedef enum {
  *
  * The caller is responsible for freeing the AST using atrus_free().
  */
-atrus_parse_error_t atrus_ast_parse(char* in, atrus_ast_node** out); 
+atrus_parse_error_t atrus_parse(char* in, atrus_ast_node** out); 
 
 /*
  * Frees the given AST.
  */
-void atrus_ast_free(atrus_ast_node* root);
+void atrus_free(atrus_ast_node* root);
+
+/*
+ * Given a MyST AST, renders the tree as HTML into a string. Returns the length
+ * of the string or -1 on error.
+ *
+ * The caller is responsible for freeing the string.
+ */
+int atrus_render_html(atrus_ast_node* root, char** out);
 
 /*
  * Given a MyST AST, renders the tree as JSON into a string. Returns the length
@@ -30,12 +38,16 @@ void atrus_ast_free(atrus_ast_node* root);
  */
 int atrus_render_json(atrus_ast_node* root, char** out);
 
+typedef enum {
+    ATRUS_LOAD_SUCCESS = 0,
+    ATRUS_LOAD_FAILURE = -1,
+} atrus_load_error_t;
+
 /*
- * Give a MyST AST, renders the tree as HTML into a string. Returns the length
- * of the string or -1 on error.
- *
- * The caller is responsible for freeing the string.
+ * Given a JSON string, attempts to parse the JSON string into a MyST AST.
+ * 
+ * The caller is responsible for freeing the AST using atrus_free().
  */
-int atrus_render_html(atrus_ast_node* root, char** out);
+atrus_load_error_t atrus_load_json(char* in, atrus_ast_node** out);
 
 #endif
