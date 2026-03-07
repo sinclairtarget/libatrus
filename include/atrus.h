@@ -30,7 +30,7 @@ void atrus_free(atrus_ast_node* root);
  */
 int atrus_render_html(atrus_ast_node* root, char** out);
 
-typedef enum {
+typedef enum : unsigned int {
     ATURS_JSON_MINIFIED = 0,
     ATRUS_JSON_INDENT_2 = 1,
     ATRUS_JSON_INDENT_4 = 2,
@@ -49,7 +49,7 @@ struct atrus_json_options {
 int atrus_render_json(
     atrus_ast_node* root, 
     char** out,
-    struct atrus_json_options options
+    const struct atrus_json_options* options
 );
 
 typedef enum {
