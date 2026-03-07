@@ -48,8 +48,8 @@ struct atrus_json_options {
  */
 int atrus_render_json(
     atrus_ast_node* root, 
-    struct atrus_json_options options,
-    char** out
+    char** out,
+    struct atrus_json_options options
 );
 
 typedef enum {

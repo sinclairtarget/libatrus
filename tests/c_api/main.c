@@ -20,7 +20,7 @@ int main() {
 
     char* out;
     struct atrus_json_options options = { .whitespace = ATRUS_JSON_INDENT_2 };
-    int len = atrus_render_json(node, options, &out);
+    int len = atrus_render_json(node, &out, options);
     if (len == -1) {
         fprintf(stderr, "Failed to render JSON.\n");
         exit(1);

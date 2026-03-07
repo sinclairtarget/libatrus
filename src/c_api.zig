@@ -49,8 +49,8 @@ export fn atrus_render_html(root: *atrus.ast.Node, out: *[*:0]const u8) c_int {
 
 export fn atrus_render_json(
     root: *atrus.ast.Node,
-    options: atrus.JSONOptions,
     out: *[*:0]const u8,
+    options: atrus.JSONOptions,
 ) c_int {
     var buf = Io.Writer.Allocating.init(alloc);
     atrus.renderJSON(root, &buf.writer, options) catch |err| {
