@@ -88,6 +88,7 @@ pub fn build(b: *std.Build) void {
     // install (default)
     const install_step = b.getInstallStep();
     install_step.dependOn(shared_step);
+    install_step.dependOn(static_step);
 
     // run
     const run_cmd = b.addRunArtifact(exe_artifact.artifact);
