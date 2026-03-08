@@ -14,8 +14,12 @@ pub const Options = extern struct {
     } = .minified,
 };
 
+/// Renders the given AST as JSON.
+///
+/// The given AST node might be the root, but it might not. We support
+/// rendering arbitrary subtrees of a complete MyST AST.
 pub fn render(
-    root: *ast.Node,
+    node: *ast.Node,
     out: *Io.Writer,
     options: Options,
 ) Io.Writer.Error!void {
@@ -30,7 +34,7 @@ pub fn render(
         .writer = out,
         .options = stringify_options,
     };
-    try render_node(&stringify, root);
+    try render_node(&stringify, node);
 }
 
 fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {

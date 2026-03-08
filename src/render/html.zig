@@ -3,25 +3,26 @@ const Io = std.Io;
 
 const ast = @import("../ast.zig");
 
-pub fn render(
-    root: *ast.Node,
-    out: *Io.Writer,
-) Io.Writer.Error!void {
-    _ = try renderNode(out, root);
+/// Renders the given AST as HTML.
+///
+/// The given AST node might be the root, but it might not. We support
+/// rendering arbitrary subtrees of a complete MyST AST.
+pub fn render(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!void {
+    _ = try renderNode(node, out);
     try out.flush();
 }
 
 /// Renders output, returning true if anything was written.
-fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!bool {
+fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
     switch (node.*) {
         .root => |n| {
             for (n.children) |child| {
-                _ = try renderNode(out, child);
+                _ = try renderNode(child, out);
             }
         },
         .block => |n| {
             for (n.children) |child| {
-                if (try renderNode(out, child)) {
+                if (try renderNode(child, out)) {
                     try out.print("\n", .{});
                 }
             }
@@ -29,7 +30,7 @@ fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!bool {
         .blockquote => |n| {
             try out.print("<blockquote>\n", .{});
             for (n.children) |child| {
-                if (try renderNode(out, child)) {
+                if (try renderNode(child, out)) {
                     try out.print("\n", .{});
                 }
             }
@@ -38,14 +39,14 @@ fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!bool {
         .paragraph => |n| {
             try out.print("<p>", .{});
             for (n.children) |child| {
-                _ = try renderNode(out, child);
+                _ = try renderNode(child, out);
             }
             try out.print("</p>", .{});
         },
         .heading => |n| {
             try out.print("<h{d}>", .{n.depth});
             for (n.children) |child| {
-                _ = try renderNode(out, child);
+                _ = try renderNode(child, out);
             }
             try out.print("</h{d}>", .{n.depth});
         },
@@ -55,14 +56,14 @@ fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!bool {
         .emphasis => |n| {
             try out.print("<em>", .{});
             for (n.children) |child| {
-                _ = try renderNode(out, child);
+                _ = try renderNode(child, out);
             }
             try out.print("</em>", .{});
         },
         .strong => |n| {
             try out.print("<strong>", .{});
             for (n.children) |child| {
-                _ = try renderNode(out, child);
+                _ = try renderNode(child, out);
             }
             try out.print("</strong>", .{});
         },
@@ -107,7 +108,7 @@ fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!bool {
             try out.print(">", .{});
 
             for (n.children) |child| {
-                _ = try renderNode(out, child);
+                _ = try renderNode(child, out);
             }
 
             try out.print("</a>", .{});
