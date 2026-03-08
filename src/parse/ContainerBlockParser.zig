@@ -809,5 +809,5 @@ test "angle brackets in fenced code block" {
 
     const code = root.root.children[0];
     try testing.expectEqual(.code, @as(ast.NodeType, code.*));
-    try testing.expectEqualStrings("> foo", code.code.value);
+    try testing.expectEqualStrings("> foo", std.mem.span(code.code.value));
 }

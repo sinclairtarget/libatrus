@@ -459,10 +459,12 @@ fn parseIndentedCode(
         "\n",
         lines.items[start_index..end_index],
     );
+    const value = try alloc.dupeZ(u8, buf); // move to heap, sentinel-terminate
+
     const node = try alloc.create(ast.Node);
     node.* = .{
         .code = .{
-            .value = try alloc.dupe(u8, buf),
+            .value = value.ptr,
             .lang = "",
         },
     };
@@ -622,16 +624,16 @@ fn parseFencedCode(
     // https://spec.commonmark.org/0.30/#example-119
     const trimmed = std.mem.trimEnd(u8, content.written(), "\n");
 
-    const value = try alloc.dupe(u8, trimmed);
+    const value = try alloc.dupeZ(u8, trimmed);
     errdefer alloc.free(value);
-    const lang = try alloc.dupe(u8, info_lang);
+    const lang = try alloc.dupeZ(u8, info_lang);
     errdefer alloc.free(lang);
 
     const node = try alloc.create(ast.Node);
     node.* = .{
         .code = .{
-            .value = value,
-            .lang = lang,
+            .value = value.ptr,
+            .lang = lang.ptr,
         },
     };
     did_parse = true;
@@ -1424,8 +1426,8 @@ test "empty code fence" {
 
     const code_node = nodes[0];
     try testing.expectEqual(.code, @as(ast.NodeType, code_node.*));
-    try testing.expectEqualStrings("", code_node.code.value);
-    try testing.expectEqualStrings("", code_node.code.lang);
+    try testing.expectEqualStrings("", std.mem.span(code_node.code.value));
+    try testing.expectEqualStrings("", std.mem.span(code_node.code.lang));
 }
 
 test "code fence with info string" {
@@ -1454,9 +1456,9 @@ test "code fence with info string" {
     try testing.expectEqual(.code, @as(ast.NodeType, code_node.*));
     try testing.expectEqualStrings(
         "def foo():\n    pass",
-        code_node.code.value,
+        std.mem.span(code_node.code.value),
     );
-    try testing.expectEqualStrings("python", code_node.code.lang);
+    try testing.expectEqualStrings("python", std.mem.span(code_node.code.lang));
 }
 
 test "code fence with indentation" {
@@ -1485,9 +1487,9 @@ test "code fence with indentation" {
     try testing.expectEqual(.code, @as(ast.NodeType, code_node.*));
     try testing.expectEqualStrings(
         "def foo():\n    pass",
-        code_node.code.value,
+        std.mem.span(code_node.code.value),
     );
-    try testing.expectEqualStrings("python", code_node.code.lang);
+    try testing.expectEqualStrings("python", std.mem.span(code_node.code.lang));
 }
 
 test "tilde code fence" {
@@ -1516,9 +1518,9 @@ test "tilde code fence" {
     try testing.expectEqual(.code, @as(ast.NodeType, code_node.*));
     try testing.expectEqualStrings(
         "def foo():\n    pass",
-        code_node.code.value,
+        std.mem.span(code_node.code.value),
     );
-    try testing.expectEqualStrings("python", code_node.code.lang);
+    try testing.expectEqualStrings("python", std.mem.span(code_node.code.lang));
 }
 
 fn parseBlocksTokens(

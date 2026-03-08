@@ -107,15 +107,13 @@ pub const Text = struct {
     }
 };
 
-pub const Code = struct {
-    value: []const u8,
-    lang: []const u8,
+pub const Code = extern struct {
+    value: [*:0]const u8,
+    lang: [*:0]const u8,
 
-    const Self = @This();
-
-    pub fn deinit(self: *Self, alloc: Allocator) void {
-        alloc.free(self.value);
-        alloc.free(self.lang);
+    pub fn deinit(self: *Code, alloc: Allocator) void {
+        alloc.free(std.mem.span(self.value));
+        alloc.free(std.mem.span(self.lang));
     }
 };
 

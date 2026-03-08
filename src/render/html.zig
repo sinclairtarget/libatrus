@@ -67,14 +67,16 @@ fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!bool {
             try out.print("</strong>", .{});
         },
         .code => |n| {
-            if (n.lang.len > 0) {
-                try out.print("<pre><code class=\"language-{s}\">", .{n.lang});
+            const lang = std.mem.span(n.lang);
+            if (lang.len > 0) {
+                try out.print("<pre><code class=\"language-{s}\">", .{lang});
             } else {
                 try out.print("<pre><code>", .{});
             }
 
-            try printHTMLEscapedContent(out, n.value);
-            if (n.value.len > 0) {
+            const value = std.mem.span(n.value);
+            try printHTMLEscapedContent(out, value);
+            if (value.len > 0) {
                 try out.print("\n", .{});
             }
 
