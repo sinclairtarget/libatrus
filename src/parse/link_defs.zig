@@ -51,7 +51,7 @@ pub const LinkDefMap = struct {
         alloc: Allocator,
         def: *ast.LinkDefinition,
     ) Error!void {
-        const key = try normalize(alloc, def.label);
+        const key = try normalize(alloc, std.mem.span(def.label));
         errdefer alloc.free(key);
 
         const result = try self.backing_map.getOrPut(alloc, key);

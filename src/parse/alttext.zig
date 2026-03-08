@@ -22,7 +22,7 @@ pub fn write(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
             _ = try out.write(std.mem.span(n.value));
         },
         .image => |n| {
-            _ = try out.write(n.alt);
+            _ = try out.write(std.mem.span(n.alt));
         },
         .@"break", .thematic_break, .definition => {},
     }

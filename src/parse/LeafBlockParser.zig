@@ -710,10 +710,7 @@ fn parseLinkReferenceDefinition(
         scratch,
     ) orelse return null;
     const escaped_url = try escape.copyEscape(scratch, scanned_url);
-    const url = try cmark.uri.normalize(alloc, scratch, escaped_url);
-    defer if (!did_parse) {
-        alloc.free(url);
-    };
+    const url = try cmark.uri.normalize(scratch, scratch, escaped_url);
 
     // whitespace allowed and up to one newline
     var seen_any_separating_whitespace = false;
@@ -770,15 +767,17 @@ fn parseLinkReferenceDefinition(
         _ = try self.it.consume(scratch, &.{.newline}) orelse return null;
     }
 
-    const label = try alloc.dupe(u8, scanned_label);
+    const label = try alloc.dupeZ(u8, scanned_label);
     errdefer alloc.free(label);
-    const title = try alloc.dupe(u8, scanned_title);
+    const title = try alloc.dupeZ(u8, scanned_title);
     errdefer alloc.free(title);
+    const ownedUrl = try alloc.dupeZ(u8, url);
+    errdefer alloc.free(ownedUrl);
 
     const node = try alloc.create(ast.Node);
     node.* = .{
         .definition = .{
-            .url = url,
+            .url = ownedUrl,
             .label = label,
             .title = title,
         },
@@ -1417,9 +1416,9 @@ test "link reference definition" {
 
     const maybe_definition = try link_defs.get(testing.allocator, "foo");
     const definition = try util.testing.expectNonNull(maybe_definition);
-    try testing.expectEqualStrings("foo", definition.label);
-    try testing.expectEqualStrings("/bar", definition.url);
-    try testing.expectEqualStrings("baz bot", definition.title);
+    try testing.expectEqualStrings("foo", std.mem.span(definition.label));
+    try testing.expectEqualStrings("/bar", std.mem.span(definition.url));
+    try testing.expectEqualStrings("baz bot", std.mem.span(definition.title));
 }
 
 test "empty code fence" {

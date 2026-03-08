@@ -60,7 +60,7 @@ pub const Node = union(NodeType) {
     }
 };
 
-pub const Root = struct {
+pub const Root = extern struct {
     children: [*]*Node,
     n_children: c_uint,
 
@@ -73,7 +73,7 @@ pub const Root = struct {
     }
 };
 
-pub const Container = struct {
+pub const Container = extern struct {
     children: [*]*Node,
     n_children: c_uint,
 
@@ -118,9 +118,9 @@ pub const Code = extern struct {
     }
 };
 
-pub const Link = struct {
-    url: []const u8,
-    title: []const u8,
+pub const Link = extern struct {
+    url: [*:0]const u8,
+    title: [*:0]const u8,
     children: [*]*Node,
     n_children: c_uint,
 
@@ -131,35 +131,31 @@ pub const Link = struct {
         }
         alloc.free(sliced);
 
-        alloc.free(self.url);
-        alloc.free(self.title);
+        alloc.free(std.mem.span(self.url));
+        alloc.free(std.mem.span(self.title));
     }
 };
 
-pub const LinkDefinition = struct {
-    url: []const u8,
-    title: []const u8,
-    label: []const u8,
+pub const LinkDefinition = extern struct {
+    url: [*:0]const u8,
+    title: [*:0]const u8,
+    label: [*:0]const u8,
 
-    const Self = @This();
-
-    pub fn deinit(self: *Self, alloc: Allocator) void {
-        alloc.free(self.url);
-        alloc.free(self.title);
-        alloc.free(self.label);
+    pub fn deinit(self: *LinkDefinition, alloc: Allocator) void {
+        alloc.free(std.mem.span(self.url));
+        alloc.free(std.mem.span(self.title));
+        alloc.free(std.mem.span(self.label));
     }
 };
 
-pub const Image = struct {
-    url: []const u8,
-    title: []const u8,
-    alt: []const u8,
+pub const Image = extern struct {
+    url: [*:0]const u8,
+    title: [*:0]const u8,
+    alt: [*:0]const u8,
 
-    const Self = @This();
-
-    pub fn deinit(self: *Self, alloc: Allocator) void {
-        alloc.free(self.url);
-        alloc.free(self.title);
-        alloc.free(self.alt);
+    pub fn deinit(self: *Image, alloc: Allocator) void {
+        alloc.free(std.mem.span(self.url));
+        alloc.free(std.mem.span(self.title));
+        alloc.free(std.mem.span(self.alt));
     }
 };

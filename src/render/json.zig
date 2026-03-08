@@ -77,27 +77,30 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
         },
         .link => |n| {
             try stringify.objectField("url");
-            try stringify.write(n.url);
+            try stringify.write(std.mem.span(n.url));
 
-            if (n.title.len > 0) {
+            const title = std.mem.span(n.title);
+            if (title.len > 0) {
                 try stringify.objectField("title");
-                try stringify.write(n.title);
+                try stringify.write(title);
             }
 
             try render_children(stringify, n);
         },
         .image => |n| {
             try stringify.objectField("url");
-            try stringify.write(n.url);
+            try stringify.write(std.mem.span(n.url));
 
-            if (n.alt.len > 0) {
+            const alt = std.mem.span(n.alt);
+            if (alt.len > 0) {
                 try stringify.objectField("alt");
-                try stringify.write(n.alt);
+                try stringify.write(alt);
             }
 
-            if (n.title.len > 0) {
+            const title = std.mem.span(n.title);
+            if (title.len > 0) {
                 try stringify.objectField("title");
-                try stringify.write(n.title);
+                try stringify.write(title);
             }
         },
         .@"break", .thematic_break => {},

@@ -103,12 +103,13 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
         },
         .link => |n| {
             try out.print("<a href=\"", .{});
-            try printHTMLEscapedAttrValue(out, n.url);
+            try printHTMLEscapedAttrValue(out, std.mem.span(n.url));
             try out.print("\"", .{});
 
-            if (n.title.len > 0) {
+            const title = std.mem.span(n.title);
+            if (title.len > 0) {
                 try out.print(" title=\"", .{});
-                try printHTMLEscapedAttrValue(out, n.title);
+                try printHTMLEscapedAttrValue(out, title);
                 try out.print("\"", .{});
             }
 
@@ -123,16 +124,17 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
         },
         .image => |n| {
             try out.print("<img src=\"", .{});
-            try printHTMLEscapedAttrValue(out, n.url);
+            try printHTMLEscapedAttrValue(out, std.mem.span(n.url));
             try out.print("\" ", .{});
 
             try out.print("alt=\"", .{});
-            try printHTMLEscapedAttrValue(out, n.alt);
+            try printHTMLEscapedAttrValue(out, std.mem.span(n.alt));
             try out.print("\" ", .{});
 
-            if (n.title.len > 0) {
+            const title = std.mem.span(n.title);
+            if (title.len > 0) {
                 try out.print("title=\"", .{});
-                try printHTMLEscapedAttrValue(out, n.title);
+                try printHTMLEscapedAttrValue(out, title);
                 try out.print("\" ", .{});
             }
 

@@ -861,10 +861,7 @@ fn parseInlineImage(
 
     // link destination
     const raw_url = try self.scanLinkDestination(scratch) orelse "";
-    const url = try cmark.uri.normalize(alloc, scratch, raw_url);
-    defer if (!did_parse) {
-        alloc.free(url);
-    };
+    const url = try cmark.uri.normalize(scratch, scratch, raw_url);
 
     const whitespace = (
         try self.scanSeparatingWhitespace(scratch) orelse return null
@@ -890,12 +887,18 @@ fn parseInlineImage(
         try alttext.write(&running_text.writer, node);
     }
 
+    const ownedUrl = try alloc.dupeZ(u8, url);
+    errdefer alloc.free(ownedUrl);
+    const ownedTitle = try alloc.dupeZ(u8, title);
+    errdefer alloc.free(ownedTitle);
+    const ownedAlt = try running_text.toOwnedSliceSentinel(0);
+    errdefer alloc.free(ownedAlt);
     const image = try alloc.create(ast.Node);
     image.* = .{
         .image = .{
-            .url = url,
-            .title = try alloc.dupe(u8, title),
-            .alt = try running_text.toOwnedSlice(),
+            .url = ownedUrl,
+            .title = ownedTitle,
+            .alt = ownedAlt,
         },
     };
     did_parse = true;
@@ -1051,17 +1054,19 @@ fn parseFullReferenceImage(
         try alttext.write(&running_text.writer, node);
     }
 
-    const url = try alloc.dupe(u8, link_def.url);
+    const url = try alloc.dupeZ(u8, std.mem.span(link_def.url));
     errdefer alloc.free(url);
-    const title = try alloc.dupe(u8, link_def.title);
+    const title = try alloc.dupeZ(u8, std.mem.span(link_def.title));
     errdefer alloc.free(title);
+    const alt = try running_text.toOwnedSliceSentinel(0);
+    errdefer alloc.free(alt);
 
     const img_node = try alloc.create(ast.Node);
     img_node.* = .{
         .image = .{
             .url = url,
             .title = title,
-            .alt = try running_text.toOwnedSlice(),
+            .alt = alt,
         },
     };
     did_parse = true;
@@ -1124,17 +1129,19 @@ fn parseCollapsedReferenceImage(
         try alttext.write(&running_text.writer, node);
     }
 
-    const url = try alloc.dupe(u8, link_def.url);
+    const url = try alloc.dupeZ(u8, std.mem.span(link_def.url));
     errdefer alloc.free(url);
-    const title = try alloc.dupe(u8, link_def.title);
+    const title = try alloc.dupeZ(u8, std.mem.span(link_def.title));
     errdefer alloc.free(title);
+    const alt = try running_text.toOwnedSliceSentinel(0);
+    errdefer alloc.free(alt);
 
     const img_node = try alloc.create(ast.Node);
     img_node.* = .{
         .image = .{
             .url = url,
             .title = title,
-            .alt = try running_text.toOwnedSlice(),
+            .alt = alt,
         },
     };
     did_parse = true;
@@ -1190,17 +1197,19 @@ fn parseShortcutReferenceImage(
         try alttext.write(&running_text.writer, node);
     }
 
-    const url = try alloc.dupe(u8, link_def.url);
+    const url = try alloc.dupeZ(u8, std.mem.span(link_def.url));
     errdefer alloc.free(url);
-    const title = try alloc.dupe(u8, link_def.title);
+    const title = try alloc.dupeZ(u8, std.mem.span(link_def.title));
     errdefer alloc.free(title);
+    const alt = try running_text.toOwnedSliceSentinel(0);
+    errdefer alloc.free(alt);
 
     const img_node = try alloc.create(ast.Node);
     img_node.* = .{
         .image = .{
             .url = url,
             .title = title,
-            .alt = try running_text.toOwnedSlice(),
+            .alt = alt,
         },
     };
     did_parse = true;
@@ -1235,10 +1244,7 @@ fn parseInlineLink(
 
     // link destination
     const raw_url = try self.scanLinkDestination(scratch) orelse "";
-    const url = try cmark.uri.normalize(alloc, scratch, raw_url);
-    defer if (!did_parse) {
-        alloc.free(url);
-    };
+    const url = try cmark.uri.normalize(scratch, scratch, raw_url);
 
     const title = blk: {
         // link title, if present, must be separated from destination by
@@ -1252,11 +1258,15 @@ fn parseInlineLink(
 
     _ = try self.consume(scratch, &.{.r_paren}) orelse return null;
 
+    const ownedUrl = try alloc.dupeZ(u8, url);
+    errdefer alloc.free(ownedUrl);
+    const ownedTitle = try alloc.dupeZ(u8, title);
+    errdefer alloc.free(ownedTitle);
     const inline_link = try alloc.create(ast.Node);
     inline_link.* = .{
         .link = .{
-            .url = url,
-            .title = try alloc.dupe(u8, title),
+            .url = ownedUrl,
+            .title = ownedTitle,
             .children = link_text_nodes.ptr,
             .n_children = @intCast(link_text_nodes.len),
         },
@@ -1567,9 +1577,9 @@ fn parseFullReferenceLink(
         scanned_link_label,
     ) orelse return null; // no matching def means parse failure
 
-    const url = try alloc.dupe(u8, link_def.url);
+    const url = try alloc.dupeZ(u8, std.mem.span(link_def.url));
     errdefer alloc.free(url);
-    const title = try alloc.dupe(u8, link_def.title);
+    const title = try alloc.dupeZ(u8, std.mem.span(link_def.title));
     errdefer alloc.free(title);
 
     const link_node = try alloc.create(ast.Node);
@@ -1633,9 +1643,9 @@ fn parseCollapsedReferenceLink(
     _ = try self.consume(scratch, &.{.l_square_bracket}) orelse unreachable;
     _ = try self.consume(scratch, &.{.r_square_bracket}) orelse unreachable;
 
-    const url = try alloc.dupe(u8, link_def.url);
+    const url = try alloc.dupeZ(u8, std.mem.span(link_def.url));
     errdefer alloc.free(url);
-    const title = try alloc.dupe(u8, link_def.title);
+    const title = try alloc.dupeZ(u8, std.mem.span(link_def.title));
     errdefer alloc.free(title);
 
     const link_node = try alloc.create(ast.Node);
@@ -1689,9 +1699,9 @@ fn parseShortcutReferenceLink(
         alloc.free(inline_nodes);
     };
 
-    const url = try alloc.dupe(u8, link_def.url);
+    const url = try alloc.dupeZ(u8, std.mem.span(link_def.url));
     errdefer alloc.free(url);
-    const title = try alloc.dupe(u8, link_def.title);
+    const title = try alloc.dupeZ(u8, std.mem.span(link_def.title));
     errdefer alloc.free(title);
 
     const link_node = try alloc.create(ast.Node);
@@ -1857,21 +1867,24 @@ fn parseURIAutolink(
     _ = try self.consume(scratch, &.{.absolute_uri}) orelse return null;
     _ = try self.consume(scratch, &.{.r_angle_bracket}) orelse return null;
 
-    const url = try cmark.uri.normalize(alloc, scratch, uri_token.lexeme);
-    errdefer alloc.free(url);
-
+    const url = try cmark.uri.normalize(scratch, scratch, uri_token.lexeme);
     const text = try createTextNode(
         alloc,
         try resolveInlineText(scratch, uri_token),
     );
     errdefer text.deinit(alloc);
 
-    const inline_link = try alloc.create(ast.Node);
     const children = try alloc.dupe(*ast.Node, &.{text});
+    errdefer alloc.free(children);
+    const ownedUrl = try alloc.dupeZ(u8, url);
+    errdefer alloc.free(ownedUrl);
+    const ownedTitle = try alloc.dupeZ(u8, "");
+    errdefer alloc.free(ownedTitle);
+    const inline_link = try alloc.create(ast.Node);
     inline_link.* = .{
         .link = .{
-            .url = url,
-            .title = "",
+            .url = ownedUrl,
+            .title = ownedTitle,
             .children = children.ptr,
             .n_children = @intCast(children.len),
         },
@@ -1903,22 +1916,26 @@ fn parseEmailAutolink(
     _ = try self.consume(scratch, &.{.email}) orelse return null;
     _ = try self.consume(scratch, &.{.r_angle_bracket}) orelse return null;
 
-    const url = try std.fmt.allocPrint(
+    const url = try std.fmt.allocPrintSentinel(
         alloc,
         "mailto:{s}",
         .{email_token.lexeme},
+        0,
     );
     const text = try createTextNode(
         alloc,
         try resolveInlineText(scratch, email_token),
     );
 
-    const inline_link = try alloc.create(ast.Node);
     const children = try alloc.dupe(*ast.Node, &.{text});
+    errdefer alloc.free(children);
+    const ownedTitle = try alloc.dupeZ(u8, "");
+    errdefer alloc.free(ownedTitle);
+    const inline_link = try alloc.create(ast.Node);
     inline_link.* = .{
         .link = .{
             .url = url,
-            .title = "",
+            .title = ownedTitle,
             .children = children.ptr,
             .n_children = @intCast(children.len),
         },
@@ -2868,7 +2885,7 @@ test "inline link destination angle brackets" {
     try testing.expectEqual(1, nodes.len);
     try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[0].*));
 
-    try testing.expectEqualStrings(nodes[0].link.url, "bar");
+    try testing.expectEqualStrings("bar", std.mem.span(nodes[0].link.url));
 }
 
 test "inline link destination no angle brackets" {
@@ -2879,7 +2896,7 @@ test "inline link destination no angle brackets" {
     try testing.expectEqual(1, nodes.len);
     try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[0].*));
 
-    try testing.expectEqualStrings(nodes[0].link.url, "bar");
+    try testing.expectEqualStrings("bar", std.mem.span(nodes[0].link.url));
 }
 
 test "inline link with destination and title" {
@@ -2890,8 +2907,8 @@ test "inline link with destination and title" {
     try testing.expectEqual(1, nodes.len);
     try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[0].*));
 
-    try testing.expectEqualStrings("bar", nodes[0].link.url);
-    try testing.expectEqualStrings("baz", nodes[0].link.title);
+    try testing.expectEqualStrings("bar", std.mem.span(nodes[0].link.url));
+    try testing.expectEqualStrings("baz", std.mem.span(nodes[0].link.title));
 }
 
 test "inline link with exclamation mark" {
@@ -2902,7 +2919,7 @@ test "inline link with exclamation mark" {
     try testing.expectEqual(1, nodes.len);
     try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[0].*));
 
-    try testing.expectEqualStrings(nodes[0].link.url, "bar");
+    try testing.expectEqualStrings("bar", std.mem.span(nodes[0].link.url));
 
     try testing.expectEqual(1, nodes[0].link.n_children);
     const text = nodes[0].link.children[0];
@@ -2924,9 +2941,9 @@ test "URI autolink" {
     const link_node = nodes[0];
     try testing.expectEqualStrings(
         "http://foo.com/bar?bim%5B%5D=baz",
-        link_node.link.url,
+        std.mem.span(link_node.link.url),
     );
-    try testing.expectEqualStrings("", link_node.link.title);
+    try testing.expectEqualStrings("", std.mem.span(link_node.link.title));
 
     try testing.expectEqual(1, link_node.link.n_children);
     try testing.expectEqual(
@@ -2950,9 +2967,9 @@ test "email autolink" {
     const link_node = nodes[0];
     try testing.expectEqualStrings(
         "mailto:person@gmail.com",
-        link_node.link.url,
+        std.mem.span(link_node.link.url),
     );
-    try testing.expectEqualStrings("", link_node.link.title);
+    try testing.expectEqualStrings("", std.mem.span(link_node.link.title));
 
     try testing.expectEqual(1, link_node.link.n_children);
     try testing.expectEqual(
@@ -2974,9 +2991,12 @@ test "image" {
     try testing.expectEqual(ast.NodeType.image, @as(ast.NodeType, nodes[0].*));
 
     const image_node = nodes[0];
-    try testing.expectEqualStrings("foo", image_node.image.alt);
-    try testing.expectEqualStrings("/bar", image_node.image.url);
-    try testing.expectEqualStrings("bim", image_node.image.title);
+    try testing.expectEqualStrings("foo", std.mem.span(image_node.image.alt));
+    try testing.expectEqualStrings("/bar", std.mem.span(image_node.image.url));
+    try testing.expectEqualStrings(
+        "bim",
+        std.mem.span(image_node.image.title),
+    );
 }
 
 test "image complicated alt text" {
@@ -2988,8 +3008,11 @@ test "image complicated alt text" {
     try testing.expectEqual(ast.NodeType.image, @as(ast.NodeType, nodes[0].*));
 
     const image_node = nodes[0];
-    try testing.expectEqualStrings("foo bim", image_node.image.alt);
-    try testing.expectEqualStrings("/bar", image_node.image.url);
+    try testing.expectEqualStrings(
+        "foo bim",
+        std.mem.span(image_node.image.alt),
+    );
+    try testing.expectEqualStrings("/bar", std.mem.span(image_node.image.url));
 }
 
 test "image link" {
@@ -3002,9 +3025,9 @@ test "image link" {
     const link_node = nodes[0];
     try testing.expectEqualStrings(
         "/bar.com/baz",
-        link_node.link.url,
+        std.mem.span(link_node.link.url),
     );
-    try testing.expectEqualStrings("", link_node.link.title);
+    try testing.expectEqualStrings("", std.mem.span(link_node.link.title));
 
     try testing.expectEqual(1, link_node.link.n_children);
     try testing.expectEqual(
@@ -3013,7 +3036,7 @@ test "image link" {
     );
     try testing.expectEqualStrings(
         "/foo.jpg",
-        link_node.link.children[0].image.url,
+        std.mem.span(link_node.link.children[0].image.url),
     );
 }
 
@@ -3036,8 +3059,8 @@ test "full reference link" {
     try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[0].*));
 
     const link_node = nodes[0];
-    try testing.expectEqualStrings("/bar", link_node.link.url);
-    try testing.expectEqualStrings("bim", link_node.link.title);
+    try testing.expectEqualStrings("/bar", std.mem.span(link_node.link.url));
+    try testing.expectEqualStrings("bim", std.mem.span(link_node.link.title));
 
     try testing.expectEqual(1, link_node.link.n_children);
     const text_node = link_node.link.children[0];
@@ -3067,8 +3090,8 @@ test "collapsed reference link" {
     try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[0].*));
 
     const link_node = nodes[0];
-    try testing.expectEqualStrings("/bar", link_node.link.url);
-    try testing.expectEqualStrings("bim", link_node.link.title);
+    try testing.expectEqualStrings("/bar", std.mem.span(link_node.link.url));
+    try testing.expectEqualStrings("bim", std.mem.span(link_node.link.title));
 
     try testing.expectEqual(2, link_node.link.n_children);
 
@@ -3106,8 +3129,8 @@ test "shortcut reference link" {
     try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[0].*));
 
     const link_node = nodes[0];
-    try testing.expectEqualStrings("/bar", link_node.link.url);
-    try testing.expectEqualStrings("bim", link_node.link.title);
+    try testing.expectEqualStrings("/bar", std.mem.span(link_node.link.url));
+    try testing.expectEqualStrings("bim", std.mem.span(link_node.link.title));
 
     try testing.expectEqual(2, link_node.link.n_children);
 
@@ -3145,9 +3168,18 @@ test "full reference image" {
     try testing.expectEqual(ast.NodeType.image, @as(ast.NodeType, nodes[0].*));
 
     const img_node = nodes[0];
-    try testing.expectEqualStrings("/image.jpg", img_node.image.url);
-    try testing.expectEqualStrings("bim", img_node.image.title);
-    try testing.expectEqualStrings("my image description", img_node.image.alt);
+    try testing.expectEqualStrings(
+        "/image.jpg",
+        std.mem.span(img_node.image.url),
+    );
+    try testing.expectEqualStrings(
+        "bim",
+        std.mem.span(img_node.image.title),
+    );
+    try testing.expectEqualStrings(
+        "my image description",
+        std.mem.span(img_node.image.alt),
+    );
 }
 
 test "collapsed reference image" {
@@ -3169,9 +3201,18 @@ test "collapsed reference image" {
     try testing.expectEqual(ast.NodeType.image, @as(ast.NodeType, nodes[0].*));
 
     const img_node = nodes[0];
-    try testing.expectEqualStrings("/image.jpg", img_node.image.url);
-    try testing.expectEqualStrings("bim", img_node.image.title);
-    try testing.expectEqualStrings("foo", img_node.image.alt);
+    try testing.expectEqualStrings(
+        "/image.jpg",
+        std.mem.span(img_node.image.url),
+    );
+    try testing.expectEqualStrings(
+        "bim",
+        std.mem.span(img_node.image.title),
+    );
+    try testing.expectEqualStrings(
+        "foo",
+        std.mem.span(img_node.image.alt),
+    );
 }
 
 test "shortcut reference image" {
@@ -3193,9 +3234,18 @@ test "shortcut reference image" {
     try testing.expectEqual(ast.NodeType.image, @as(ast.NodeType, nodes[0].*));
 
     const img_node = nodes[0];
-    try testing.expectEqualStrings("/image.jpg", img_node.image.url);
-    try testing.expectEqualStrings("bim", img_node.image.title);
-    try testing.expectEqualStrings("foo", img_node.image.alt);
+    try testing.expectEqualStrings(
+        "/image.jpg",
+        std.mem.span(img_node.image.url),
+    );
+    try testing.expectEqualStrings(
+        "bim",
+        std.mem.span(img_node.image.title),
+    );
+    try testing.expectEqualStrings(
+        "foo",
+        std.mem.span(img_node.image.alt),
+    );
 }
 
 test "hard line break" {
