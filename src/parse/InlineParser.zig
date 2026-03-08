@@ -266,9 +266,12 @@ fn parseStarStrong(
     }
 
     const node = try alloc.create(ast.Node);
+    errdefer alloc.destroy(node);
+    const owned = try children.toOwnedSlice();
     node.* = .{
         .strong = .{
-            .children = try children.toOwnedSlice(),
+            .children = owned.ptr,
+            .n_children = @intCast(owned.len),
         },
     };
     did_parse = true;
@@ -394,9 +397,12 @@ fn parseStarEmphasis(
     }
 
     const emphasis_node = try alloc.create(ast.Node);
+    errdefer alloc.destroy(emphasis_node);
+    const owned = try children.toOwnedSlice();
     emphasis_node.* = .{
         .emphasis = .{
-            .children = try children.toOwnedSlice(),
+            .children = owned.ptr,
+            .n_children = @intCast(owned.len),
         },
     };
     did_parse = true;
@@ -529,9 +535,12 @@ fn parseUnderscoreStrong(
     }
 
     const strong_node = try alloc.create(ast.Node);
+    errdefer alloc.destroy(strong_node);
+    const owned = try children.toOwnedSlice();
     strong_node.* = .{
         .strong = .{
-            .children = try children.toOwnedSlice(),
+            .children = owned.ptr,
+            .n_children = @intCast(owned.len),
         },
     };
     did_parse = true;
@@ -675,9 +684,12 @@ fn parseUnderscoreEmphasis(
     }
 
     const emphasis_node = try alloc.create(ast.Node);
+    errdefer alloc.destroy(emphasis_node);
+    const owned = try children.toOwnedSlice();
     emphasis_node.* = .{
         .emphasis = .{
-            .children = try children.toOwnedSlice(),
+            .children = owned.ptr,
+            .n_children = @intCast(owned.len),
         },
     };
     did_parse = true;
@@ -1245,7 +1257,8 @@ fn parseInlineLink(
         .link = .{
             .url = url,
             .title = try alloc.dupe(u8, title),
-            .children = link_text_nodes,
+            .children = link_text_nodes.ptr,
+            .n_children = @intCast(link_text_nodes.len),
         },
     };
     did_parse = true;
@@ -1564,7 +1577,8 @@ fn parseFullReferenceLink(
         .link = .{
             .url = url,
             .title = title,
-            .children = link_text_nodes,
+            .children = link_text_nodes.ptr,
+            .n_children = @intCast(link_text_nodes.len),
         },
     };
     did_parse = true;
@@ -1629,7 +1643,8 @@ fn parseCollapsedReferenceLink(
         .link = .{
             .url = url,
             .title = title,
-            .children = inline_nodes,
+            .children = inline_nodes.ptr,
+            .n_children = @intCast(inline_nodes.len),
         },
     };
     did_parse = true;
@@ -1684,7 +1699,8 @@ fn parseShortcutReferenceLink(
         .link = .{
             .url = url,
             .title = title,
-            .children = inline_nodes,
+            .children = inline_nodes.ptr,
+            .n_children = @intCast(inline_nodes.len),
         },
     };
     did_parse = true;
@@ -1851,11 +1867,13 @@ fn parseURIAutolink(
     errdefer text.deinit(alloc);
 
     const inline_link = try alloc.create(ast.Node);
+    const children = try alloc.dupe(*ast.Node, &.{text});
     inline_link.* = .{
         .link = .{
             .url = url,
             .title = "",
-            .children = try alloc.dupe(*ast.Node, &.{text}),
+            .children = children.ptr,
+            .n_children = @intCast(children.len),
         },
     };
     return inline_link;
@@ -1896,11 +1914,13 @@ fn parseEmailAutolink(
     );
 
     const inline_link = try alloc.create(ast.Node);
+    const children = try alloc.dupe(*ast.Node, &.{text});
     inline_link.* = .{
         .link = .{
             .url = url,
             .title = "",
-            .children = try alloc.dupe(*ast.Node, &.{text}),
+            .children = children.ptr,
+            .n_children = @intCast(children.len),
         },
     };
     return inline_link;
@@ -2209,7 +2229,7 @@ test "nested star emphasis" {
         ast.NodeType.emphasis,
         @as(ast.NodeType, nodes[1].*),
     );
-    try testing.expectEqual(2, nodes[1].emphasis.children.len);
+    try testing.expectEqual(2, nodes[1].emphasis.n_children);
 
     const nested_emph = nodes[1].emphasis.children[0];
     try testing.expectEqual(
@@ -2321,7 +2341,7 @@ test "unmatched nested emphasis" {
 
     try testing.expectEqual(1, nodes.len);
     try testing.expectEqual(ast.NodeType.strong, @as(ast.NodeType, nodes[0].*));
-    try testing.expectEqual(1, nodes[0].strong.children.len);
+    try testing.expectEqual(1, nodes[0].strong.n_children);
 
     try testing.expectEqual(
         ast.NodeType.text,
@@ -2340,7 +2360,7 @@ test "unmatched nested emphasis no spacing" {
 
     try testing.expectEqual(1, nodes.len);
     try testing.expectEqual(ast.NodeType.strong, @as(ast.NodeType, nodes[0].*));
-    try testing.expectEqual(1, nodes[0].strong.children.len);
+    try testing.expectEqual(1, nodes[0].strong.n_children);
 
     try testing.expectEqual(
         ast.NodeType.text,
@@ -2373,7 +2393,7 @@ test "unmatched nested underscore" {
         ast.NodeType.emphasis,
         @as(ast.NodeType, nodes[0].*),
     );
-    try testing.expectEqual(1, nodes[0].emphasis.children.len);
+    try testing.expectEqual(1, nodes[0].emphasis.n_children);
 
     try testing.expectEqual(
         ast.NodeType.text,
@@ -2429,7 +2449,7 @@ test "star strong nested inside star emphasis" {
         ast.NodeType.emphasis,
         @as(ast.NodeType, emphasis_node.*),
     );
-    try testing.expectEqual(2, emphasis_node.emphasis.children.len);
+    try testing.expectEqual(2, emphasis_node.emphasis.n_children);
     try testing.expectEqual(
         ast.NodeType.strong,
         @as(ast.NodeType, emphasis_node.emphasis.children[0].*),
@@ -2465,7 +2485,7 @@ test "star emphasis nested inside star strong" {
         ast.NodeType.strong,
         @as(ast.NodeType, strong_node.*),
     );
-    try testing.expectEqual(2, strong_node.strong.children.len);
+    try testing.expectEqual(2, strong_node.strong.n_children);
     try testing.expectEqual(
         ast.NodeType.emphasis,
         @as(ast.NodeType, strong_node.strong.children[0].*),
@@ -2567,7 +2587,7 @@ test "underscore emphasis nested unmatched" {
         ast.NodeType.emphasis,
         @as(ast.NodeType, nodes[0].*),
     );
-    try testing.expectEqual(1, nodes[0].emphasis.children.len);
+    try testing.expectEqual(1, nodes[0].emphasis.n_children);
 
     try testing.expectEqual(
         ast.NodeType.text,
@@ -2603,7 +2623,7 @@ test "underscore strong with nested unmatched" {
 
     try testing.expectEqual(1, nodes.len);
     try testing.expectEqual(ast.NodeType.strong, @as(ast.NodeType, nodes[0].*));
-    try testing.expectEqual(1, nodes[0].strong.children.len);
+    try testing.expectEqual(1, nodes[0].strong.n_children);
 
     try testing.expectEqual(
         ast.NodeType.text,
@@ -2633,11 +2653,11 @@ test "nesting feast of insanity" {
     //     - text "feast!"
     try testing.expectEqual(1, nodes.len);
     try testing.expectEqual(ast.NodeType.strong, @as(ast.NodeType, nodes[0].*));
-    try testing.expectEqual(3, nodes[0].strong.children.len);
+    try testing.expectEqual(3, nodes[0].strong.n_children);
 
     const emph = nodes[0].strong.children[0];
     try testing.expectEqual(ast.NodeType.emphasis, @as(ast.NodeType, emph.*));
-    try testing.expectEqual(2, emph.emphasis.children.len);
+    try testing.expectEqual(2, emph.emphasis.n_children);
     {
         const child_text = emph.emphasis.children[0];
         try testing.expectEqual(
@@ -2654,13 +2674,13 @@ test "nesting feast of insanity" {
             ast.NodeType.strong,
             @as(ast.NodeType, child_strong.*),
         );
-        try testing.expectEqual(1, child_strong.strong.children.len);
+        try testing.expectEqual(1, child_strong.strong.n_children);
         const grandchild_strong = child_strong.strong.children[0];
         try testing.expectEqual(
             ast.NodeType.strong,
             @as(ast.NodeType, grandchild_strong.*),
         );
-        try testing.expectEqual(1, grandchild_strong.strong.children.len);
+        try testing.expectEqual(1, grandchild_strong.strong.n_children);
         const ggrandchild_text = grandchild_strong.strong.children[0];
         try testing.expectEqual(
             ast.NodeType.text,
@@ -2678,7 +2698,7 @@ test "nesting feast of insanity" {
 
     const emph2 = nodes[0].strong.children[2];
     try testing.expectEqual(ast.NodeType.emphasis, @as(ast.NodeType, emph2.*));
-    try testing.expectEqual(2, emph2.emphasis.children.len);
+    try testing.expectEqual(2, emph2.emphasis.n_children);
     {
         const child_text = emph2.emphasis.children[0];
         try testing.expectEqual(
@@ -2695,7 +2715,7 @@ test "nesting feast of insanity" {
             ast.NodeType.strong,
             @as(ast.NodeType, child_strong.*),
         );
-        try testing.expectEqual(1, child_strong.strong.children.len);
+        try testing.expectEqual(1, child_strong.strong.n_children);
         const grandchild_text = child_strong.strong.children[0];
         try testing.expectEqual(
             ast.NodeType.text,
@@ -2770,7 +2790,7 @@ test "inline link containing emphasis" {
         @as(ast.NodeType, nodes[0].*),
     );
 
-    try testing.expectEqual(1, nodes[0].link.children.len);
+    try testing.expectEqual(1, nodes[0].link.n_children);
     const emph = nodes[0].link.children[0];
     try testing.expectEqual(
         ast.NodeType.emphasis,
@@ -2804,7 +2824,7 @@ test "inline link emphasis precedence" {
         @as(ast.NodeType, link_node.*),
     );
 
-    try testing.expectEqual(1, link_node.link.children.len);
+    try testing.expectEqual(1, link_node.link.n_children);
     try testing.expectEqual(
         ast.NodeType.text,
         @as(ast.NodeType, link_node.link.children[0].*),
@@ -2884,7 +2904,7 @@ test "inline link with exclamation mark" {
 
     try testing.expectEqualStrings(nodes[0].link.url, "bar");
 
-    try testing.expectEqual(1, nodes[0].link.children.len);
+    try testing.expectEqual(1, nodes[0].link.n_children);
     const text = nodes[0].link.children[0];
     try testing.expectEqual(
         ast.NodeType.text,
@@ -2908,7 +2928,7 @@ test "URI autolink" {
     );
     try testing.expectEqualStrings("", link_node.link.title);
 
-    try testing.expectEqual(1, link_node.link.children.len);
+    try testing.expectEqual(1, link_node.link.n_children);
     try testing.expectEqual(
         ast.NodeType.text,
         @as(ast.NodeType, link_node.link.children[0].*),
@@ -2934,7 +2954,7 @@ test "email autolink" {
     );
     try testing.expectEqualStrings("", link_node.link.title);
 
-    try testing.expectEqual(1, link_node.link.children.len);
+    try testing.expectEqual(1, link_node.link.n_children);
     try testing.expectEqual(
         ast.NodeType.text,
         @as(ast.NodeType, link_node.link.children[0].*),
@@ -2986,7 +3006,7 @@ test "image link" {
     );
     try testing.expectEqualStrings("", link_node.link.title);
 
-    try testing.expectEqual(1, link_node.link.children.len);
+    try testing.expectEqual(1, link_node.link.n_children);
     try testing.expectEqual(
         ast.NodeType.image,
         @as(ast.NodeType, link_node.link.children[0].*),
@@ -3019,7 +3039,7 @@ test "full reference link" {
     try testing.expectEqualStrings("/bar", link_node.link.url);
     try testing.expectEqualStrings("bim", link_node.link.title);
 
-    try testing.expectEqual(1, link_node.link.children.len);
+    try testing.expectEqual(1, link_node.link.n_children);
     const text_node = link_node.link.children[0];
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, text_node.*));
     try testing.expectEqualStrings(
@@ -3050,7 +3070,7 @@ test "collapsed reference link" {
     try testing.expectEqualStrings("/bar", link_node.link.url);
     try testing.expectEqualStrings("bim", link_node.link.title);
 
-    try testing.expectEqual(2, link_node.link.children.len);
+    try testing.expectEqual(2, link_node.link.n_children);
 
     const text_node = link_node.link.children[0];
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, text_node.*));
@@ -3089,7 +3109,7 @@ test "shortcut reference link" {
     try testing.expectEqualStrings("/bar", link_node.link.url);
     try testing.expectEqualStrings("bim", link_node.link.title);
 
-    try testing.expectEqual(2, link_node.link.children.len);
+    try testing.expectEqual(2, link_node.link.n_children);
 
     const text_node = link_node.link.children[0];
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, text_node.*));

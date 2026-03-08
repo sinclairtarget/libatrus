@@ -107,11 +107,17 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
     try stringify.endObject();
 }
 
-fn render_children(stringify: *Stringify, node: anytype) Io.Writer.Error!void {
+fn render_children(
+    stringify: *Stringify,
+    node_data: anytype,
+) Io.Writer.Error!void {
     try stringify.objectField("children");
     try stringify.beginArray();
-    for (node.children) |child| {
+
+    const sliced = node_data.children[0..node_data.n_children];
+    for (sliced) |child| {
         try render_node(stringify, child);
     }
+
     try stringify.endArray();
 }

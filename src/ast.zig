@@ -2,13 +2,13 @@
 //!
 //! See https://mystmd.org/spec
 //!
-//! The AST is defined as "extern" because it is exposed via the libatrus
-//! C API. The data structures defined here must be kept in sync with the C
+//! The data structures comprising the AST are defined as "extern" because they
+//! are exposed via the libatrus C API. They must be kept in sync with the C
 //! data structures in atrus.h.
 //!
-//! Because "extern" data structures need to have a defined memory layout,
-//! some useful Zig features are prohibited here: slices and (automatically)
-//! tagged unions.
+//! Because "extern" data structures need to have a defined memory layout, some
+//! useful Zig features are prohibited here, in particular slices and
+//! (automatically) tagged unions.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -61,43 +61,43 @@ pub const Node = union(NodeType) {
 };
 
 pub const Root = struct {
-    children: []*Node,
-    is_post_processed: bool = false,
+    children: [*]*Node,
+    n_children: c_uint,
+    is_post_processed: bool = false, // TODO: Remove
 
-    const Self = @This();
-
-    pub fn deinit(self: *Self, alloc: Allocator) void {
-        for (self.children) |child| {
+    pub fn deinit(self: *Root, alloc: Allocator) void {
+        const sliced = self.children[0..self.n_children];
+        for (sliced) |child| {
             child.deinit(alloc);
         }
-        alloc.free(self.children);
+        alloc.free(sliced);
     }
 };
 
 pub const Container = struct {
-    children: []*Node,
+    children: [*]*Node,
+    n_children: c_uint,
 
-    const Self = @This();
-
-    pub fn deinit(self: *Self, alloc: Allocator) void {
-        for (self.children) |child| {
+    pub fn deinit(self: *Container, alloc: Allocator) void {
+        const sliced = self.children[0..self.n_children];
+        for (sliced) |child| {
             child.deinit(alloc);
         }
-        alloc.free(self.children);
+        alloc.free(sliced);
     }
 };
 
-pub const Heading = struct {
-    depth: u8,
-    children: []*Node,
+pub const Heading = extern struct {
+    children: [*]*Node,
+    n_children: c_uint,
+    depth: c_ushort,    // Headings cannot be deeper than six levels
 
-    const Self = @This();
-
-    pub fn deinit(self: *Self, alloc: Allocator) void {
-        for (self.children) |child| {
+    pub fn deinit(self: *Heading, alloc: Allocator) void {
+        const sliced = self.children[0..self.n_children];
+        for (sliced) |child| {
             child.deinit(alloc);
         }
-        alloc.free(self.children);
+        alloc.free(sliced);
     }
 };
 
@@ -122,15 +122,15 @@ pub const Code = extern struct {
 pub const Link = struct {
     url: []const u8,
     title: []const u8,
-    children: []*Node,
+    children: [*]*Node,
+    n_children: c_uint,
 
-    const Self = @This();
-
-    pub fn deinit(self: *Self, alloc: Allocator) void {
-        for (self.children) |child| {
+    pub fn deinit(self: *Link, alloc: Allocator) void {
+        const sliced = self.children[0..self.n_children];
+        for (sliced) |child| {
             child.deinit(alloc);
         }
-        alloc.free(self.children);
+        alloc.free(sliced);
 
         alloc.free(self.url);
         alloc.free(self.title);

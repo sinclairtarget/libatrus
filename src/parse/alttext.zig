@@ -13,7 +13,8 @@ pub fn write(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
     switch (node.*) {
         inline .root, .block, .blockquote, .paragraph, .emphasis, .strong,
         .heading, .link => |n| {
-            for (n.children) |child| {
+            const sliced = n.children[0..n.n_children];
+            for (sliced) |child| {
                 try write(out, child);
             }
         },

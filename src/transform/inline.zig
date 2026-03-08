@@ -17,7 +17,7 @@ pub fn transform(
 ) !*ast.Node {
     switch (original_node.*) {
         inline .root, .block, .blockquote => |n| {
-            for (0..n.children.len) |i| {
+            for (0..n.n_children) |i| {
                 n.children[i] = try transform(
                     alloc,
                     scratch_arena,
@@ -28,7 +28,7 @@ pub fn transform(
             return original_node;
         },
         .paragraph => |n| {
-            for (0..n.children.len) |i| {
+            for (0..n.n_children) |i| {
                 n.children[i] = try transform(
                     alloc,
                     scratch_arena,
@@ -37,13 +37,14 @@ pub fn transform(
                 );
             }
 
-            const children = try parseInline(
+            const sliced = n.children[0..n.n_children];
+            const new_children = try parseInline(
                 alloc,
                 scratch_arena,
-                n.children,
+                sliced,
                 link_defs,
             );
-            if (children.ptr == n.children.ptr) {
+            if (new_children.ptr == sliced.ptr) {
                 return original_node; // nothing was changed
             }
             defer original_node.deinit(alloc);
@@ -51,13 +52,14 @@ pub fn transform(
             const node = try alloc.create(ast.Node);
             node.* = .{
                 .paragraph = .{
-                    .children = children,
+                    .children = new_children.ptr,
+                    .n_children = @intCast(new_children.len),
                 },
             };
             return node;
         },
         .heading => |n| {
-            for (0..n.children.len) |i| {
+            for (0..n.n_children) |i| {
                 n.children[i] = try transform(
                     alloc,
                     scratch_arena,
@@ -66,13 +68,14 @@ pub fn transform(
                 );
             }
 
-            const children = try parseInline(
+            const sliced = n.children[0..n.n_children];
+            const new_children = try parseInline(
                 alloc,
                 scratch_arena,
-                n.children,
+                sliced,
                 link_defs,
             );
-            if (children.ptr == n.children.ptr) {
+            if (new_children.ptr == sliced.ptr) {
                 return original_node; // nothing was changed
             }
             defer original_node.deinit(alloc);
@@ -80,8 +83,9 @@ pub fn transform(
             const node = try alloc.create(ast.Node);
             node.* = .{
                 .heading = .{
-                    .children = children,
-                    .depth = n.depth,
+                    .children = new_children.ptr,
+                    .n_children = @intCast(new_children.len),
+                    .depth = @intCast(n.depth),
                 },
             };
             return node;

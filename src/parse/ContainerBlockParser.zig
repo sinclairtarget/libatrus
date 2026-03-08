@@ -179,7 +179,8 @@ const OpenRoot = struct {
         const node = try alloc.create(ast.Node);
         node.* = .{
             .root = .{
-                .children = children,
+                .children = children.ptr,
+                .n_children = @intCast(children.len),
             },
         };
         return node;
@@ -312,7 +313,8 @@ const OpenBlockquote = struct {
         const node = try alloc.create(ast.Node);
         node.* = .{
             .blockquote = .{
-                .children = children,
+                .children = children.ptr,
+                .n_children = @intCast(children.len),
             },
         };
         return node;
@@ -504,7 +506,7 @@ test "empty document" {
     defer root.deinit(testing.allocator);
 
     try testing.expectEqual(.root, @as(ast.NodeType, root.*));
-    try testing.expectEqual(0, root.root.children.len);
+    try testing.expectEqual(0, root.root.n_children);
 }
 
 test "simple paragraph" {
@@ -518,7 +520,7 @@ test "simple paragraph" {
     defer root.deinit(testing.allocator);
 
     try testing.expectEqual(.root, @as(ast.NodeType, root.*));
-    try testing.expectEqual(1, root.root.children.len);
+    try testing.expectEqual(1, root.root.n_children);
 
     const p = root.root.children[0];
     try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
@@ -545,15 +547,15 @@ test "blockquote" {
     defer root.deinit(testing.allocator);
 
     try testing.expectEqual(.root, @as(ast.NodeType, root.*));
-    try testing.expectEqual(2, root.root.children.len);
+    try testing.expectEqual(2, root.root.n_children);
 
     const bq = root.root.children[0];
     try testing.expectEqual(.blockquote, @as(ast.NodeType, bq.*));
-    try testing.expectEqual(1, bq.blockquote.children.len);
+    try testing.expectEqual(1, bq.blockquote.n_children);
     {
         const p = bq.blockquote.children[0];
         try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
-        try testing.expectEqual(1, p.paragraph.children.len);
+        try testing.expectEqual(1, p.paragraph.n_children);
 
         const txt = p.paragraph.children[0];
         try testing.expectEqual(.text, @as(ast.NodeType, txt.*));
@@ -582,15 +584,15 @@ test "blockquote lazy continuation" {
     defer root.deinit(testing.allocator);
 
     try testing.expectEqual(.root, @as(ast.NodeType, root.*));
-    try testing.expectEqual(3, root.root.children.len);
+    try testing.expectEqual(3, root.root.n_children);
 
     const bq1 = root.root.children[0];
     try testing.expectEqual(.blockquote, @as(ast.NodeType, bq1.*));
-    try testing.expectEqual(1, bq1.blockquote.children.len);
+    try testing.expectEqual(1, bq1.blockquote.n_children);
     {
         const p = bq1.blockquote.children[0];
         try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
-        try testing.expectEqual(1, p.paragraph.children.len);
+        try testing.expectEqual(1, p.paragraph.n_children);
 
         const txt = p.paragraph.children[0];
         try testing.expectEqual(.text, @as(ast.NodeType, txt.*));
@@ -618,14 +620,14 @@ test "blockquote after paragraph" {
     defer root.deinit(testing.allocator);
 
     try testing.expectEqual(.root, @as(ast.NodeType, root.*));
-    try testing.expectEqual(2, root.root.children.len);
+    try testing.expectEqual(2, root.root.n_children);
 
     const p = root.root.children[0];
     try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
 
     const bq = root.root.children[1];
     try testing.expectEqual(.blockquote, @as(ast.NodeType, bq.*));
-    try testing.expectEqual(1, bq.blockquote.children.len);
+    try testing.expectEqual(1, bq.blockquote.n_children);
     {
         const bq_p = bq.blockquote.children[0];
         try testing.expectEqual(.paragraph, @as(ast.NodeType, bq_p.*));
@@ -651,11 +653,11 @@ test "whitespace blockquote" {
     defer root.deinit(testing.allocator);
 
     try testing.expectEqual(.root, @as(ast.NodeType, root.*));
-    try testing.expectEqual(1, root.root.children.len);
+    try testing.expectEqual(1, root.root.n_children);
 
     const bq = root.root.children[0];
     try testing.expectEqual(.blockquote, @as(ast.NodeType, bq.*));
-    try testing.expectEqual(1, bq.blockquote.children.len);
+    try testing.expectEqual(1, bq.blockquote.n_children);
     {
         const bq_p = bq.blockquote.children[0];
         try testing.expectEqual(.paragraph, @as(ast.NodeType, bq_p.*));
@@ -687,11 +689,11 @@ test "blockquote with nested blocks" {
     defer root.deinit(testing.allocator);
 
     try testing.expectEqual(.root, @as(ast.NodeType, root.*));
-    try testing.expectEqual(1, root.root.children.len);
+    try testing.expectEqual(1, root.root.n_children);
 
     const bq = root.root.children[0];
     try testing.expectEqual(.blockquote, @as(ast.NodeType, bq.*));
-    try testing.expectEqual(3, bq.blockquote.children.len);
+    try testing.expectEqual(3, bq.blockquote.n_children);
     {
         const bq_h = bq.blockquote.children[0];
         try testing.expectEqual(.heading, @as(ast.NodeType, bq_h.*));
@@ -736,7 +738,7 @@ test "double blockquote" {
     defer root.deinit(testing.allocator);
 
     try testing.expectEqual(.root, @as(ast.NodeType, root.*));
-    try testing.expectEqual(3, root.root.children.len);
+    try testing.expectEqual(3, root.root.n_children);
 
     {
         const p = root.root.children[0];
@@ -751,11 +753,11 @@ test "double blockquote" {
 
     const bq_outer = root.root.children[1];
     try testing.expectEqual(.blockquote, @as(ast.NodeType, bq_outer.*));
-    try testing.expectEqual(3, bq_outer.blockquote.children.len);
+    try testing.expectEqual(3, bq_outer.blockquote.n_children);
     {
         const p1 = bq_outer.blockquote.children[0];
         try testing.expectEqual(.paragraph, @as(ast.NodeType, p1.*));
-        try testing.expectEqual(1, p1.paragraph.children.len);
+        try testing.expectEqual(1, p1.paragraph.n_children);
         const p1_txt = p1.paragraph.children[0];
         try testing.expectEqual(.text, @as(ast.NodeType, p1_txt.*));
         try testing.expectEqualStrings(
@@ -765,10 +767,10 @@ test "double blockquote" {
 
         const bq_inner = bq_outer.blockquote.children[1];
         try testing.expectEqual(.blockquote, @as(ast.NodeType, bq_inner.*));
-        try testing.expectEqual(1, bq_inner.blockquote.children.len);
+        try testing.expectEqual(1, bq_inner.blockquote.n_children);
         const bq_inner_p = bq_inner.blockquote.children[0];
         try testing.expectEqual(.paragraph, @as(ast.NodeType, bq_inner_p.*));
-        try testing.expectEqual(1, bq_inner_p.paragraph.children.len);
+        try testing.expectEqual(1, bq_inner_p.paragraph.n_children);
         const bq_inner_p_txt = bq_inner_p.paragraph.children[0];
         try testing.expectEqual(.text, @as(ast.NodeType, bq_inner_p_txt.*));
         try testing.expectEqualStrings(
@@ -778,7 +780,7 @@ test "double blockquote" {
 
         const p2 = bq_outer.blockquote.children[2];
         try testing.expectEqual(.paragraph, @as(ast.NodeType, p2.*));
-        try testing.expectEqual(1, p2.paragraph.children.len);
+        try testing.expectEqual(1, p2.paragraph.n_children);
         const p2_txt = p2.paragraph.children[0];
         try testing.expectEqual(.text, @as(ast.NodeType, p2_txt.*));
         try testing.expectEqualStrings(
@@ -811,7 +813,7 @@ test "angle brackets in fenced code block" {
     defer root.deinit(testing.allocator);
 
     try testing.expectEqual(.root, @as(ast.NodeType, root.*));
-    try testing.expectEqual(1, root.root.children.len);
+    try testing.expectEqual(1, root.root.n_children);
 
     const code = root.root.children[0];
     try testing.expectEqual(.code, @as(ast.NodeType, code.*));

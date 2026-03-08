@@ -112,7 +112,8 @@ fn fillLinkDefs(
 ) Error!void {
     switch (root.*) {
         inline .root, .block, .blockquote => |n| {
-            for (n.children) |node| {
+            const sliced = n.children[0..n.n_children];
+            for (sliced) |node| {
                 try fillLinkDefs(alloc, node, map);
             }
         },
@@ -156,6 +157,7 @@ test "can map single link def" {
     var root: ast.Node = .{
         .root = .{
             .children = &children,
+            .n_children = children.len,
         },
     };
 
@@ -190,6 +192,7 @@ test "first link def takes precedence" {
     var root: ast.Node = .{
         .root = .{
             .children = &children,
+            .n_children = children.len,
         },
     };
 
@@ -217,6 +220,7 @@ test "match is case-insensitive" {
     var root: ast.Node = .{
         .root = .{
             .children = &children,
+            .n_children = children.len,
         },
     };
 

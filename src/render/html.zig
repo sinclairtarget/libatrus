@@ -16,12 +16,14 @@ pub fn render(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!void {
 fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
     switch (node.*) {
         .root => |n| {
-            for (n.children) |child| {
+            const sliced = n.children[0..n.n_children];
+            for (sliced) |child| {
                 _ = try renderNode(child, out);
             }
         },
         .block => |n| {
-            for (n.children) |child| {
+            const sliced = n.children[0..n.n_children];
+            for (sliced) |child| {
                 if (try renderNode(child, out)) {
                     try out.print("\n", .{});
                 }
@@ -29,7 +31,8 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
         },
         .blockquote => |n| {
             try out.print("<blockquote>\n", .{});
-            for (n.children) |child| {
+            const sliced = n.children[0..n.n_children];
+            for (sliced) |child| {
                 if (try renderNode(child, out)) {
                     try out.print("\n", .{});
                 }
@@ -38,14 +41,16 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
         },
         .paragraph => |n| {
             try out.print("<p>", .{});
-            for (n.children) |child| {
+            const sliced = n.children[0..n.n_children];
+            for (sliced) |child| {
                 _ = try renderNode(child, out);
             }
             try out.print("</p>", .{});
         },
         .heading => |n| {
             try out.print("<h{d}>", .{n.depth});
-            for (n.children) |child| {
+            const sliced = n.children[0..n.n_children];
+            for (sliced) |child| {
                 _ = try renderNode(child, out);
             }
             try out.print("</h{d}>", .{n.depth});
@@ -55,14 +60,16 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
         },
         .emphasis => |n| {
             try out.print("<em>", .{});
-            for (n.children) |child| {
+            const sliced = n.children[0..n.n_children];
+            for (sliced) |child| {
                 _ = try renderNode(child, out);
             }
             try out.print("</em>", .{});
         },
         .strong => |n| {
             try out.print("<strong>", .{});
-            for (n.children) |child| {
+            const sliced = n.children[0..n.n_children];
+            for (sliced) |child| {
                 _ = try renderNode(child, out);
             }
             try out.print("</strong>", .{});
@@ -107,7 +114,8 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
 
             try out.print(">", .{});
 
-            for (n.children) |child| {
+            const sliced = n.children[0..n.n_children];
+            for (sliced) |child| {
                 _ = try renderNode(child, out);
             }
 

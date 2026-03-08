@@ -229,8 +229,9 @@ fn parseATXHeading(
     const node = try alloc.create(ast.Node);
     node.* = .{
         .heading = .{
-            .depth = @truncate(depth),
-            .children = children,
+            .children = children.ptr,
+            .n_children = @intCast(children.len),
+            .depth = @intCast(depth),
         },
     };
     did_parse = true;
@@ -317,8 +318,9 @@ fn parseSetextHeading(
     const node = try alloc.create(ast.Node);
     node.* = .{
         .heading = .{
+            .children = children.ptr,
+            .n_children = @intCast(children.len),
             .depth = depth,
-            .children = children,
         },
     };
     did_parse = true;
@@ -1090,7 +1092,8 @@ fn createParagraphNode(alloc: Allocator, text_content: []const u8) !*ast.Node {
     const paragraph_node = try alloc.create(ast.Node);
     paragraph_node.* = .{
         .paragraph = .{
-            .children = children,
+            .children = children.ptr,
+            .n_children = @intCast(children.len),
         },
     };
     return paragraph_node;
@@ -1376,7 +1379,7 @@ test "paragraph can contain punctuation" {
 
     const h = nodes[0];
     try testing.expectEqual(.heading, @as(ast.NodeType, h.*));
-    try testing.expectEqual(1, h.heading.children.len);
+    try testing.expectEqual(1, h.heading.n_children);
 
     const p = nodes[1];
     try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
@@ -1590,7 +1593,7 @@ test "close token in paragraph" {
 
     const p = nodes[0];
     try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
-    try testing.expectEqual(1, p.paragraph.children.len);
+    try testing.expectEqual(1, p.paragraph.n_children);
 
     const txt = p.paragraph.children[0];
     try testing.expectEqual(.text, @as(ast.NodeType, txt.*));
@@ -1633,7 +1636,7 @@ test "close token before thematic break" {
 
     const p = nodes[0];
     try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
-    try testing.expectEqual(1, p.paragraph.children.len);
+    try testing.expectEqual(1, p.paragraph.n_children);
 
     const txt = p.paragraph.children[0];
     try testing.expectEqual(.text, @as(ast.NodeType, txt.*));
@@ -1677,7 +1680,7 @@ test "close token in setext heading" {
 
     const p = nodes[0];
     try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
-    try testing.expectEqual(1, p.paragraph.children.len);
+    try testing.expectEqual(1, p.paragraph.n_children);
 
     const txt = p.paragraph.children[0];
     try testing.expectEqual(.text, @as(ast.NodeType, txt.*));
@@ -1727,7 +1730,7 @@ test "close token after atx heading" {
 
     const h = nodes[0];
     try testing.expectEqual(.heading, @as(ast.NodeType, h.*));
-    try testing.expectEqual(1, h.heading.children.len);
+    try testing.expectEqual(1, h.heading.n_children);
 
     const txt = h.heading.children[0];
     try testing.expectEqual(.text, @as(ast.NodeType, txt.*));
