@@ -351,7 +351,7 @@ fn parseThematicBreak(
     _ = try self.it.consume(scratch, &.{.newline});
 
     const node = try alloc.create(ast.Node);
-    node.* = .{ .thematic_break = .{} };
+    node.* = .{ .thematic_break = {} };
     did_parse = true;
     return node;
 }

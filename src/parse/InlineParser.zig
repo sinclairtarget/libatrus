@@ -1927,7 +1927,7 @@ fn parseHardLineBreak(
 
     const break_node = try alloc.create(ast.Node);
     break_node.* = .{
-        .@"break" = .{},
+        .@"break" = {},
     };
     return break_node;
 }

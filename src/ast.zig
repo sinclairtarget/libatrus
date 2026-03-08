@@ -1,6 +1,10 @@
 //! Abstract syntax tree for a MyST document.
 //!
-//! https://mystmd.org/spec
+//! See https://mystmd.org/spec
+//!
+//! The AST is defined as "extern" because it is exposed via the libatrus
+//! C API. The data structures defined here must be kept in sync with the C
+//! data structures in atrus.h.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -30,8 +34,8 @@ pub const Node = union(NodeType) {
     paragraph: Container,
     text: Text,
     code: Code,
-    thematic_break: Empty,
-    @"break": Empty,
+    thematic_break: void,
+    @"break": void,
     emphasis: Container,
     strong: Container,
     inline_code: Text,
@@ -160,5 +164,3 @@ pub const Image = struct {
         alloc.free(self.alt);
     }
 };
-
-pub const Empty = struct {};
