@@ -5,6 +5,10 @@
 //! The AST is defined as "extern" because it is exposed via the libatrus
 //! C API. The data structures defined here must be kept in sync with the C
 //! data structures in atrus.h.
+//!
+//! Because "extern" data structures need to have a defined memory layout,
+//! some useful Zig features are prohibited here: slices and (automatically)
+//! tagged unions.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -97,13 +101,11 @@ pub const Heading = struct {
     }
 };
 
-pub const Text = struct {
-    value: []const u8,
+pub const Text = extern struct {
+    value: [*:0]const u8,
 
-    const Self = @This();
-
-    pub fn deinit(self: *Self, alloc: Allocator) void {
-        alloc.free(self.value);
+    pub fn deinit(self: *Text, alloc: Allocator) void {
+        alloc.free(std.mem.span(self.value));
     }
 };
 

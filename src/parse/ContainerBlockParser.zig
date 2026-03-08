@@ -527,7 +527,7 @@ test "simple paragraph" {
     try testing.expectEqual(.text, @as(ast.NodeType, txt.*));
     try testing.expectEqualStrings(
         "This is a paragraph. It goes on for\nmultiple lines.",
-        txt.text.value,
+        std.mem.span(txt.text.value),
     );
 }
 
@@ -559,7 +559,7 @@ test "blockquote" {
         try testing.expectEqual(.text, @as(ast.NodeType, txt.*));
         try testing.expectEqualStrings(
             "This is a block-quoted paragraph. It goes on for\nmultiple lines.",
-            txt.text.value,
+            std.mem.span(txt.text.value),
         );
     }
 
@@ -596,7 +596,7 @@ test "blockquote lazy continuation" {
         try testing.expectEqual(.text, @as(ast.NodeType, txt.*));
         try testing.expectEqualStrings(
             "This should\nrun on\nfor multiple lines.",
-            txt.text.value,
+            std.mem.span(txt.text.value),
         );
     }
 
@@ -634,7 +634,7 @@ test "blockquote after paragraph" {
         try testing.expectEqual(.text, @as(ast.NodeType, bq_txt.*));
         try testing.expectEqualStrings(
             "This is a paragraph inside the blockquote.",
-            bq_txt.text.value,
+            std.mem.span(bq_txt.text.value),
         );
     }
 }
@@ -667,7 +667,7 @@ test "whitespace blockquote" {
             \\So is this line.
             \\And this line.
             ,
-            bq_txt.text.value,
+            std.mem.span(bq_txt.text.value),
         );
     }
 }
@@ -698,14 +698,20 @@ test "blockquote with nested blocks" {
 
         const h_txt = bq_h.heading.children[0];
         try testing.expectEqual(.text, @as(ast.NodeType, h_txt.*));
-        try testing.expectEqualStrings("Heading", h_txt.text.value);
+        try testing.expectEqualStrings(
+            "Heading",
+            std.mem.span(h_txt.text.value),
+        );
 
         const bq_p = bq.blockquote.children[1];
         try testing.expectEqual(.paragraph, @as(ast.NodeType, bq_p.*));
 
         const p_txt = bq_p.paragraph.children[0];
         try testing.expectEqual(.text, @as(ast.NodeType, p_txt.*));
-        try testing.expectEqualStrings("Paragraph text.", p_txt.text.value);
+        try testing.expectEqualStrings(
+            "Paragraph text.",
+            std.mem.span(p_txt.text.value),
+        );
 
         const bq_code = bq.blockquote.children[2];
         try testing.expectEqual(.code, @as(ast.NodeType, bq_code.*));
@@ -739,7 +745,7 @@ test "double blockquote" {
         try testing.expectEqual(.text, @as(ast.NodeType, p_txt.*));
         try testing.expectEqualStrings(
             "This is a paragraph.",
-            p_txt.text.value,
+            std.mem.span(p_txt.text.value),
         );
     }
 
@@ -754,7 +760,7 @@ test "double blockquote" {
         try testing.expectEqual(.text, @as(ast.NodeType, p1_txt.*));
         try testing.expectEqualStrings(
             "This is blockquoted.",
-            p1_txt.text.value,
+            std.mem.span(p1_txt.text.value),
         );
 
         const bq_inner = bq_outer.blockquote.children[1];
@@ -767,7 +773,7 @@ test "double blockquote" {
         try testing.expectEqual(.text, @as(ast.NodeType, bq_inner_p_txt.*));
         try testing.expectEqualStrings(
             "This is double-blockquoted.\nStill double-blockquoted (lazy).",
-            bq_inner_p_txt.text.value,
+            std.mem.span(bq_inner_p_txt.text.value),
         );
 
         const p2 = bq_outer.blockquote.children[2];
@@ -777,7 +783,7 @@ test "double blockquote" {
         try testing.expectEqual(.text, @as(ast.NodeType, p2_txt.*));
         try testing.expectEqualStrings(
             "This is single blockquoted again.",
-            p2_txt.text.value,
+            std.mem.span(p2_txt.text.value),
         );
     }
 
@@ -788,7 +794,7 @@ test "double blockquote" {
         try testing.expectEqual(.text, @as(ast.NodeType, p_txt.*));
         try testing.expectEqualStrings(
             "This is another regular paragraph.",
-            p_txt.text.value,
+            std.mem.span(p_txt.text.value),
         );
     }
 }

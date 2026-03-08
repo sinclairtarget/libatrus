@@ -796,22 +796,21 @@ fn parseInlineCode(
         return null;
     }
 
-    var value = try std.mem.join(alloc, "", values.items);
+    var value = try std.mem.join(scratch, "", values.items);
 
     // Special case for stripping single leading and following space
     if (value.len > 1 and !util.strings.containsOnly(value, " ")) {
         if (value[0] == ' ' and value[value.len - 1] == ' ') {
-            // TODO: Do we have to allocate here?
-            const new = try alloc.dupe(u8, value[1..value.len - 1]);
-            alloc.free(value);
-            value = new;
+            value = value[1..value.len - 1];
         }
     }
 
+    const value_copy = try alloc.dupeZ(u8, value);
+    errdefer alloc.free(value_copy);
     const inline_code_node = try alloc.create(ast.Node);
     inline_code_node.* = .{
         .inline_code = .{
-            .value = value,
+            .value = value_copy.ptr,
         },
     };
     did_parse = true;
@@ -2090,10 +2089,13 @@ fn resolveCharacterReference(
 /// The string value passed in gets copied to a new location in memory owned by
 /// the returned text node.
 fn createTextNode(alloc: Allocator, value: []const u8) !*ast.Node {
+    const copy = try alloc.dupeZ(u8, value);
+    errdefer alloc.free(copy);
+
     const node = try alloc.create(ast.Node);
     node.* = .{
         .text = .{
-            .value = try alloc.dupe(u8, value),
+            .value = copy,
         },
     };
     return node;
@@ -2173,7 +2175,7 @@ test "star emphasis" {
     );
     try testing.expectEqualStrings(
         "is emphasized.",
-        nodes[1].emphasis.children[0].text.value,
+        std.mem.span(nodes[1].emphasis.children[0].text.value),
     );
 }
 
@@ -2190,7 +2192,7 @@ test "intraword star emphasis" {
     );
     try testing.expectEqualStrings(
         "pha",
-        nodes[1].emphasis.children[0].text.value,
+        std.mem.span(nodes[1].emphasis.children[0].text.value),
     );
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
 }
@@ -2216,11 +2218,11 @@ test "nested star emphasis" {
     );
     try testing.expectEqualStrings(
         "is",
-        nested_emph.emphasis.children[0].text.value,
+        std.mem.span(nested_emph.emphasis.children[0].text.value),
     );
     try testing.expectEqualStrings(
         " emphasized.",
-        nodes[1].emphasis.children[1].text.value,
+        std.mem.span(nodes[1].emphasis.children[1].text.value),
     );
 }
 
@@ -2231,7 +2233,7 @@ test "unmatched open star emphasis" {
 
     try testing.expectEqual(1, nodes.len);
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
-    try testing.expectEqualStrings(value, nodes[0].text.value);
+    try testing.expectEqualStrings(value, std.mem.span(nodes[0].text.value));
 }
 
 test "unmatched close star emphasis" {
@@ -2241,7 +2243,7 @@ test "unmatched close star emphasis" {
 
     try testing.expectEqual(1, nodes.len);
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
-    try testing.expectEqualStrings(value, nodes[0].text.value);
+    try testing.expectEqualStrings(value, std.mem.span(nodes[0].text.value));
 }
 
 test "same delimiter run star emphasis" {
@@ -2251,7 +2253,7 @@ test "same delimiter run star emphasis" {
 
     try testing.expectEqual(1, nodes.len);
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
-    try testing.expectEqualStrings(value, nodes[0].text.value);
+    try testing.expectEqualStrings(value, std.mem.span(nodes[0].text.value));
 }
 
 test "same delimiter run star strong" {
@@ -2261,7 +2263,7 @@ test "same delimiter run star strong" {
 
     try testing.expectEqual(1, nodes.len);
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
-    try testing.expectEqualStrings(value, nodes[0].text.value);
+    try testing.expectEqualStrings(value, std.mem.span(nodes[0].text.value));
 }
 
 test "star strong" {
@@ -2275,7 +2277,7 @@ test "star strong" {
     try testing.expectEqual(ast.NodeType.strong, @as(ast.NodeType, nodes[1].*));
     try testing.expectEqualStrings(
         "strongly emphasized",
-        nodes[1].strong.children[0].text.value,
+        std.mem.span(nodes[1].strong.children[0].text.value),
     );
 
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
@@ -2288,7 +2290,10 @@ test "triple star strong nested" {
 
     try testing.expectEqual(3, nodes.len);
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
-    try testing.expectEqualStrings("This is ", nodes[0].text.value);
+    try testing.expectEqualStrings(
+        "This is ",
+        std.mem.span(nodes[0].text.value),
+    );
 
     try testing.expectEqual(
         ast.NodeType.emphasis,
@@ -2300,11 +2305,13 @@ test "triple star strong nested" {
     );
     try testing.expectEqualStrings(
         "a strong in an emphasis",
-        nodes[1].emphasis.children[0].strong.children[0].text.value,
+        std.mem.span(
+            nodes[1].emphasis.children[0].strong.children[0].text.value
+        ),
     );
 
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
-    try testing.expectEqualStrings(".", nodes[2].text.value);
+    try testing.expectEqualStrings(".", std.mem.span(nodes[2].text.value));
 }
 
 test "unmatched nested emphasis" {
@@ -2322,7 +2329,7 @@ test "unmatched nested emphasis" {
     );
     try testing.expectEqualStrings(
         "strong * with asterisk",
-        nodes[0].strong.children[0].text.value,
+        std.mem.span(nodes[0].strong.children[0].text.value),
     );
 }
 
@@ -2341,7 +2348,7 @@ test "unmatched nested emphasis no spacing" {
     );
     try testing.expectEqualStrings(
         "foo*bar",
-        nodes[0].strong.children[0].text.value,
+        std.mem.span(nodes[0].strong.children[0].text.value),
     );
 }
 
@@ -2374,7 +2381,7 @@ test "unmatched nested underscore" {
     );
     try testing.expectEqualStrings(
         "foo _bar",
-        nodes[0].emphasis.children[0].text.value,
+        std.mem.span(nodes[0].emphasis.children[0].text.value),
     );
 }
 
@@ -2385,7 +2392,10 @@ test "triple underscore strong nested" {
 
     try testing.expectEqual(3, nodes.len);
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
-    try testing.expectEqualStrings("This is ", nodes[0].text.value);
+    try testing.expectEqualStrings(
+        "This is ",
+        std.mem.span(nodes[0].text.value),
+    );
 
     try testing.expectEqual(
         ast.NodeType.emphasis,
@@ -2397,11 +2407,13 @@ test "triple underscore strong nested" {
     );
     try testing.expectEqualStrings(
         "a strong in an emphasis",
-        nodes[1].emphasis.children[0].strong.children[0].text.value,
+        std.mem.span(
+            nodes[1].emphasis.children[0].strong.children[0].text.value,
+        ),
     );
 
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
-    try testing.expectEqualStrings(".", nodes[2].text.value);
+    try testing.expectEqualStrings(".", std.mem.span(nodes[2].text.value));
 }
 
 test "star strong nested inside star emphasis" {
@@ -2424,7 +2436,9 @@ test "star strong nested inside star emphasis" {
     );
     try testing.expectEqualStrings(
         "is strong",
-        emphasis_node.emphasis.children[0].strong.children[0].text.value,
+        std.mem.span(
+            emphasis_node.emphasis.children[0].strong.children[0].text.value,
+        ),
     );
     try testing.expectEqual(
         ast.NodeType.text,
@@ -2432,7 +2446,7 @@ test "star strong nested inside star emphasis" {
     );
     try testing.expectEqualStrings(
         " that is also emphasized",
-        emphasis_node.emphasis.children[1].text.value,
+        std.mem.span(emphasis_node.emphasis.children[1].text.value),
     );
 
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
@@ -2458,7 +2472,9 @@ test "star emphasis nested inside star strong" {
     );
     try testing.expectEqualStrings(
         "is emphasis",
-        strong_node.strong.children[0].emphasis.children[0].text.value,
+        std.mem.span(
+            strong_node.strong.children[0].emphasis.children[0].text.value,
+        ),
     );
     try testing.expectEqual(
         ast.NodeType.text,
@@ -2466,7 +2482,7 @@ test "star emphasis nested inside star strong" {
     );
     try testing.expectEqualStrings(
         " that is also strong",
-        strong_node.strong.children[1].text.value,
+        std.mem.span(strong_node.strong.children[1].text.value),
     );
 
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
@@ -2485,7 +2501,7 @@ test "underscore emphasis" {
     );
     try testing.expectEqualStrings(
         "is emphasized.",
-        nodes[1].emphasis.children[0].text.value,
+        std.mem.span(nodes[1].emphasis.children[0].text.value),
     );
 }
 
@@ -2502,7 +2518,7 @@ test "underscore right-delimiter emphasis" {
     );
     try testing.expectEqualStrings(
         "hyper",
-        nodes[1].emphasis.children[0].text.value,
+        std.mem.span(nodes[1].emphasis.children[0].text.value),
     );
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
 }
@@ -2515,7 +2531,10 @@ test "intraword underscore emphasis" {
 
     try testing.expectEqual(1, nodes.len);
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
-    try testing.expectEqualStrings("snake_case_baby", nodes[0].text.value);
+    try testing.expectEqualStrings(
+        "snake_case_baby",
+        std.mem.span(nodes[0].text.value),
+    );
 }
 
 test "underscore emphasis after punctuation" {
@@ -2532,7 +2551,7 @@ test "underscore emphasis after punctuation" {
     );
     try testing.expectEqualStrings(
         "\"emphasis\"",
-        nodes[1].emphasis.children[0].text.value,
+        std.mem.span(nodes[1].emphasis.children[0].text.value),
     );
 
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
@@ -2556,7 +2575,7 @@ test "underscore emphasis nested unmatched" {
     );
     try testing.expectEqualStrings(
         "foo *bar",
-        nodes[0].emphasis.children[0].text.value,
+        std.mem.span(nodes[0].emphasis.children[0].text.value),
     );
 }
 
@@ -2571,7 +2590,7 @@ test "underscore strong" {
     try testing.expectEqual(ast.NodeType.strong, @as(ast.NodeType, nodes[1].*));
     try testing.expectEqualStrings(
         "strongly emphasized",
-        nodes[1].strong.children[0].text.value,
+        std.mem.span(nodes[1].strong.children[0].text.value),
     );
 
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
@@ -2592,7 +2611,7 @@ test "underscore strong with nested unmatched" {
     );
     try testing.expectEqualStrings(
         "foo*bar",
-        nodes[0].strong.children[0].text.value,
+        std.mem.span(nodes[0].strong.children[0].text.value),
     );
 }
 
@@ -2625,7 +2644,10 @@ test "nesting feast of insanity" {
             ast.NodeType.text,
             @as(ast.NodeType, child_text.*),
         );
-        try testing.expectEqualStrings("My, ", child_text.text.value);
+        try testing.expectEqualStrings(
+            "My, ",
+            std.mem.span(child_text.text.value),
+        );
 
         const child_strong = emph.emphasis.children[1];
         try testing.expectEqual(
@@ -2644,12 +2666,15 @@ test "nesting feast of insanity" {
             ast.NodeType.text,
             @as(ast.NodeType, ggrandchild_text.*),
         );
-        try testing.expectEqualStrings("hello", ggrandchild_text.text.value);
+        try testing.expectEqualStrings(
+            "hello",
+            std.mem.span(ggrandchild_text.text.value),
+        );
     }
 
     const text = nodes[0].strong.children[1];
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, text.*));
-    try testing.expectEqualStrings(", ", text.text.value);
+    try testing.expectEqualStrings(", ", std.mem.span(text.text.value));
 
     const emph2 = nodes[0].strong.children[2];
     try testing.expectEqual(ast.NodeType.emphasis, @as(ast.NodeType, emph2.*));
@@ -2660,7 +2685,10 @@ test "nesting feast of insanity" {
             ast.NodeType.text,
             @as(ast.NodeType, child_text.*),
         );
-        try testing.expectEqualStrings("what a ", child_text.text.value);
+        try testing.expectEqualStrings(
+            "what a ",
+            std.mem.span(child_text.text.value),
+        );
 
         const child_strong = emph2.emphasis.children[1];
         try testing.expectEqual(
@@ -2673,7 +2701,10 @@ test "nesting feast of insanity" {
             ast.NodeType.text,
             @as(ast.NodeType, grandchild_text.*),
         );
-        try testing.expectEqualStrings("feast!", grandchild_text.text.value);
+        try testing.expectEqualStrings(
+            "feast!",
+            std.mem.span(grandchild_text.text.value),
+        );
     }
 }
 
@@ -2690,7 +2721,7 @@ test "codespan and underscore emphasis" {
     );
     try testing.expectEqualStrings(
         "foo",
-        nodes[0].inline_code.value,
+        std.mem.span(nodes[0].inline_code.value),
     );
 
     try testing.expectEqual(
@@ -2699,7 +2730,7 @@ test "codespan and underscore emphasis" {
     );
     try testing.expectEqualStrings(
         "bim",
-        nodes[1].emphasis.children[0].text.value,
+        std.mem.span(nodes[1].emphasis.children[0].text.value),
     );
 
     try testing.expectEqual(
@@ -2708,7 +2739,7 @@ test "codespan and underscore emphasis" {
     );
     try testing.expectEqualStrings(
         "bar",
-        nodes[2].inline_code.value,
+        std.mem.span(nodes[2].inline_code.value),
     );
 }
 
@@ -2724,7 +2755,7 @@ test "codespan strip space" {
     );
     try testing.expectEqualStrings(
         "``foo``",
-        nodes[0].inline_code.value,
+        std.mem.span(nodes[0].inline_code.value),
     );
 }
 
@@ -2747,7 +2778,7 @@ test "inline link containing emphasis" {
     );
     try testing.expectEqualStrings(
         "my link",
-        emph.emphasis.children[0].text.value,
+        std.mem.span(emph.emphasis.children[0].text.value),
     );
 }
 
@@ -2764,7 +2795,7 @@ test "inline link emphasis precedence" {
     );
     try testing.expectEqualStrings(
         "*",
-        nodes[0].text.value,
+        std.mem.span(nodes[0].text.value),
     );
 
     const link_node = nodes[1];
@@ -2780,7 +2811,7 @@ test "inline link emphasis precedence" {
     );
     try testing.expectEqualStrings(
         "foo*",
-        link_node.link.children[0].text.value,
+        std.mem.span(link_node.link.children[0].text.value),
     );
 }
 
@@ -2795,7 +2826,7 @@ test "inline link nesting" {
         ast.NodeType.text,
         @as(ast.NodeType, nodes[0].*),
     );
-    try testing.expectEqualStrings("[foo ", nodes[0].text.value);
+    try testing.expectEqualStrings("[foo ", std.mem.span(nodes[0].text.value));
 
     try testing.expectEqual(
         ast.NodeType.link,
@@ -2806,7 +2837,7 @@ test "inline link nesting" {
         ast.NodeType.text,
         @as(ast.NodeType, nodes[2].*),
     );
-    try testing.expectEqualStrings("]()", nodes[2].text.value);
+    try testing.expectEqualStrings("]()", std.mem.span(nodes[2].text.value));
 }
 
 test "inline link destination angle brackets" {
@@ -2859,7 +2890,7 @@ test "inline link with exclamation mark" {
         ast.NodeType.text,
         @as(ast.NodeType, text.*),
     );
-    try testing.expectEqualStrings("foo!", text.text.value);
+    try testing.expectEqualStrings("foo!", std.mem.span(text.text.value));
 }
 
 test "URI autolink" {
@@ -2884,7 +2915,7 @@ test "URI autolink" {
     );
     try testing.expectEqualStrings(
         "http://foo.com/bar?bim[]=baz",
-        link_node.link.children[0].text.value,
+        std.mem.span(link_node.link.children[0].text.value),
     );
 }
 
@@ -2910,7 +2941,7 @@ test "email autolink" {
     );
     try testing.expectEqualStrings(
         "person@gmail.com",
-        link_node.link.children[0].text.value,
+        std.mem.span(link_node.link.children[0].text.value),
     );
 }
 
@@ -2991,7 +3022,10 @@ test "full reference link" {
     try testing.expectEqual(1, link_node.link.children.len);
     const text_node = link_node.link.children[0];
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, text_node.*));
-    try testing.expectEqualStrings("my text", text_node.text.value);
+    try testing.expectEqualStrings(
+        "my text",
+        std.mem.span(text_node.text.value),
+    );
 }
 
 test "collapsed reference link" {
@@ -3020,7 +3054,7 @@ test "collapsed reference link" {
 
     const text_node = link_node.link.children[0];
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, text_node.*));
-    try testing.expectEqualStrings("my ", text_node.text.value);
+    try testing.expectEqualStrings("my ", std.mem.span(text_node.text.value));
 
     const emph_node = link_node.link.children[1];
     try testing.expectEqual(
@@ -3029,7 +3063,7 @@ test "collapsed reference link" {
     );
     try testing.expectEqualStrings(
         "text",
-        emph_node.emphasis.children[0].text.value,
+        std.mem.span(emph_node.emphasis.children[0].text.value),
     );
 }
 
@@ -3059,7 +3093,7 @@ test "shortcut reference link" {
 
     const text_node = link_node.link.children[0];
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, text_node.*));
-    try testing.expectEqualStrings("my ", text_node.text.value);
+    try testing.expectEqualStrings("my ", std.mem.span(text_node.text.value));
 
     const emph_node = link_node.link.children[1];
     try testing.expectEqual(
@@ -3068,7 +3102,7 @@ test "shortcut reference link" {
     );
     try testing.expectEqualStrings(
         "text",
-        emph_node.emphasis.children[0].text.value,
+        std.mem.span(emph_node.emphasis.children[0].text.value),
     );
 }
 
@@ -3158,8 +3192,14 @@ test "hard line break" {
     );
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
 
-    try testing.expectEqualStrings("foo bar", nodes[0].text.value);
-    try testing.expectEqualStrings("bim bam", nodes[2].text.value);
+    try testing.expectEqualStrings(
+        "foo bar",
+        std.mem.span(nodes[0].text.value),
+    );
+    try testing.expectEqualStrings(
+        "bim bam",
+        std.mem.span(nodes[2].text.value),
+    );
 }
 
 test "soft line break" {
@@ -3170,5 +3210,8 @@ test "soft line break" {
 
     try testing.expectEqual(1, nodes.len);
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
-    try testing.expectEqualStrings("foo bar\nbim bam", nodes[0].text.value);
+    try testing.expectEqualStrings(
+        "foo bar\nbim bam",
+        std.mem.span(nodes[0].text.value),
+    );
 }

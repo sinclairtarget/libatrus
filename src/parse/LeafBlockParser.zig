@@ -1100,7 +1100,7 @@ fn createParagraphNode(alloc: Allocator, text_content: []const u8) !*ast.Node {
 ///
 /// The value is copied and owned by the returned node.
 fn createTextNode(alloc: Allocator, value: []const u8) !*ast.Node {
-    const copy = try alloc.dupe(u8, value);
+    const copy = try alloc.dupeZ(u8, value);
     errdefer alloc.free(copy);
 
     const node = try alloc.create(ast.Node);
@@ -1187,7 +1187,10 @@ test "ATX heading and paragraphs" {
     try testing.expectEqual(1, h1.heading.depth);
     const text_node = h1.heading.children[0];
     try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
-    try testing.expectEqualStrings("This is a heading", text_node.text.value);
+    try testing.expectEqualStrings(
+        "This is a heading",
+        std.mem.span(text_node.text.value),
+    );
 
     const p1 = nodes[1];
     try testing.expectEqual(.paragraph, @as(ast.NodeType, p1.*));
@@ -1249,7 +1252,7 @@ test "ATX heading with trailing pounds" {
     try testing.expectEqual(2, h1.heading.depth);
     const text_node = h1.heading.children[0];
     try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
-    try testing.expectEqualStrings("foo", text_node.text.value);
+    try testing.expectEqualStrings("foo", std.mem.span(text_node.text.value));
 }
 
 test "setext headings" {
@@ -1281,7 +1284,10 @@ test "setext headings" {
     {
         const text_node = h1.heading.children[0];
         try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
-        try testing.expectEqualStrings("foo", text_node.text.value);
+        try testing.expectEqualStrings(
+            "foo",
+            std.mem.span(text_node.text.value),
+        );
     }
 
     const h2 = nodes[1];
@@ -1290,7 +1296,10 @@ test "setext headings" {
     {
         const text_node = h2.heading.children[0];
         try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
-        try testing.expectEqualStrings("bar", text_node.text.value);
+        try testing.expectEqualStrings(
+            "bar",
+            std.mem.span(text_node.text.value),
+        );
     }
 
     const p = nodes[2];
@@ -1325,7 +1334,10 @@ test "indented setext headings" {
     {
         const text_node = h1.heading.children[0];
         try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
-        try testing.expectEqualStrings("foo *bar*", text_node.text.value);
+        try testing.expectEqualStrings(
+            "foo *bar*",
+            std.mem.span(text_node.text.value),
+        );
     }
 
     const h2 = nodes[1];
@@ -1334,7 +1346,10 @@ test "indented setext headings" {
     {
         const text_node = h2.heading.children[0];
         try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
-        try testing.expectEqualStrings("bim _bam_", text_node.text.value);
+        try testing.expectEqualStrings(
+            "bim _bam_",
+            std.mem.span(text_node.text.value),
+        );
     }
 }
 
@@ -1579,7 +1594,10 @@ test "close token in paragraph" {
 
     const txt = p.paragraph.children[0];
     try testing.expectEqual(.text, @as(ast.NodeType, txt.*));
-    try testing.expectEqualStrings("foo\nbar", txt.text.value);
+    try testing.expectEqualStrings(
+        "foo\nbar",
+        std.mem.span(txt.text.value),
+    );
 }
 
 test "close token before thematic break" {
@@ -1619,7 +1637,7 @@ test "close token before thematic break" {
 
     const txt = p.paragraph.children[0];
     try testing.expectEqual(.text, @as(ast.NodeType, txt.*));
-    try testing.expectEqualStrings("foo", txt.text.value);
+    try testing.expectEqualStrings("foo", std.mem.span(txt.text.value));
 }
 
 // !! DIFFERENT FROM REFERENCE MYST PARSER !!
@@ -1663,7 +1681,7 @@ test "close token in setext heading" {
 
     const txt = p.paragraph.children[0];
     try testing.expectEqual(.text, @as(ast.NodeType, txt.*));
-    try testing.expectEqualStrings("foo", txt.text.value);
+    try testing.expectEqualStrings("foo", std.mem.span(txt.text.value));
 }
 
 // This is a case where the parser has to detect the close token in the body of
@@ -1713,5 +1731,5 @@ test "close token after atx heading" {
 
     const txt = h.heading.children[0];
     try testing.expectEqual(.text, @as(ast.NodeType, txt.*));
-    try testing.expectEqualStrings("foo", txt.text.value);
+    try testing.expectEqualStrings("foo", std.mem.span(txt.text.value));
 }

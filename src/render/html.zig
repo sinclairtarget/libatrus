@@ -50,7 +50,7 @@ fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!bool {
             try out.print("</h{d}>", .{n.depth});
         },
         .text => |n| {
-            try printHTMLEscapedContent(out, n.value);
+            try printHTMLEscapedContent(out, std.mem.span(n.value));
         },
         .emphasis => |n| {
             try out.print("<em>", .{});
@@ -90,7 +90,7 @@ fn renderNode(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!bool {
         },
         .inline_code => |n| {
             try out.print("<code>", .{});
-            try printHTMLEscapedContent(out, n.value);
+            try printHTMLEscapedContent(out, std.mem.span(n.value));
             try out.print("</code>", .{});
         },
         .link => |n| {

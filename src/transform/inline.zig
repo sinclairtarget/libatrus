@@ -115,7 +115,7 @@ fn parseInline(
     for (original_nodes) |node| {
         switch (node.*) {
             .text => |n| {
-                var tokenizer = InlineTokenizer.init(n.value);
+                var tokenizer = InlineTokenizer.init(std.mem.span(n.value));
                 var parser = InlineParser.init(&tokenizer);
                 const replacement_nodes = try parser.parse(
                     alloc,
