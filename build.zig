@@ -283,7 +283,8 @@ fn addTests(
     });
     c_api_tests_exe.root_module.addIncludePath(b.path("include/"));
     c_api_tests_exe.root_module.linkLibrary(static_lib);
-    const c_api_tests_cmd = b.addRunArtifact(c_api_tests_exe);
+    var c_api_tests_cmd = b.addRunArtifact(c_api_tests_exe);
+    _ = c_api_tests_cmd.captureStdErr(); // Hide debug output from libatrus
 
     return .{
         .unit = unit_tests_cmd,
