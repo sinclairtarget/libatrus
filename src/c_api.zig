@@ -1,6 +1,6 @@
 //! Exported interface for linking using the C ABI.
 //!
-//! See include/atrus.h for full documentation.
+//! See include/atrus.h for documentation.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

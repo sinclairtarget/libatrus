@@ -38,8 +38,8 @@ pub const ParseError = error{
     UnrecognizedBlockToken,
 } || InlineParser.Error || Allocator.Error || Io.Writer.Error;
 
-pub const ParseOptions = struct {
-    parse_level: enum {
+pub const ParseOptions = extern struct {
+    parse_level: enum(c_uint) {
         /// Only parse blocks.
         block,
         /// Parse blocks and inline content.
@@ -48,9 +48,6 @@ pub const ParseOptions = struct {
         /// AST etc.
         post,
     } = .post,
-    /// Optional scratch allocator. If one is not given, then an internal
-    /// arena allocator will be created from the main `alloc` Allocator.
-    scratch_arena: ?ArenaAllocator = null,
 };
 
 /// Parses the input (containing MyST markdown) into a MyST AST. Returns
@@ -62,10 +59,7 @@ pub fn parse(
     in: *Io.Reader,
     options: ParseOptions,
 ) ParseError!*ast.Node {
-    // Set up internal scratch allocator. We default to an arena allocator but
-    // allow the user to pass in something else specifically for scratch
-    // allocations.
-    var arena = options.scratch_arena orelse ArenaAllocator.init(alloc);
+    var arena = ArenaAllocator.init(alloc);
     defer arena.deinit();
     const scratch = arena.allocator();
 
