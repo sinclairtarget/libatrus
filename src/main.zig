@@ -85,7 +85,8 @@ pub fn main() !void {
                 }
             };
 
-            const ast = try atrus.parse(gpa, myst, .{
+            var reader = Io.Reader.fixed(myst);
+            const ast = try atrus.parse(gpa, &reader, .{
                 .parse_level = switch (options.parse_level) {
                     .block => .block,
                     .pre => .pre,
@@ -96,8 +97,8 @@ pub fn main() !void {
 
             logger.info("Rendering...", .{});
             switch (options.output_choice) {
-                .json => try atrus.renderJSON(stdout, ast, .{}),
-                .html => try atrus.renderHTML(stdout, ast),
+                .json => try atrus.renderJSON(ast, stdout, .{}),
+                .html => try atrus.renderHTML(ast, stdout, .{}),
             }
             try stdout.print("\n", .{});
             logger.info("Done.", .{});
