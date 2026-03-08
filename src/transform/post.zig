@@ -19,6 +19,5 @@ pub fn transform(alloc: Allocator, node: *ast.Node) !*ast.Node {
     root_children[0] = block;
     node.root.children = root_children.ptr;
     node.root.n_children = 1;
-    node.root.is_post_processed = true;
     return node;
 }

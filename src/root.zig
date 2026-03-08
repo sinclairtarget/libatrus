@@ -121,11 +121,6 @@ pub fn renderHTML(
     options: HTMLOptions,
 ) RenderHTMLError!void {
     _ = options;
-
-    if (!root.root.is_post_processed) {
-        return RenderHTMLError.NotPostProcessed;
-    }
-
     try html.render(root, out);
 }
 

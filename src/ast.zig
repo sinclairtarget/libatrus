@@ -63,7 +63,6 @@ pub const Node = union(NodeType) {
 pub const Root = struct {
     children: [*]*Node,
     n_children: c_uint,
-    is_post_processed: bool = false, // TODO: Remove
 
     pub fn deinit(self: *Root, alloc: Allocator) void {
         const sliced = self.children[0..self.n_children];
