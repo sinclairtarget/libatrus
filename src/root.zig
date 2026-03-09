@@ -1,6 +1,9 @@
 //! libatrus parses MyST-flavored markdown into the MyST AST.
 //!
 //! It can also "render" the AST to JSON or HTML.
+//!
+//! This file defines the Zig interface of libatrus. For the C-ABI-compatible
+//! interface, see atrus.h.
 
 const std = @import("std");
 const builtin = @import("builtin");

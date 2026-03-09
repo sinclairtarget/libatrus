@@ -1,3 +1,6 @@
+/*
+ * This file defines the public C-ABI-compatible interface of libatrus.
+ */
 #ifndef ATRUS_H
 #define ATRUS_H
 
