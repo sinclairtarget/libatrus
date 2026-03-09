@@ -110,7 +110,7 @@ pub fn parse(
         }
 
         if (try self.parseLinkReferenceDefinition(alloc, scratch)) |def| {
-            try link_defs.add(alloc, &def.definition);
+            try link_defs.add(alloc, &def.data.definition);
             try children.append(def);
             continue;
         }
@@ -228,10 +228,13 @@ fn parseATXHeading(
 
     const node = try alloc.create(ast.Node);
     node.* = .{
-        .heading = .{
-            .children = children.ptr,
-            .n_children = @intCast(children.len),
-            .depth = @intCast(depth),
+        .tag = .heading,
+        .data = .{
+            .heading = .{
+                .children = children.ptr,
+                .n_children = @intCast(children.len),
+                .depth = @intCast(depth),
+            },
         },
     };
     did_parse = true;
@@ -317,10 +320,13 @@ fn parseSetextHeading(
 
     const node = try alloc.create(ast.Node);
     node.* = .{
-        .heading = .{
-            .children = children.ptr,
-            .n_children = @intCast(children.len),
-            .depth = depth,
+        .tag = .heading,
+        .data = .{
+            .heading = .{
+                .children = children.ptr,
+                .n_children = @intCast(children.len),
+                .depth = depth,
+            },
         },
     };
     did_parse = true;
@@ -353,7 +359,12 @@ fn parseThematicBreak(
     _ = try self.it.consume(scratch, &.{.newline});
 
     const node = try alloc.create(ast.Node);
-    node.* = .{ .thematic_break = {} };
+    node.* = .{
+        .tag = .thematic_break,
+        .data = .{
+            .thematic_break = {},
+        },
+    };
     did_parse = true;
     return node;
 }
@@ -465,9 +476,12 @@ fn parseIndentedCode(
 
     const node = try alloc.create(ast.Node);
     node.* = .{
-        .code = .{
-            .value = value.ptr,
-            .lang = "",
+        .tag = .code,
+        .data = .{
+            .code = .{
+                .value = value.ptr,
+                .lang = "",
+            },
         },
     };
     did_parse = true;
@@ -633,9 +647,12 @@ fn parseFencedCode(
 
     const node = try alloc.create(ast.Node);
     node.* = .{
-        .code = .{
-            .value = value.ptr,
-            .lang = lang.ptr,
+        .tag = .code,
+        .data = .{
+            .code = .{
+                .value = value.ptr,
+                .lang = lang.ptr,
+            },
         },
     };
     did_parse = true;
@@ -776,10 +793,13 @@ fn parseLinkReferenceDefinition(
 
     const node = try alloc.create(ast.Node);
     node.* = .{
-        .definition = .{
-            .url = ownedUrl,
-            .label = label,
-            .title = title,
+        .tag = .definition,
+        .data = .{
+            .definition = .{
+                .url = ownedUrl,
+                .label = label,
+                .title = title,
+            },
         },
     };
     did_parse = true;
@@ -1090,9 +1110,12 @@ fn createParagraphNode(alloc: Allocator, text_content: []const u8) !*ast.Node {
 
     const paragraph_node = try alloc.create(ast.Node);
     paragraph_node.* = .{
-        .paragraph = .{
-            .children = children.ptr,
-            .n_children = @intCast(children.len),
+        .tag = .paragraph,
+        .data = .{
+            .paragraph = .{
+                .children = children.ptr,
+                .n_children = @intCast(children.len),
+            },
         },
     };
     return paragraph_node;
@@ -1107,8 +1130,11 @@ fn createTextNode(alloc: Allocator, value: []const u8) !*ast.Node {
 
     const node = try alloc.create(ast.Node);
     node.* = .{
-        .text = .{
-            .value = copy,
+        .tag = .text,
+        .data = .{
+            .text = .{
+                .value = copy,
+            },
         },
     };
     return node;
@@ -1185,23 +1211,23 @@ test "ATX heading and paragraphs" {
     try testing.expectEqual(4, nodes.len);
 
     const h1 = nodes[0];
-    try testing.expectEqual(.heading, @as(ast.NodeType, h1.*));
-    try testing.expectEqual(1, h1.heading.depth);
-    const text_node = h1.heading.children[0];
-    try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
+    try testing.expectEqual(.heading, h1.tag);
+    try testing.expectEqual(1, h1.data.heading.depth);
+    const text_node = h1.data.heading.children[0];
+    try testing.expectEqual(.text, text_node.tag);
     try testing.expectEqualStrings(
         "This is a heading",
-        std.mem.span(text_node.text.value),
+        std.mem.span(text_node.data.text.value),
     );
 
     const p1 = nodes[1];
-    try testing.expectEqual(.paragraph, @as(ast.NodeType, p1.*));
+    try testing.expectEqual(.paragraph, p1.tag);
 
     const p2 = nodes[2];
-    try testing.expectEqual(.paragraph, @as(ast.NodeType, p2.*));
+    try testing.expectEqual(.paragraph, p2.tag);
 
     const p3 = nodes[3];
-    try testing.expectEqual(.paragraph, @as(ast.NodeType, p3.*));
+    try testing.expectEqual(.paragraph, p3.tag);
 }
 
 test "ATX heading with leading whitespace" {
@@ -1225,12 +1251,12 @@ test "ATX heading with leading whitespace" {
     try testing.expectEqual(2, nodes.len);
 
     const h1 = nodes[0];
-    try testing.expectEqual(.heading, @as(ast.NodeType, h1.*));
-    try testing.expectEqual(3, h1.heading.depth);
+    try testing.expectEqual(.heading, h1.tag);
+    try testing.expectEqual(3, h1.data.heading.depth);
 
     const h2 = nodes[1];
-    try testing.expectEqual(.heading, @as(ast.NodeType, h2.*));
-    try testing.expectEqual(1, h2.heading.depth);
+    try testing.expectEqual(.heading, h2.tag);
+    try testing.expectEqual(1, h2.data.heading.depth);
 }
 
 test "ATX heading with trailing pounds" {
@@ -1250,11 +1276,14 @@ test "ATX heading with trailing pounds" {
     try testing.expectEqual(1, nodes.len);
 
     const h1 = nodes[0];
-    try testing.expectEqual(.heading, @as(ast.NodeType, h1.*));
-    try testing.expectEqual(2, h1.heading.depth);
-    const text_node = h1.heading.children[0];
-    try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
-    try testing.expectEqualStrings("foo", std.mem.span(text_node.text.value));
+    try testing.expectEqual(.heading, h1.tag);
+    try testing.expectEqual(2, h1.data.heading.depth);
+    const text_node = h1.data.heading.children[0];
+    try testing.expectEqual(.text, text_node.tag);
+    try testing.expectEqualStrings(
+        "foo",
+        std.mem.span(text_node.data.text.value),
+    );
 }
 
 test "setext headings" {
@@ -1281,31 +1310,31 @@ test "setext headings" {
     try testing.expectEqual(3, nodes.len);
 
     const h1 = nodes[0];
-    try testing.expectEqual(.heading, @as(ast.NodeType, h1.*));
-    try testing.expectEqual(1, h1.heading.depth);
+    try testing.expectEqual(.heading, h1.tag);
+    try testing.expectEqual(1, h1.data.heading.depth);
     {
-        const text_node = h1.heading.children[0];
-        try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
+        const text_node = h1.data.heading.children[0];
+        try testing.expectEqual(.text, text_node.tag);
         try testing.expectEqualStrings(
             "foo",
-            std.mem.span(text_node.text.value),
+            std.mem.span(text_node.data.text.value),
         );
     }
 
     const h2 = nodes[1];
-    try testing.expectEqual(.heading, @as(ast.NodeType, h2.*));
-    try testing.expectEqual(2, h2.heading.depth);
+    try testing.expectEqual(.heading, h2.tag);
+    try testing.expectEqual(2, h2.data.heading.depth);
     {
-        const text_node = h2.heading.children[0];
-        try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
+        const text_node = h2.data.heading.children[0];
+        try testing.expectEqual(.text, text_node.tag);
         try testing.expectEqualStrings(
             "bar",
-            std.mem.span(text_node.text.value),
+            std.mem.span(text_node.data.text.value),
         );
     }
 
     const p = nodes[2];
-    try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
+    try testing.expectEqual(.paragraph, p.tag);
 }
 
 test "indented setext headings" {
@@ -1331,26 +1360,26 @@ test "indented setext headings" {
     try testing.expectEqual(2, nodes.len);
 
     const h1 = nodes[0];
-    try testing.expectEqual(.heading, @as(ast.NodeType, h1.*));
-    try testing.expectEqual(1, h1.heading.depth);
+    try testing.expectEqual(.heading, h1.tag);
+    try testing.expectEqual(1, h1.data.heading.depth);
     {
-        const text_node = h1.heading.children[0];
-        try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
+        const text_node = h1.data.heading.children[0];
+        try testing.expectEqual(.text, text_node.tag);
         try testing.expectEqualStrings(
             "foo *bar*",
-            std.mem.span(text_node.text.value),
+            std.mem.span(text_node.data.text.value),
         );
     }
 
     const h2 = nodes[1];
-    try testing.expectEqual(.heading, @as(ast.NodeType, h2.*));
-    try testing.expectEqual(2, h2.heading.depth);
+    try testing.expectEqual(.heading, h2.tag);
+    try testing.expectEqual(2, h2.data.heading.depth);
     {
-        const text_node = h2.heading.children[0];
-        try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
+        const text_node = h2.data.heading.children[0];
+        try testing.expectEqual(.text, text_node.tag);
         try testing.expectEqualStrings(
             "bim _bam_",
-            std.mem.span(text_node.text.value),
+            std.mem.span(text_node.data.text.value),
         );
     }
 }
@@ -1377,11 +1406,11 @@ test "paragraph can contain punctuation" {
     try testing.expectEqual(2, nodes.len);
 
     const h = nodes[0];
-    try testing.expectEqual(.heading, @as(ast.NodeType, h.*));
-    try testing.expectEqual(1, h.heading.n_children);
+    try testing.expectEqual(.heading, h.tag);
+    try testing.expectEqual(1, h.data.heading.n_children);
 
     const p = nodes[1];
-    try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
+    try testing.expectEqual(.paragraph, p.tag);
 }
 
 test "link reference definition" {
@@ -1410,7 +1439,7 @@ test "link reference definition" {
     // Link should get parsed as a paragraph by the block parser; the inline
     // parser will later turn it into a link.
     const p = nodes[0];
-    try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
+    try testing.expectEqual(.paragraph, p.tag);
 
     try testing.expectEqual(1, link_defs.count());
 
@@ -1442,9 +1471,12 @@ test "empty code fence" {
     try testing.expectEqual(1, nodes.len);
 
     const code_node = nodes[0];
-    try testing.expectEqual(.code, @as(ast.NodeType, code_node.*));
-    try testing.expectEqualStrings("", std.mem.span(code_node.code.value));
-    try testing.expectEqualStrings("", std.mem.span(code_node.code.lang));
+    try testing.expectEqual(.code, code_node.tag);
+    try testing.expectEqualStrings(
+        "",
+        std.mem.span(code_node.data.code.value),
+    );
+    try testing.expectEqualStrings("", std.mem.span(code_node.data.code.lang));
 }
 
 test "code fence with info string" {
@@ -1470,12 +1502,15 @@ test "code fence with info string" {
     try testing.expectEqual(1, nodes.len);
 
     const code_node = nodes[0];
-    try testing.expectEqual(.code, @as(ast.NodeType, code_node.*));
+    try testing.expectEqual(.code, code_node.tag);
     try testing.expectEqualStrings(
         "def foo():\n    pass",
-        std.mem.span(code_node.code.value),
+        std.mem.span(code_node.data.code.value),
     );
-    try testing.expectEqualStrings("python", std.mem.span(code_node.code.lang));
+    try testing.expectEqualStrings(
+        "python",
+        std.mem.span(code_node.data.code.lang),
+    );
 }
 
 test "code fence with indentation" {
@@ -1501,12 +1536,15 @@ test "code fence with indentation" {
     try testing.expectEqual(1, nodes.len);
 
     const code_node = nodes[0];
-    try testing.expectEqual(.code, @as(ast.NodeType, code_node.*));
+    try testing.expectEqual(.code, code_node.tag);
     try testing.expectEqualStrings(
         "def foo():\n    pass",
-        std.mem.span(code_node.code.value),
+        std.mem.span(code_node.data.code.value),
     );
-    try testing.expectEqualStrings("python", std.mem.span(code_node.code.lang));
+    try testing.expectEqualStrings(
+        "python",
+        std.mem.span(code_node.data.code.lang),
+    );
 }
 
 test "tilde code fence" {
@@ -1532,12 +1570,15 @@ test "tilde code fence" {
     try testing.expectEqual(1, nodes.len);
 
     const code_node = nodes[0];
-    try testing.expectEqual(.code, @as(ast.NodeType, code_node.*));
+    try testing.expectEqual(.code, code_node.tag);
     try testing.expectEqualStrings(
         "def foo():\n    pass",
-        std.mem.span(code_node.code.value),
+        std.mem.span(code_node.data.code.value),
     );
-    try testing.expectEqualStrings("python", std.mem.span(code_node.code.lang));
+    try testing.expectEqualStrings(
+        "python",
+        std.mem.span(code_node.data.code.lang),
+    );
 }
 
 fn parseBlocksTokens(
@@ -1591,14 +1632,14 @@ test "close token in paragraph" {
     try testing.expectEqual(1, nodes.len);
 
     const p = nodes[0];
-    try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
-    try testing.expectEqual(1, p.paragraph.n_children);
+    try testing.expectEqual(.paragraph, p.tag);
+    try testing.expectEqual(1, p.data.paragraph.n_children);
 
-    const txt = p.paragraph.children[0];
-    try testing.expectEqual(.text, @as(ast.NodeType, txt.*));
+    const txt = p.data.paragraph.children[0];
+    try testing.expectEqual(.text, txt.tag);
     try testing.expectEqualStrings(
         "foo\nbar",
-        std.mem.span(txt.text.value),
+        std.mem.span(txt.data.text.value),
     );
 }
 
@@ -1634,12 +1675,12 @@ test "close token before thematic break" {
     try testing.expectEqual(1, nodes.len);
 
     const p = nodes[0];
-    try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
-    try testing.expectEqual(1, p.paragraph.n_children);
+    try testing.expectEqual(.paragraph, p.tag);
+    try testing.expectEqual(1, p.data.paragraph.n_children);
 
-    const txt = p.paragraph.children[0];
-    try testing.expectEqual(.text, @as(ast.NodeType, txt.*));
-    try testing.expectEqualStrings("foo", std.mem.span(txt.text.value));
+    const txt = p.data.paragraph.children[0];
+    try testing.expectEqual(.text, txt.tag);
+    try testing.expectEqualStrings("foo", std.mem.span(txt.data.text.value));
 }
 
 // !! DIFFERENT FROM REFERENCE MYST PARSER !!
@@ -1678,12 +1719,12 @@ test "close token in setext heading" {
     try testing.expectEqual(1, nodes.len);
 
     const p = nodes[0];
-    try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
-    try testing.expectEqual(1, p.paragraph.n_children);
+    try testing.expectEqual(.paragraph, p.tag);
+    try testing.expectEqual(1, p.data.paragraph.n_children);
 
-    const txt = p.paragraph.children[0];
-    try testing.expectEqual(.text, @as(ast.NodeType, txt.*));
-    try testing.expectEqualStrings("foo", std.mem.span(txt.text.value));
+    const txt = p.data.paragraph.children[0];
+    try testing.expectEqual(.text, txt.tag);
+    try testing.expectEqualStrings("foo", std.mem.span(txt.data.text.value));
 }
 
 // This is a case where the parser has to detect the close token in the body of
@@ -1728,10 +1769,10 @@ test "close token after atx heading" {
     try testing.expectEqual(1, nodes.len);
 
     const h = nodes[0];
-    try testing.expectEqual(.heading, @as(ast.NodeType, h.*));
-    try testing.expectEqual(1, h.heading.n_children);
+    try testing.expectEqual(.heading, h.tag);
+    try testing.expectEqual(1, h.data.heading.n_children);
 
-    const txt = h.heading.children[0];
-    try testing.expectEqual(.text, @as(ast.NodeType, txt.*));
-    try testing.expectEqualStrings("foo", std.mem.span(txt.text.value));
+    const txt = h.data.heading.children[0];
+    try testing.expectEqual(.text, txt.tag);
+    try testing.expectEqualStrings("foo", std.mem.span(txt.data.text.value));
 }

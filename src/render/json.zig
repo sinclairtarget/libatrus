@@ -39,43 +39,50 @@ pub fn render(
 
 fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
     // These nodes don't get rendered
-    switch (node.*) {
-        .definition => return,
-        else => {},
+    if (node.tag == .definition) {
+        return;
     }
 
     try stringify.beginObject();
     try stringify.objectField("type");
 
-    switch (node.*) {
+    switch (node.tag) {
         .thematic_break => try stringify.write("thematicBreak"),
         .inline_code => try stringify.write("inlineCode"),
-        else => try stringify.write(@tagName(node.*)),
+        else => try stringify.write(@tagName(node.tag)),
     }
 
-    switch (node.*) {
-        .root => |n| {
+    switch (node.tag) {
+        inline .root, .paragraph, .block, .emphasis, .strong,
+        .blockquote => |node_type| {
+            const n = @field(node.data, @tagName(node_type));
             try render_children(stringify, n);
         },
-        .paragraph, .block, .emphasis, .strong, .blockquote => |n| {
-            try render_children(stringify, n);
-        },
-        .heading => |n| {
+        .heading => {
+            const n = node.data.heading;
             try stringify.objectField("depth");
             try stringify.write(n.depth);
             try render_children(stringify, n);
         },
-        .text, .inline_code => |n| {
+        .text => {
+            const n = node.data.text;
             try stringify.objectField("value");
             try stringify.write(n.value);
         },
-        .code => |n| {
+        .inline_code => {
+            const n = node.data.inline_code;
+            try stringify.objectField("value");
+            try stringify.write(n.value);
+        },
+        .code => {
+            const n = node.data.code;
             try stringify.objectField("lang");
             try stringify.write(n.lang);
             try stringify.objectField("value");
             try stringify.write(n.value);
         },
-        .link => |n| {
+        .link => {
+            const n = node.data.link;
             try stringify.objectField("url");
             try stringify.write(std.mem.span(n.url));
 
@@ -87,7 +94,8 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
 
             try render_children(stringify, n);
         },
-        .image => |n| {
+        .image => {
+            const n = node.data.image;
             try stringify.objectField("url");
             try stringify.write(std.mem.span(n.url));
 

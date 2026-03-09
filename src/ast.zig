@@ -13,47 +13,51 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-pub const NodeType = enum {
-    root,
-    block,
-    heading,
-    paragraph,
-    text,
-    code,
-    thematic_break,
-    @"break",       // line break
-    emphasis,
-    strong,
-    inline_code,
-    link,
-    definition,     // link definition
-    image,
-    blockquote,
+pub const NodeType = enum(c_uint) {
+    root = 0,
+    block = 1,
+    heading = 2,
+    paragraph = 3,
+    text = 4,
+    code = 5,
+    thematic_break = 6,
+    @"break" = 7,       // line break
+    emphasis = 8,
+    strong = 9,
+    inline_code = 10,
+    link = 11,
+    definition = 12,     // link definition
+    image = 13,
+    blockquote = 14,
 };
 
-pub const Node = union(NodeType) {
-    root: Root,
-    block: Container,
-    heading: Heading,
-    paragraph: Container,
-    text: Text,
-    code: Code,
-    thematic_break: void,
-    @"break": void,
-    emphasis: Container,
-    strong: Container,
-    inline_code: Text,
-    link: Link,
-    definition: LinkDefinition,
-    image: Image,
-    blockquote: Container,
+pub const Node = extern struct {
+    data: extern union {
+        root: Root,
+        block: Container,
+        heading: Heading,
+        paragraph: Container,
+        text: Text,
+        code: Code,
+        thematic_break: void,
+        @"break": void,
+        emphasis: Container,
+        strong: Container,
+        inline_code: Text,
+        link: Link,
+        definition: LinkDefinition,
+        image: Image,
+        blockquote: Container,
+    },
+    tag: NodeType,
 
-    const Self = @This();
-
-    pub fn deinit(self: *Self, alloc: Allocator) void {
-        switch (self.*) {
+    pub fn deinit(self: *Node, alloc: Allocator) void {
+        switch (self.tag) {
             .thematic_break, .@"break" => {},
-            inline else => |*payload| payload.deinit(alloc),
+            inline else => |node_type| {
+                var n = @field(self.data, @tagName(node_type));
+                n.deinit(alloc);
+            },
         }
 
         alloc.destroy(self);

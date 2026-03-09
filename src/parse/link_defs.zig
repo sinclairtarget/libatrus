@@ -110,15 +110,16 @@ fn fillLinkDefs(
     root: *ast.Node,
     map: *LinkDefMap,
 ) Error!void {
-    switch (root.*) {
-        inline .root, .block, .blockquote => |n| {
+    switch (root.tag) {
+        inline .root, .block, .blockquote => |node_type| {
+            const n = @field(root.data, @tagName(node_type));
             const sliced = n.children[0..n.n_children];
             for (sliced) |node| {
                 try fillLinkDefs(alloc, node, map);
             }
         },
-        .definition => |*n| {
-            try map.add(alloc, n);
+        .definition => {
+            try map.add(alloc, &root.data.definition);
         },
         .paragraph, .heading, .strong, .emphasis, .text, .code, .@"break",
         .thematic_break, .inline_code, .link, .image => {},
@@ -147,17 +148,23 @@ const util = @import("../util/util.zig");
 
 test "can map single link def" {
     var def: ast.Node = .{
-        .definition = .{
-            .url = "/foo",
-            .title = "bar",
-            .label = "bim",
+        .tag = .definition,
+        .data = .{
+            .definition = .{
+                .url = "/foo",
+                .title = "bar",
+                .label = "bim",
+            },
         },
     };
     var children = [_]*ast.Node{&def};
     var root: ast.Node = .{
-        .root = .{
-            .children = &children,
-            .n_children = children.len,
+        .tag = .root,
+        .data = .{
+            .root = .{
+                .children = &children,
+                .n_children = children.len,
+            },
         },
     };
 
@@ -175,24 +182,33 @@ test "can map single link def" {
 
 test "first link def takes precedence" {
     var def1: ast.Node = .{
-        .definition = .{
-            .url = "/foo",
-            .title = "bar",
-            .label = "bim",
+        .tag = .definition,
+        .data = .{
+            .definition = .{
+                .url = "/foo",
+                .title = "bar",
+                .label = "bim",
+            },
         },
     };
     var def2: ast.Node = .{
-        .definition = .{
-            .url = "/zap",
-            .title = "zim",
-            .label = "bim",
+        .tag = .definition,
+        .data = .{
+            .definition = .{
+                .url = "/zap",
+                .title = "zim",
+                .label = "bim",
+            },
         },
     };
     var children = [_]*ast.Node{&def1, &def2};
     var root: ast.Node = .{
-        .root = .{
-            .children = &children,
-            .n_children = children.len,
+        .tag = .root,
+        .data = .{
+            .root = .{
+                .children = &children,
+                .n_children = children.len,
+            },
         },
     };
 
@@ -210,17 +226,23 @@ test "first link def takes precedence" {
 
 test "match is case-insensitive" {
     var def: ast.Node = .{
-        .definition = .{
-            .url = "/foo",
-            .title = "bar",
-            .label = "bim",
+        .tag = .definition,
+        .data = .{
+            .definition = .{
+                .url = "/foo",
+                .title = "bar",
+                .label = "bim",
+            },
         },
     };
     var children = [_]*ast.Node{&def};
     var root: ast.Node = .{
-        .root = .{
-            .children = &children,
-            .n_children = children.len,
+        .tag = .root,
+        .data = .{
+            .root = .{
+                .children = &children,
+                .n_children = children.len,
+            },
         },
     };
 

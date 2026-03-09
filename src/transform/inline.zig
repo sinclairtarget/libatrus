@@ -15,8 +15,9 @@ pub fn transform(
     original_node: *ast.Node,
     link_defs: LinkDefMap,
 ) !*ast.Node {
-    switch (original_node.*) {
-        inline .root, .block, .blockquote => |n| {
+    switch (original_node.tag) {
+        inline .root, .block, .blockquote => |node_type| {
+            const n = @field(original_node.data, @tagName(node_type));
             for (0..n.n_children) |i| {
                 n.children[i] = try transform(
                     alloc,
@@ -27,7 +28,8 @@ pub fn transform(
             }
             return original_node;
         },
-        .paragraph => |n| {
+        .paragraph => {
+            const n = original_node.data.paragraph;
             for (0..n.n_children) |i| {
                 n.children[i] = try transform(
                     alloc,
@@ -51,14 +53,18 @@ pub fn transform(
 
             const node = try alloc.create(ast.Node);
             node.* = .{
-                .paragraph = .{
-                    .children = new_children.ptr,
-                    .n_children = @intCast(new_children.len),
+                .tag = .paragraph,
+                .data = .{
+                    .paragraph = .{
+                        .children = new_children.ptr,
+                        .n_children = @intCast(new_children.len),
+                    },
                 },
             };
             return node;
         },
-        .heading => |n| {
+        .heading => {
+            const n = original_node.data.heading;
             for (0..n.n_children) |i| {
                 n.children[i] = try transform(
                     alloc,
@@ -82,10 +88,13 @@ pub fn transform(
 
             const node = try alloc.create(ast.Node);
             node.* = .{
-                .heading = .{
-                    .children = new_children.ptr,
-                    .n_children = @intCast(new_children.len),
-                    .depth = @intCast(n.depth),
+                .tag = .heading,
+                .data = .{
+                    .heading = .{
+                        .children = new_children.ptr,
+                        .n_children = @intCast(new_children.len),
+                        .depth = @intCast(n.depth),
+                    },
                 },
             };
             return node;
@@ -117,8 +126,9 @@ fn parseInline(
 
     var did_replace_something = false;
     for (original_nodes) |node| {
-        switch (node.*) {
-            .text => |n| {
+        switch (node.tag) {
+            .text => {
+                const n = node.data.text;
                 var tokenizer = InlineTokenizer.init(std.mem.span(n.value));
                 var parser = InlineParser.init(&tokenizer);
                 const replacement_nodes = try parser.parse(

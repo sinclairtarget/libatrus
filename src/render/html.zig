@@ -14,14 +14,16 @@ pub fn render(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!void {
 
 /// Renders output, returning true if anything was written.
 fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
-    switch (node.*) {
-        .root => |n| {
+    switch (node.tag) {
+        .root => {
+            const n = node.data.root;
             const sliced = n.children[0..n.n_children];
             for (sliced) |child| {
                 _ = try renderNode(child, out);
             }
         },
-        .block => |n| {
+        .block => {
+            const n = node.data.block;
             const sliced = n.children[0..n.n_children];
             for (sliced) |child| {
                 if (try renderNode(child, out)) {
@@ -29,7 +31,8 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
                 }
             }
         },
-        .blockquote => |n| {
+        .blockquote => {
+            const n = node.data.blockquote;
             try out.print("<blockquote>\n", .{});
             const sliced = n.children[0..n.n_children];
             for (sliced) |child| {
@@ -39,7 +42,8 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
             }
             try out.print("</blockquote>", .{});
         },
-        .paragraph => |n| {
+        .paragraph => {
+            const n = node.data.paragraph;
             try out.print("<p>", .{});
             const sliced = n.children[0..n.n_children];
             for (sliced) |child| {
@@ -47,7 +51,8 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
             }
             try out.print("</p>", .{});
         },
-        .heading => |n| {
+        .heading => {
+            const n = node.data.heading;
             try out.print("<h{d}>", .{n.depth});
             const sliced = n.children[0..n.n_children];
             for (sliced) |child| {
@@ -55,10 +60,12 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
             }
             try out.print("</h{d}>", .{n.depth});
         },
-        .text => |n| {
+        .text => {
+            const n = node.data.text;
             try printHTMLEscapedContent(out, std.mem.span(n.value));
         },
-        .emphasis => |n| {
+        .emphasis => {
+            const n = node.data.emphasis;
             try out.print("<em>", .{});
             const sliced = n.children[0..n.n_children];
             for (sliced) |child| {
@@ -66,7 +73,8 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
             }
             try out.print("</em>", .{});
         },
-        .strong => |n| {
+        .strong => {
+            const n = node.data.strong;
             try out.print("<strong>", .{});
             const sliced = n.children[0..n.n_children];
             for (sliced) |child| {
@@ -74,7 +82,8 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
             }
             try out.print("</strong>", .{});
         },
-        .code => |n| {
+        .code => {
+            const n = node.data.code;
             const lang = std.mem.span(n.lang);
             if (lang.len > 0) {
                 try out.print("<pre><code class=\"language-{s}\">", .{lang});
@@ -96,12 +105,14 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
         .thematic_break => {
             try out.print("<hr />", .{});
         },
-        .inline_code => |n| {
+        .inline_code => {
+            const n = node.data.inline_code;
             try out.print("<code>", .{});
             try printHTMLEscapedContent(out, std.mem.span(n.value));
             try out.print("</code>", .{});
         },
-        .link => |n| {
+        .link => {
+            const n = node.data.link;
             try out.print("<a href=\"", .{});
             try printHTMLEscapedAttrValue(out, std.mem.span(n.url));
             try out.print("\"", .{});
@@ -122,7 +133,8 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
 
             try out.print("</a>", .{});
         },
-        .image => |n| {
+        .image => {
+            const n = node.data.image;
             try out.print("<img src=\"", .{});
             try printHTMLEscapedAttrValue(out, std.mem.span(n.url));
             try out.print("\" ", .{});

@@ -9,15 +9,18 @@ const ast = @import("../ast.zig");
 pub fn transform(alloc: Allocator, node: *ast.Node) !*ast.Node {
     const block = try alloc.create(ast.Node);
     block.* = .{
-        .block = .{
-            .children = node.root.children,
-            .n_children = node.root.n_children,
+        .tag = .block,
+        .data = .{
+            .block = .{
+                .children = node.data.root.children,
+                .n_children = node.data.root.n_children,
+            },
         },
     };
 
     var root_children = try alloc.alloc(*ast.Node, 1);
     root_children[0] = block;
-    node.root.children = root_children.ptr;
-    node.root.n_children = 1;
+    node.data.root.children = root_children.ptr;
+    node.data.root.n_children = 1;
     return node;
 }
