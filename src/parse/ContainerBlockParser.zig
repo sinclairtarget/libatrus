@@ -179,7 +179,7 @@ const OpenRoot = struct {
         const node = try alloc.create(ast.Node);
         node.* = .{
             .tag = .root,
-            .data = .{
+            .payload = .{
                 .root = .{
                     .children = children.ptr,
                     .n_children = @intCast(children.len),
@@ -316,7 +316,7 @@ const OpenBlockquote = struct {
         const node = try alloc.create(ast.Node);
         node.* = .{
             .tag = .blockquote,
-            .data = .{
+            .payload = .{
                 .blockquote = .{
                     .children = children.ptr,
                     .n_children = @intCast(children.len),
@@ -512,7 +512,7 @@ test "empty document" {
     defer root.deinit(testing.allocator);
 
     try testing.expectEqual(.root, root.tag);
-    try testing.expectEqual(0, root.data.root.n_children);
+    try testing.expectEqual(0, root.payload.root.n_children);
 }
 
 test "simple paragraph" {
@@ -526,16 +526,16 @@ test "simple paragraph" {
     defer root.deinit(testing.allocator);
 
     try testing.expectEqual(.root, root.tag);
-    try testing.expectEqual(1, root.data.root.n_children);
+    try testing.expectEqual(1, root.payload.root.n_children);
 
-    const p = root.data.root.children[0];
+    const p = root.payload.root.children[0];
     try testing.expectEqual(.paragraph, p.tag);
 
-    const txt = p.data.paragraph.children[0];
+    const txt = p.payload.paragraph.children[0];
     try testing.expectEqual(.text, txt.tag);
     try testing.expectEqualStrings(
         "This is a paragraph. It goes on for\nmultiple lines.",
-        std.mem.span(txt.data.text.value),
+        std.mem.span(txt.payload.text.value),
     );
 }
 
@@ -553,25 +553,25 @@ test "blockquote" {
     defer root.deinit(testing.allocator);
 
     try testing.expectEqual(.root, root.tag);
-    try testing.expectEqual(2, root.data.root.n_children);
+    try testing.expectEqual(2, root.payload.root.n_children);
 
-    const bq = root.data.root.children[0];
+    const bq = root.payload.root.children[0];
     try testing.expectEqual(.blockquote, bq.tag);
-    try testing.expectEqual(1, bq.data.blockquote.n_children);
+    try testing.expectEqual(1, bq.payload.blockquote.n_children);
     {
-        const p = bq.data.blockquote.children[0];
+        const p = bq.payload.blockquote.children[0];
         try testing.expectEqual(.paragraph, p.tag);
-        try testing.expectEqual(1, p.data.paragraph.n_children);
+        try testing.expectEqual(1, p.payload.paragraph.n_children);
 
-        const txt = p.data.paragraph.children[0];
+        const txt = p.payload.paragraph.children[0];
         try testing.expectEqual(.text, txt.tag);
         try testing.expectEqualStrings(
             "This is a block-quoted paragraph. It goes on for\nmultiple lines.",
-            std.mem.span(txt.data.text.value),
+            std.mem.span(txt.payload.text.value),
         );
     }
 
-    const p = root.data.root.children[1];
+    const p = root.payload.root.children[1];
     try testing.expectEqual(.paragraph, p.tag);
 }
 
@@ -590,28 +590,28 @@ test "blockquote lazy continuation" {
     defer root.deinit(testing.allocator);
 
     try testing.expectEqual(.root, root.tag);
-    try testing.expectEqual(3, root.data.root.n_children);
+    try testing.expectEqual(3, root.payload.root.n_children);
 
-    const bq1 = root.data.root.children[0];
+    const bq1 = root.payload.root.children[0];
     try testing.expectEqual(.blockquote, bq1.tag);
-    try testing.expectEqual(1, bq1.data.blockquote.n_children);
+    try testing.expectEqual(1, bq1.payload.blockquote.n_children);
     {
-        const p = bq1.data.blockquote.children[0];
+        const p = bq1.payload.blockquote.children[0];
         try testing.expectEqual(.paragraph, p.tag);
-        try testing.expectEqual(1, p.data.paragraph.n_children);
+        try testing.expectEqual(1, p.payload.paragraph.n_children);
 
-        const txt = p.data.paragraph.children[0];
+        const txt = p.payload.paragraph.children[0];
         try testing.expectEqual(.text, txt.tag);
         try testing.expectEqualStrings(
             "This should\nrun on\nfor multiple lines.",
-            std.mem.span(txt.data.text.value),
+            std.mem.span(txt.payload.text.value),
         );
     }
 
-    const bq2 = root.data.root.children[1];
+    const bq2 = root.payload.root.children[1];
     try testing.expectEqual(.blockquote, bq2.tag);
 
-    const h = root.data.root.children[2];
+    const h = root.payload.root.children[2];
     try testing.expectEqual(.heading, h.tag);
 }
 
@@ -626,23 +626,23 @@ test "blockquote after paragraph" {
     defer root.deinit(testing.allocator);
 
     try testing.expectEqual(.root, root.tag);
-    try testing.expectEqual(2, root.data.root.n_children);
+    try testing.expectEqual(2, root.payload.root.n_children);
 
-    const p = root.data.root.children[0];
+    const p = root.payload.root.children[0];
     try testing.expectEqual(.paragraph, p.tag);
 
-    const bq = root.data.root.children[1];
+    const bq = root.payload.root.children[1];
     try testing.expectEqual(.blockquote, bq.tag);
-    try testing.expectEqual(1, bq.data.blockquote.n_children);
+    try testing.expectEqual(1, bq.payload.blockquote.n_children);
     {
-        const bq_p = bq.data.blockquote.children[0];
+        const bq_p = bq.payload.blockquote.children[0];
         try testing.expectEqual(.paragraph, bq_p.tag);
 
-        const bq_txt = bq_p.data.paragraph.children[0];
+        const bq_txt = bq_p.payload.paragraph.children[0];
         try testing.expectEqual(.text, bq_txt.tag);
         try testing.expectEqualStrings(
             "This is a paragraph inside the blockquote.",
-            std.mem.span(bq_txt.data.text.value),
+            std.mem.span(bq_txt.payload.text.value),
         );
     }
 }
@@ -659,23 +659,23 @@ test "whitespace blockquote" {
     defer root.deinit(testing.allocator);
 
     try testing.expectEqual(.root, root.tag);
-    try testing.expectEqual(1, root.data.root.n_children);
+    try testing.expectEqual(1, root.payload.root.n_children);
 
-    const bq = root.data.root.children[0];
+    const bq = root.payload.root.children[0];
     try testing.expectEqual(.blockquote, bq.tag);
-    try testing.expectEqual(1, bq.data.blockquote.n_children);
+    try testing.expectEqual(1, bq.payload.blockquote.n_children);
     {
-        const bq_p = bq.data.blockquote.children[0];
+        const bq_p = bq.payload.blockquote.children[0];
         try testing.expectEqual(.paragraph, bq_p.tag);
 
-        const bq_txt = bq_p.data.paragraph.children[0];
+        const bq_txt = bq_p.payload.paragraph.children[0];
         try testing.expectEqual(.text, bq_txt.tag);
         try testing.expectEqualStrings(
             \\This is a paragraph inside the blockquote.
             \\So is this line.
             \\And this line.
             ,
-            std.mem.span(bq_txt.data.text.value),
+            std.mem.span(bq_txt.payload.text.value),
         );
     }
 }
@@ -695,33 +695,33 @@ test "blockquote with nested blocks" {
     defer root.deinit(testing.allocator);
 
     try testing.expectEqual(.root, root.tag);
-    try testing.expectEqual(1, root.data.root.n_children);
+    try testing.expectEqual(1, root.payload.root.n_children);
 
-    const bq = root.data.root.children[0];
+    const bq = root.payload.root.children[0];
     try testing.expectEqual(.blockquote, bq.tag);
-    try testing.expectEqual(3, bq.data.blockquote.n_children);
+    try testing.expectEqual(3, bq.payload.blockquote.n_children);
     {
-        const bq_h = bq.data.blockquote.children[0];
+        const bq_h = bq.payload.blockquote.children[0];
         try testing.expectEqual(.heading, bq_h.tag);
 
-        const h_txt = bq_h.data.heading.children[0];
+        const h_txt = bq_h.payload.heading.children[0];
         try testing.expectEqual(.text, h_txt.tag);
         try testing.expectEqualStrings(
             "Heading",
-            std.mem.span(h_txt.data.text.value),
+            std.mem.span(h_txt.payload.text.value),
         );
 
-        const bq_p = bq.data.blockquote.children[1];
+        const bq_p = bq.payload.blockquote.children[1];
         try testing.expectEqual(.paragraph, bq_p.tag);
 
-        const p_txt = bq_p.data.paragraph.children[0];
+        const p_txt = bq_p.payload.paragraph.children[0];
         try testing.expectEqual(.text, p_txt.tag);
         try testing.expectEqualStrings(
             "Paragraph text.",
-            std.mem.span(p_txt.data.text.value),
+            std.mem.span(p_txt.payload.text.value),
         );
 
-        const bq_code = bq.data.blockquote.children[2];
+        const bq_code = bq.payload.blockquote.children[2];
         try testing.expectEqual(.code, bq_code.tag);
     }
 }
@@ -744,65 +744,65 @@ test "double blockquote" {
     defer root.deinit(testing.allocator);
 
     try testing.expectEqual(.root, root.tag);
-    try testing.expectEqual(3, root.data.root.n_children);
+    try testing.expectEqual(3, root.payload.root.n_children);
 
     {
-        const p = root.data.root.children[0];
+        const p = root.payload.root.children[0];
         try testing.expectEqual(.paragraph, p.tag);
-        const p_txt = p.data.paragraph.children[0];
+        const p_txt = p.payload.paragraph.children[0];
         try testing.expectEqual(.text, p_txt.tag);
         try testing.expectEqualStrings(
             "This is a paragraph.",
-            std.mem.span(p_txt.data.text.value),
+            std.mem.span(p_txt.payload.text.value),
         );
     }
 
-    const bq_outer = root.data.root.children[1];
+    const bq_outer = root.payload.root.children[1];
     try testing.expectEqual(.blockquote, bq_outer.tag);
-    try testing.expectEqual(3, bq_outer.data.blockquote.n_children);
+    try testing.expectEqual(3, bq_outer.payload.blockquote.n_children);
     {
-        const p1 = bq_outer.data.blockquote.children[0];
+        const p1 = bq_outer.payload.blockquote.children[0];
         try testing.expectEqual(.paragraph, p1.tag);
-        try testing.expectEqual(1, p1.data.paragraph.n_children);
-        const p1_txt = p1.data.paragraph.children[0];
+        try testing.expectEqual(1, p1.payload.paragraph.n_children);
+        const p1_txt = p1.payload.paragraph.children[0];
         try testing.expectEqual(.text, p1_txt.tag);
         try testing.expectEqualStrings(
             "This is blockquoted.",
-            std.mem.span(p1_txt.data.text.value),
+            std.mem.span(p1_txt.payload.text.value),
         );
 
-        const bq_inner = bq_outer.data.blockquote.children[1];
+        const bq_inner = bq_outer.payload.blockquote.children[1];
         try testing.expectEqual(.blockquote, bq_inner.tag);
-        try testing.expectEqual(1, bq_inner.data.blockquote.n_children);
-        const bq_inner_p = bq_inner.data.blockquote.children[0];
+        try testing.expectEqual(1, bq_inner.payload.blockquote.n_children);
+        const bq_inner_p = bq_inner.payload.blockquote.children[0];
         try testing.expectEqual(.paragraph, bq_inner_p.tag);
-        try testing.expectEqual(1, bq_inner_p.data.paragraph.n_children);
-        const bq_inner_p_txt = bq_inner_p.data.paragraph.children[0];
+        try testing.expectEqual(1, bq_inner_p.payload.paragraph.n_children);
+        const bq_inner_p_txt = bq_inner_p.payload.paragraph.children[0];
         try testing.expectEqual(.text, bq_inner_p_txt.tag);
         try testing.expectEqualStrings(
             "This is double-blockquoted.\nStill double-blockquoted (lazy).",
-            std.mem.span(bq_inner_p_txt.data.text.value),
+            std.mem.span(bq_inner_p_txt.payload.text.value),
         );
 
-        const p2 = bq_outer.data.blockquote.children[2];
+        const p2 = bq_outer.payload.blockquote.children[2];
         try testing.expectEqual(.paragraph, p2.tag);
-        try testing.expectEqual(1, p2.data.paragraph.n_children);
-        const p2_txt = p2.data.paragraph.children[0];
+        try testing.expectEqual(1, p2.payload.paragraph.n_children);
+        const p2_txt = p2.payload.paragraph.children[0];
         try testing.expectEqual(.text, p2_txt.tag);
         try testing.expectEqualStrings(
             "This is single blockquoted again.",
-            std.mem.span(p2_txt.data.text.value),
+            std.mem.span(p2_txt.payload.text.value),
         );
     }
 
     {
-        const p = root.data.root.children[2];
+        const p = root.payload.root.children[2];
         try testing.expectEqual(.paragraph, p.tag);
-        const p_txt = p.data.paragraph.children[0];
+        const p_txt = p.payload.paragraph.children[0];
         try testing.expectEqual(.text, p_txt.tag);
         try testing.expectEqualStrings(
             "This is another regular paragraph.",
-            std.mem.span(p_txt.data.text.value),
+            std.mem.span(p_txt.payload.text.value),
         );
     }
 }
@@ -819,12 +819,12 @@ test "angle brackets in fenced code block" {
     defer root.deinit(testing.allocator);
 
     try testing.expectEqual(.root, root.tag);
-    try testing.expectEqual(1, root.data.root.n_children);
+    try testing.expectEqual(1, root.payload.root.n_children);
 
-    const code = root.data.root.children[0];
+    const code = root.payload.root.children[0];
     try testing.expectEqual(.code, code.tag);
     try testing.expectEqualStrings(
         "> foo",
-        std.mem.span(code.data.code.value),
+        std.mem.span(code.payload.code.value),
     );
 }

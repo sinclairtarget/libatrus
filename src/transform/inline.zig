@@ -17,7 +17,7 @@ pub fn transform(
 ) !*ast.Node {
     switch (original_node.tag) {
         inline .root, .block, .blockquote => |node_type| {
-            const n = @field(original_node.data, @tagName(node_type));
+            const n = @field(original_node.payload, @tagName(node_type));
             for (0..n.n_children) |i| {
                 n.children[i] = try transform(
                     alloc,
@@ -29,7 +29,7 @@ pub fn transform(
             return original_node;
         },
         .paragraph => {
-            const n = original_node.data.paragraph;
+            const n = original_node.payload.paragraph;
             for (0..n.n_children) |i| {
                 n.children[i] = try transform(
                     alloc,
@@ -54,7 +54,7 @@ pub fn transform(
             const node = try alloc.create(ast.Node);
             node.* = .{
                 .tag = .paragraph,
-                .data = .{
+                .payload = .{
                     .paragraph = .{
                         .children = new_children.ptr,
                         .n_children = @intCast(new_children.len),
@@ -64,7 +64,7 @@ pub fn transform(
             return node;
         },
         .heading => {
-            const n = original_node.data.heading;
+            const n = original_node.payload.heading;
             for (0..n.n_children) |i| {
                 n.children[i] = try transform(
                     alloc,
@@ -89,7 +89,7 @@ pub fn transform(
             const node = try alloc.create(ast.Node);
             node.* = .{
                 .tag = .heading,
-                .data = .{
+                .payload = .{
                     .heading = .{
                         .children = new_children.ptr,
                         .n_children = @intCast(new_children.len),
@@ -128,7 +128,7 @@ fn parseInline(
     for (original_nodes) |node| {
         switch (node.tag) {
             .text => {
-                const n = node.data.text;
+                const n = node.payload.text;
                 var tokenizer = InlineTokenizer.init(std.mem.span(n.value));
                 var parser = InlineParser.init(&tokenizer);
                 const replacement_nodes = try parser.parse(

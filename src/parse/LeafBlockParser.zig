@@ -110,7 +110,7 @@ pub fn parse(
         }
 
         if (try self.parseLinkReferenceDefinition(alloc, scratch)) |def| {
-            try link_defs.add(alloc, &def.data.definition);
+            try link_defs.add(alloc, &def.payload.definition);
             try children.append(def);
             continue;
         }
@@ -229,7 +229,7 @@ fn parseATXHeading(
     const node = try alloc.create(ast.Node);
     node.* = .{
         .tag = .heading,
-        .data = .{
+        .payload = .{
             .heading = .{
                 .children = children.ptr,
                 .n_children = @intCast(children.len),
@@ -321,7 +321,7 @@ fn parseSetextHeading(
     const node = try alloc.create(ast.Node);
     node.* = .{
         .tag = .heading,
-        .data = .{
+        .payload = .{
             .heading = .{
                 .children = children.ptr,
                 .n_children = @intCast(children.len),
@@ -361,7 +361,7 @@ fn parseThematicBreak(
     const node = try alloc.create(ast.Node);
     node.* = .{
         .tag = .thematic_break,
-        .data = .{
+        .payload = .{
             .thematic_break = {},
         },
     };
@@ -477,7 +477,7 @@ fn parseIndentedCode(
     const node = try alloc.create(ast.Node);
     node.* = .{
         .tag = .code,
-        .data = .{
+        .payload = .{
             .code = .{
                 .value = value.ptr,
                 .lang = "",
@@ -648,7 +648,7 @@ fn parseFencedCode(
     const node = try alloc.create(ast.Node);
     node.* = .{
         .tag = .code,
-        .data = .{
+        .payload = .{
             .code = .{
                 .value = value.ptr,
                 .lang = lang.ptr,
@@ -794,7 +794,7 @@ fn parseLinkReferenceDefinition(
     const node = try alloc.create(ast.Node);
     node.* = .{
         .tag = .definition,
-        .data = .{
+        .payload = .{
             .definition = .{
                 .url = ownedUrl,
                 .label = label,
@@ -1111,7 +1111,7 @@ fn createParagraphNode(alloc: Allocator, text_content: []const u8) !*ast.Node {
     const paragraph_node = try alloc.create(ast.Node);
     paragraph_node.* = .{
         .tag = .paragraph,
-        .data = .{
+        .payload = .{
             .paragraph = .{
                 .children = children.ptr,
                 .n_children = @intCast(children.len),
@@ -1131,7 +1131,7 @@ fn createTextNode(alloc: Allocator, value: []const u8) !*ast.Node {
     const node = try alloc.create(ast.Node);
     node.* = .{
         .tag = .text,
-        .data = .{
+        .payload = .{
             .text = .{
                 .value = copy,
             },
@@ -1212,12 +1212,12 @@ test "ATX heading and paragraphs" {
 
     const h1 = nodes[0];
     try testing.expectEqual(.heading, h1.tag);
-    try testing.expectEqual(1, h1.data.heading.depth);
-    const text_node = h1.data.heading.children[0];
+    try testing.expectEqual(1, h1.payload.heading.depth);
+    const text_node = h1.payload.heading.children[0];
     try testing.expectEqual(.text, text_node.tag);
     try testing.expectEqualStrings(
         "This is a heading",
-        std.mem.span(text_node.data.text.value),
+        std.mem.span(text_node.payload.text.value),
     );
 
     const p1 = nodes[1];
@@ -1252,11 +1252,11 @@ test "ATX heading with leading whitespace" {
 
     const h1 = nodes[0];
     try testing.expectEqual(.heading, h1.tag);
-    try testing.expectEqual(3, h1.data.heading.depth);
+    try testing.expectEqual(3, h1.payload.heading.depth);
 
     const h2 = nodes[1];
     try testing.expectEqual(.heading, h2.tag);
-    try testing.expectEqual(1, h2.data.heading.depth);
+    try testing.expectEqual(1, h2.payload.heading.depth);
 }
 
 test "ATX heading with trailing pounds" {
@@ -1277,12 +1277,12 @@ test "ATX heading with trailing pounds" {
 
     const h1 = nodes[0];
     try testing.expectEqual(.heading, h1.tag);
-    try testing.expectEqual(2, h1.data.heading.depth);
-    const text_node = h1.data.heading.children[0];
+    try testing.expectEqual(2, h1.payload.heading.depth);
+    const text_node = h1.payload.heading.children[0];
     try testing.expectEqual(.text, text_node.tag);
     try testing.expectEqualStrings(
         "foo",
-        std.mem.span(text_node.data.text.value),
+        std.mem.span(text_node.payload.text.value),
     );
 }
 
@@ -1311,25 +1311,25 @@ test "setext headings" {
 
     const h1 = nodes[0];
     try testing.expectEqual(.heading, h1.tag);
-    try testing.expectEqual(1, h1.data.heading.depth);
+    try testing.expectEqual(1, h1.payload.heading.depth);
     {
-        const text_node = h1.data.heading.children[0];
+        const text_node = h1.payload.heading.children[0];
         try testing.expectEqual(.text, text_node.tag);
         try testing.expectEqualStrings(
             "foo",
-            std.mem.span(text_node.data.text.value),
+            std.mem.span(text_node.payload.text.value),
         );
     }
 
     const h2 = nodes[1];
     try testing.expectEqual(.heading, h2.tag);
-    try testing.expectEqual(2, h2.data.heading.depth);
+    try testing.expectEqual(2, h2.payload.heading.depth);
     {
-        const text_node = h2.data.heading.children[0];
+        const text_node = h2.payload.heading.children[0];
         try testing.expectEqual(.text, text_node.tag);
         try testing.expectEqualStrings(
             "bar",
-            std.mem.span(text_node.data.text.value),
+            std.mem.span(text_node.payload.text.value),
         );
     }
 
@@ -1361,25 +1361,25 @@ test "indented setext headings" {
 
     const h1 = nodes[0];
     try testing.expectEqual(.heading, h1.tag);
-    try testing.expectEqual(1, h1.data.heading.depth);
+    try testing.expectEqual(1, h1.payload.heading.depth);
     {
-        const text_node = h1.data.heading.children[0];
+        const text_node = h1.payload.heading.children[0];
         try testing.expectEqual(.text, text_node.tag);
         try testing.expectEqualStrings(
             "foo *bar*",
-            std.mem.span(text_node.data.text.value),
+            std.mem.span(text_node.payload.text.value),
         );
     }
 
     const h2 = nodes[1];
     try testing.expectEqual(.heading, h2.tag);
-    try testing.expectEqual(2, h2.data.heading.depth);
+    try testing.expectEqual(2, h2.payload.heading.depth);
     {
-        const text_node = h2.data.heading.children[0];
+        const text_node = h2.payload.heading.children[0];
         try testing.expectEqual(.text, text_node.tag);
         try testing.expectEqualStrings(
             "bim _bam_",
-            std.mem.span(text_node.data.text.value),
+            std.mem.span(text_node.payload.text.value),
         );
     }
 }
@@ -1407,7 +1407,7 @@ test "paragraph can contain punctuation" {
 
     const h = nodes[0];
     try testing.expectEqual(.heading, h.tag);
-    try testing.expectEqual(1, h.data.heading.n_children);
+    try testing.expectEqual(1, h.payload.heading.n_children);
 
     const p = nodes[1];
     try testing.expectEqual(.paragraph, p.tag);
@@ -1474,9 +1474,9 @@ test "empty code fence" {
     try testing.expectEqual(.code, code_node.tag);
     try testing.expectEqualStrings(
         "",
-        std.mem.span(code_node.data.code.value),
+        std.mem.span(code_node.payload.code.value),
     );
-    try testing.expectEqualStrings("", std.mem.span(code_node.data.code.lang));
+    try testing.expectEqualStrings("", std.mem.span(code_node.payload.code.lang));
 }
 
 test "code fence with info string" {
@@ -1505,11 +1505,11 @@ test "code fence with info string" {
     try testing.expectEqual(.code, code_node.tag);
     try testing.expectEqualStrings(
         "def foo():\n    pass",
-        std.mem.span(code_node.data.code.value),
+        std.mem.span(code_node.payload.code.value),
     );
     try testing.expectEqualStrings(
         "python",
-        std.mem.span(code_node.data.code.lang),
+        std.mem.span(code_node.payload.code.lang),
     );
 }
 
@@ -1539,11 +1539,11 @@ test "code fence with indentation" {
     try testing.expectEqual(.code, code_node.tag);
     try testing.expectEqualStrings(
         "def foo():\n    pass",
-        std.mem.span(code_node.data.code.value),
+        std.mem.span(code_node.payload.code.value),
     );
     try testing.expectEqualStrings(
         "python",
-        std.mem.span(code_node.data.code.lang),
+        std.mem.span(code_node.payload.code.lang),
     );
 }
 
@@ -1573,11 +1573,11 @@ test "tilde code fence" {
     try testing.expectEqual(.code, code_node.tag);
     try testing.expectEqualStrings(
         "def foo():\n    pass",
-        std.mem.span(code_node.data.code.value),
+        std.mem.span(code_node.payload.code.value),
     );
     try testing.expectEqualStrings(
         "python",
-        std.mem.span(code_node.data.code.lang),
+        std.mem.span(code_node.payload.code.lang),
     );
 }
 
@@ -1633,13 +1633,13 @@ test "close token in paragraph" {
 
     const p = nodes[0];
     try testing.expectEqual(.paragraph, p.tag);
-    try testing.expectEqual(1, p.data.paragraph.n_children);
+    try testing.expectEqual(1, p.payload.paragraph.n_children);
 
-    const txt = p.data.paragraph.children[0];
+    const txt = p.payload.paragraph.children[0];
     try testing.expectEqual(.text, txt.tag);
     try testing.expectEqualStrings(
         "foo\nbar",
-        std.mem.span(txt.data.text.value),
+        std.mem.span(txt.payload.text.value),
     );
 }
 
@@ -1676,11 +1676,11 @@ test "close token before thematic break" {
 
     const p = nodes[0];
     try testing.expectEqual(.paragraph, p.tag);
-    try testing.expectEqual(1, p.data.paragraph.n_children);
+    try testing.expectEqual(1, p.payload.paragraph.n_children);
 
-    const txt = p.data.paragraph.children[0];
+    const txt = p.payload.paragraph.children[0];
     try testing.expectEqual(.text, txt.tag);
-    try testing.expectEqualStrings("foo", std.mem.span(txt.data.text.value));
+    try testing.expectEqualStrings("foo", std.mem.span(txt.payload.text.value));
 }
 
 // !! DIFFERENT FROM REFERENCE MYST PARSER !!
@@ -1720,11 +1720,11 @@ test "close token in setext heading" {
 
     const p = nodes[0];
     try testing.expectEqual(.paragraph, p.tag);
-    try testing.expectEqual(1, p.data.paragraph.n_children);
+    try testing.expectEqual(1, p.payload.paragraph.n_children);
 
-    const txt = p.data.paragraph.children[0];
+    const txt = p.payload.paragraph.children[0];
     try testing.expectEqual(.text, txt.tag);
-    try testing.expectEqualStrings("foo", std.mem.span(txt.data.text.value));
+    try testing.expectEqualStrings("foo", std.mem.span(txt.payload.text.value));
 }
 
 // This is a case where the parser has to detect the close token in the body of
@@ -1770,9 +1770,9 @@ test "close token after atx heading" {
 
     const h = nodes[0];
     try testing.expectEqual(.heading, h.tag);
-    try testing.expectEqual(1, h.data.heading.n_children);
+    try testing.expectEqual(1, h.payload.heading.n_children);
 
-    const txt = h.data.heading.children[0];
+    const txt = h.payload.heading.children[0];
     try testing.expectEqual(.text, txt.tag);
-    try testing.expectEqualStrings("foo", std.mem.span(txt.data.text.value));
+    try testing.expectEqualStrings("foo", std.mem.span(txt.payload.text.value));
 }

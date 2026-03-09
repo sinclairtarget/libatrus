@@ -13,18 +13,18 @@ pub fn write(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
     switch (node.tag) {
         inline .root, .block, .blockquote, .paragraph, .emphasis, .strong,
         .heading, .link => |node_type| {
-            const n = @field(node.data, @tagName(node_type));
+            const n = @field(node.payload, @tagName(node_type));
             const sliced = n.children[0..n.n_children];
             for (sliced) |child| {
                 try write(out, child);
             }
         },
         inline .text, .code, .inline_code => |node_type| {
-            const n = @field(node.data, @tagName(node_type));
+            const n = @field(node.payload, @tagName(node_type));
             _ = try out.write(std.mem.span(n.value));
         },
         .image => {
-            const n = node.data.image;
+            const n = node.payload.image;
             _ = try out.write(std.mem.span(n.alt));
         },
         .@"break", .thematic_break, .definition => {},

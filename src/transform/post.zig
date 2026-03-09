@@ -10,17 +10,17 @@ pub fn transform(alloc: Allocator, node: *ast.Node) !*ast.Node {
     const block = try alloc.create(ast.Node);
     block.* = .{
         .tag = .block,
-        .data = .{
+        .payload = .{
             .block = .{
-                .children = node.data.root.children,
-                .n_children = node.data.root.n_children,
+                .children = node.payload.root.children,
+                .n_children = node.payload.root.n_children,
             },
         },
     };
 
     var root_children = try alloc.alloc(*ast.Node, 1);
     root_children[0] = block;
-    node.data.root.children = root_children.ptr;
-    node.data.root.n_children = 1;
+    node.payload.root.children = root_children.ptr;
+    node.payload.root.n_children = 1;
     return node;
 }

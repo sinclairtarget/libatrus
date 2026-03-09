@@ -55,34 +55,34 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
     switch (node.tag) {
         inline .root, .paragraph, .block, .emphasis, .strong,
         .blockquote => |node_type| {
-            const n = @field(node.data, @tagName(node_type));
+            const n = @field(node.payload, @tagName(node_type));
             try render_children(stringify, n);
         },
         .heading => {
-            const n = node.data.heading;
+            const n = node.payload.heading;
             try stringify.objectField("depth");
             try stringify.write(n.depth);
             try render_children(stringify, n);
         },
         .text => {
-            const n = node.data.text;
+            const n = node.payload.text;
             try stringify.objectField("value");
             try stringify.write(n.value);
         },
         .inline_code => {
-            const n = node.data.inline_code;
+            const n = node.payload.inline_code;
             try stringify.objectField("value");
             try stringify.write(n.value);
         },
         .code => {
-            const n = node.data.code;
+            const n = node.payload.code;
             try stringify.objectField("lang");
             try stringify.write(n.lang);
             try stringify.objectField("value");
             try stringify.write(n.value);
         },
         .link => {
-            const n = node.data.link;
+            const n = node.payload.link;
             try stringify.objectField("url");
             try stringify.write(std.mem.span(n.url));
 
@@ -95,7 +95,7 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
             try render_children(stringify, n);
         },
         .image => {
-            const n = node.data.image;
+            const n = node.payload.image;
             try stringify.objectField("url");
             try stringify.write(std.mem.span(n.url));
 

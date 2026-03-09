@@ -32,7 +32,7 @@ pub const NodeType = enum(c_uint) {
 };
 
 pub const Node = extern struct {
-    data: extern union {
+    payload: extern union {
         root: Root,
         block: Container,
         heading: Heading,
@@ -55,7 +55,7 @@ pub const Node = extern struct {
         switch (self.tag) {
             .thematic_break, .@"break" => {},
             inline else => |node_type| {
-                var n = @field(self.data, @tagName(node_type));
+                var n = @field(self.payload, @tagName(node_type));
                 n.deinit(alloc);
             },
         }
