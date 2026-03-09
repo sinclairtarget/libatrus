@@ -123,10 +123,10 @@ pub const Code = extern struct {
 };
 
 pub const Link = extern struct {
-    url: [*:0]const u8,
-    title: [*:0]const u8,
     children: [*]*Node,
     n_children: c_uint,
+    url: [*:0]const u8,
+    title: [*:0]const u8,
 
     pub fn deinit(self: *Link, alloc: Allocator) void {
         const sliced = self.children[0..self.n_children];

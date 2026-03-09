@@ -1,10 +1,95 @@
 #ifndef ATRUS_H
 #define ATRUS_H
 
-// Opaque type.
-typedef struct atrus_ast_node atrus_ast_node;
+// ----------------------------------------------------------------------------
+// Atrus MyST Markdown AST
+// ----------------------------------------------------------------------------
+typedef enum : unsigned int {
+    ATRUS_NODE_TYPE_ROOT = 0,
+    ATRUS_NODE_TYPE_BLOCK = 1,
+    ATRUS_NODE_TYPE_HEADING = 2,
+    ATRUS_NODE_TYPE_PARAGRAPH = 3,
+    ATRUS_NODE_TYPE_TEXT = 4,
+    ATRUS_NODE_TYPE_CODE = 5,
+    ATRUS_NODE_TYPE_THEMATIC_BREAK = 6,
+    ATRUS_NODE_TYPE_BREAK = 7,
+    ATRUS_NODE_TYPE_EMPHASIS = 8,
+    ATRUS_NODE_TYPE_STRONG = 9,
+    ATRUS_NODE_TYPE_INLINE_CODE = 10,
+    ATRUS_NODE_TYPE_LINK = 11,
+    ATRUS_NODE_TYPE_DEFINITION = 12,
+    ATRUS_NODE_TYPE_IMAGE = 13,
+    ATRUS_NODE_TYPE_BLOCKQUOTE = 14,
+} atrus_node_type_t;
 
+struct atrus_ast_node_root {
+    struct atrus_ast_node** children;
+    unsigned int n_children;
+};
 
+struct atrus_ast_node_container {
+    struct atrus_ast_node** children;
+    unsigned int n_children;
+};
+
+struct atrus_ast_node_heading {
+    struct atrus_ast_node** children;
+    unsigned int n_children;
+    unsigned short depth;
+};
+
+struct atrus_ast_node_text {
+    const char* value;
+};
+
+struct atrus_ast_node_code {
+    const char* value;
+    const char* lang;
+};
+
+struct atrus_ast_node_link {
+    struct atrus_ast_node** children;
+    unsigned int n_children;
+    const char* url;
+    const char* title;
+};
+
+struct atrus_ast_node_link_definition {
+    const char* url;
+    const char* title;
+    const char* label;
+};
+
+struct atrus_ast_node_image {
+    const char* url;
+    const char* title;
+    const char* alt;
+};
+
+struct atrus_ast_node {
+    union {
+        struct atrus_ast_node_root            root;
+        struct atrus_ast_node_container       block;
+        struct atrus_ast_node_heading         heading;
+        struct atrus_ast_node_container       paragraph;
+        struct atrus_ast_node_text            text;
+        struct atrus_ast_node_code            code;
+        // thematic_break (void) omitted
+        // break          (void) omitted
+        struct atrus_ast_node_container       emphasis;
+        struct atrus_ast_node_container       strong;
+        struct atrus_ast_node_text            inline_code;
+        struct atrus_ast_node_link            link;
+        struct atrus_ast_node_link_definition definition;
+        struct atrus_ast_node_image           image;
+        struct atrus_ast_node_container       blockquote;
+    } payload;
+    atrus_node_type_t tag;
+};
+
+// ----------------------------------------------------------------------------
+// Atrus API
+// ----------------------------------------------------------------------------
 typedef enum : unsigned int {
     ATRUS_BLOCK_PARSE_LEVEL = 0,
     ATRUS_PRE_PARSE_LEVEL = 1,
@@ -32,14 +117,14 @@ typedef enum {
  */
 atrus_parse_error_t atrus_parse(
     const char* in, 
-    atrus_ast_node** out,
+    struct atrus_ast_node** out,
     const struct atrus_parse_opts* options
 ); 
 
 /*
  * Frees the given AST.
  */
-void atrus_free(atrus_ast_node* root);
+void atrus_free(struct atrus_ast_node* root);
 
 /*
  * Given a MyST AST, renders the tree as HTML into a null-terminated string.
@@ -47,7 +132,7 @@ void atrus_free(atrus_ast_node* root);
  *
  * The caller is responsible for freeing the string.
  */
-int atrus_render_html(atrus_ast_node* root, char** out);
+int atrus_render_html(struct atrus_ast_node* root, char** out);
 
 typedef enum : unsigned int {
     ATURS_JSON_MINIFIED = 0,
@@ -69,7 +154,7 @@ struct atrus_json_opts {
  * The caller is responsible for freeing the string.
  */
 int atrus_render_json(
-    atrus_ast_node* root, 
+    struct atrus_ast_node* root, 
     char** out,
     const struct atrus_json_opts* options
 );
@@ -85,6 +170,9 @@ typedef enum {
  * 
  * The caller is responsible for freeing the returned AST using atrus_free().
  */
-atrus_load_error_t atrus_load_json(const char* in, atrus_ast_node** out);
+atrus_load_error_t atrus_load_json(
+    const char* in, 
+    struct atrus_ast_node** out
+);
 
 #endif
