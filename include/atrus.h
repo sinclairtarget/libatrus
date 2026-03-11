@@ -138,7 +138,7 @@ void atrus_free(struct atrus_ast_node* root);
 int atrus_render_html(struct atrus_ast_node* root, char** out);
 
 typedef enum : unsigned int {
-    ATURS_JSON_MINIFIED = 0,
+    ATRUS_JSON_MINIFIED = 0,
     ATRUS_JSON_INDENT_2 = 1,
     ATRUS_JSON_INDENT_4 = 2,
 } atrus_json_option_whitespace_t;
