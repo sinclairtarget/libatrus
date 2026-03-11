@@ -42,8 +42,9 @@ Much more work remains:
 - [x] Set up basic build
 - [x] Set up MyST spec test suite
 - [x] Get basic C API working
+- [x] Expose AST via C API
 - [ ] Finish implementing commonmark spec
 - [ ] Finish implementing MyST extensions
 - [ ] Implement JSON AST parser
 - [ ] Add benchmarks
-- [ ] Expose AST via C API
+- [ ] Make if faaast
