@@ -17,6 +17,10 @@ void print_heading_text(struct atrus_ast_node* root) {
  * Exits 0 on success, 1 on test failure.
  */
 int main() {
+    // Test getting version
+    printf("%s\n", atrus_version);
+
+    // Test parsing
     char* md = "# Heading\nThis is a paragraph.\n";
     struct atrus_parse_opts parse_options = {
         .parse_level = ATRUS_POST_PARSE_LEVEL,
@@ -28,8 +32,10 @@ int main() {
         exit(1);
     }
 
+    // Test AST traversal
     print_heading_text(node);
 
+    // Test rendering (JSON)
     char* out;
     struct atrus_json_opts render_options = { 
         .whitespace = ATRUS_JSON_INDENT_2,
@@ -43,6 +49,7 @@ int main() {
     printf("%s\n", out);
     free(out);
 
+    // Test rendering (HTML)
     len = atrus_render_html(node, &out);
     if (len == -1) {
         fprintf(stderr, "Failed to render HTML.\n");

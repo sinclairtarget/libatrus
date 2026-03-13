@@ -32,8 +32,8 @@ const max_line_len = 4096; // bytes
 // The below `pub` variable and function declarations define the public
 // interface of libatrus.
 
-pub const ast = @import("ast.zig");
 pub const version = config.version;
+pub const ast = @import("ast.zig");
 
 pub const ParseError = error{
     ReadFailed,

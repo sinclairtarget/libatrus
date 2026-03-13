@@ -13,6 +13,8 @@ const RenderHTMLError = atrus.RenderHTMLError;
 
 const alloc = std.heap.c_allocator;
 
+export const atrus_version: [*:0]const u8 = atrus.version ++ "\x00";
+
 export fn atrus_parse(in: [*:0]const u8, out: **atrus.ast.Node) c_int {
     var reader = Io.Reader.fixed(std.mem.span(in));
     out.* = atrus.parse(alloc, &reader, .{}) catch |err| {
