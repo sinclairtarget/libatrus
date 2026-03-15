@@ -38,7 +38,7 @@ pub fn build(b: *std.Build) void {
         []const u8,
         "version",
         "Application version string",
-    ) orelse "0.1.0";
+    ) orelse genVersion(b);
     const test_case_filter = b.option(
         []const u8,
         "test-filter",
@@ -327,4 +327,9 @@ fn addBenchmarks(
         .memory = memory_cmd,
         .speed = speed_cmd,
     };
+}
+
+fn genVersion(b: *std.Build) []const u8 {
+    const v = b.run(&.{"git", "describe", "--tags", "--always", "--dirty"});
+    return std.mem.trim(u8, v, &std.ascii.whitespace);
 }
