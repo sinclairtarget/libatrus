@@ -13,11 +13,16 @@ const RenderHTMLError = atrus.RenderHTMLError;
 
 const alloc = std.heap.c_allocator;
 
+// TODO: Is atrus.version already null-terminated?
 export const atrus_version: [*:0]const u8 = atrus.version ++ "\x00";
 
-export fn atrus_parse(in: [*:0]const u8, out: **atrus.ast.Node) c_int {
+export fn atrus_parse(
+    in: [*:0]const u8,
+    out: **atrus.ast.Node,
+    options: *const atrus.ParseOptions,
+) c_int {
     var reader = Io.Reader.fixed(std.mem.span(in));
-    out.* = atrus.parse(alloc, &reader, .{}) catch |err| {
+    out.* = atrus.parse(alloc, &reader, options.*) catch |err| {
         switch (err) {
             ParseError.ReadFailed => return -1,
             else => return -2,
