@@ -127,7 +127,9 @@ atrus_parse_error_t atrus_parse(
 ); 
 
 /*
- * Frees the given AST.
+ * Frees the given AST, recursively.
+ *
+ * Will panic if called on a non-root node.
  */
 void atrus_free(struct atrus_ast_node* root);
 

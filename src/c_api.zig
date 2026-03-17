@@ -32,6 +32,10 @@ export fn atrus_parse(
 }
 
 export fn atrus_free(root: *atrus.ast.Node) void {
+    if (root.tag != .root) {
+        @panic("atrus_free() called on non-root AST node");
+    }
+
     root.deinit(alloc);
 }
 
