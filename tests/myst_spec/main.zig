@@ -43,16 +43,20 @@ const Test = struct {
         try stringify.write(self.case.mdast);
         const expected = buf.written();
 
+        var reader = Io.Reader.fixed(self.case.myst);
         const ast = try atrus.parse(
             alloc,
-            self.case.myst,
+            &reader,
             .{ .parse_level = .pre },
         );
-        const actual = try atrus.renderJSONString(
-            alloc,
+
+        var outbuf = Io.Writer.Allocating.init(alloc);
+        try atrus.renderJSON(
             ast,
+            &outbuf.writer,
             .{ .whitespace = .indent_2 },
         );
+        const actual = outbuf.written();
 
         if (!std.mem.eql(u8, expected, actual)) {
             if (options.verbose) {
@@ -63,13 +67,16 @@ const Test = struct {
         }
 
         // html
+        reader = Io.Reader.fixed(self.case.myst);
         const post_ast = try atrus.parse(
             alloc,
-            self.case.myst,
+            &reader,
             .{ .parse_level = .post },
         );
         if (self.case.html) |expected_html| {
-            const actual_html = try atrus.renderHTMLString(alloc, post_ast);
+            outbuf = Io.Writer.Allocating.init(alloc);
+            try atrus.renderHTML(post_ast, &outbuf.writer, .{});
+            const actual_html = outbuf.written();
             if (!std.mem.eql(u8, expected_html, actual_html)) {
                 if (options.verbose) {
                     std.debug.print("expected html:\n{s}\n", .{expected_html});
