@@ -29,21 +29,9 @@ pub const BlockTokenType = enum {
 
 /// Tokens recognized by the inline parser.
 pub const InlineTokenType = enum {
-    text,
-    newline,
+    // single-character tokens
     whitespace,                         // space or tab (NOT unicode whitespace)
-    decimal_character_reference,
-    hexadecimal_character_reference,
-    entity_reference,
-    absolute_uri,
-    email,
-    l_delim_star,
-    r_delim_star,
-    lr_delim_star,
-    l_delim_underscore,
-    r_delim_underscore,
-    lr_delim_underscore,
-    backtick,                           // one or more consecutive backticks
+    newline,
     single_quote,
     double_quote,
     l_square_bracket,
@@ -53,6 +41,21 @@ pub const InlineTokenType = enum {
     l_paren,
     r_paren,
     exclamation_mark,
+    // delimiters
+    l_delim_star,
+    r_delim_star,
+    lr_delim_star,
+    l_delim_underscore,
+    r_delim_underscore,
+    lr_delim_underscore,
+    backtick,                           // one or more consecutive backticks
+    // other multi-character tokens
+    text,
+    decimal_character_reference,
+    hexadecimal_character_reference,
+    entity_reference,
+    absolute_uri,
+    email,
     hard_break,
 };
 

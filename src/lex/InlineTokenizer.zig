@@ -82,6 +82,14 @@ fn tokenize(self: *Self, scratch: Allocator) !InlineToken {
     const result: ?TokenizeResult = while (self.i < self.in.len) {
         // First, try regular tokens
         const regular_result: ?TokenizeResult = blk: {
+            if (try self.matchAbsoluteURI(scratch)) |result| {
+                break :blk result;
+            }
+
+            if (try self.matchEmailAddress(scratch)) |result| {
+                break :blk result;
+            }
+
             if (try self.matchSingleCharTokens(scratch)) |result| {
                 break :blk result;
             }
@@ -115,14 +123,6 @@ fn tokenize(self: *Self, scratch: Allocator) !InlineToken {
             }
 
             if (try self.matchWhitespace(scratch)) |result| {
-                break :blk result;
-            }
-
-            if (try self.matchAbsoluteURI(scratch)) |result| {
-                break :blk result;
-            }
-
-            if (try self.matchEmailAddress(scratch)) |result| {
                 break :blk result;
             }
 
@@ -695,9 +695,21 @@ fn matchDelimUnderRun(
 fn matchAbsoluteURI(self: Self, scratch: Allocator) !?TokenizeResult {
     var lookahead_i = self.i;
 
-    const State = enum { start, scheme, rest };
+    const State = enum { start, scheme_start, scheme, rest, end };
     fsm: switch (State.start) {
         .start => {
+            if (self.in[lookahead_i] != '<') {
+                return null;
+            }
+
+            lookahead_i += 1;
+            continue :fsm .scheme_start;
+        },
+        .scheme_start => {
+            if (lookahead_i >= self.in.len) {
+                return null;
+            }
+
             switch (self.in[lookahead_i]) {
                 'a'...'z', 'A'...'Z' => {
                     lookahead_i += 1;
@@ -730,11 +742,12 @@ fn matchAbsoluteURI(self: Self, scratch: Allocator) !?TokenizeResult {
         },
         .rest => {
             if (lookahead_i >= self.in.len) {
-                break :fsm;
+                return null;
             }
 
             switch (self.in[lookahead_i]) {
-                '<', '>', ' ' => break :fsm,
+                '<', ' ' => return null,
+                '>' => continue :fsm .end,
                 else => |b| {
                     if (std.ascii.isControl(b)) {
                         return null;
@@ -745,13 +758,21 @@ fn matchAbsoluteURI(self: Self, scratch: Allocator) !?TokenizeResult {
                 },
             }
         },
+        .end => {
+            if (self.in[lookahead_i] != '>') {
+                return null;
+            }
+
+            lookahead_i += 1;
+        }
     }
 
     const tokens = try evaluateTokens(
         scratch,
         .absolute_uri,
         .default,
-        self.in[self.i..lookahead_i],
+        // Don't include angle brackets in lexeme
+        self.in[self.i + 1..lookahead_i - 1],
     );
     return .{
         .tokens = tokens,
@@ -761,17 +782,39 @@ fn matchAbsoluteURI(self: Self, scratch: Allocator) !?TokenizeResult {
 
 /// Recognizes an email address.
 ///
+/// <
 /// [a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+
 /// @
 /// [a-zA-Z0-9]([a-zA-Z0-9-]{0, 61}[a-zA-Z0-9])?
 /// (\.[a-zA-Z0-9]([a-zA-Z0-9-]{0, 61}[a-zA-Z0-9])*
+/// >
 fn matchEmailAddress(self: Self, scratch: Allocator) !?TokenizeResult {
     var lookahead_i = self.i;
 
     var host_component_len: usize = 0; // max of 63 for each '.'-delimited part
-    const State = enum { name_start, name, host_start, host, host_end };
-    fsm: switch (State.name) {
+    const State = enum {
+        start,
+        name_start,
+        name,
+        host_start,
+        host,
+        host_end,
+        end,
+    };
+    fsm: switch (State.start) {
+        .start => {
+            if (self.in[lookahead_i] != '<') {
+                return null;
+            }
+
+            lookahead_i += 1;
+            continue :fsm .name_start;
+        },
         .name_start => {
+            if (lookahead_i >= self.in.len) {
+                return null;
+            }
+
             switch (self.in[lookahead_i]) {
                 'a'...'z', 'A'...'Z', '0'...'9', '.', '!', '#', '$', '%', '&',
                 '\'', '*', '+', '/', '=', '?', '^', '_', '`', '{', '|', '}',
@@ -840,7 +883,7 @@ fn matchEmailAddress(self: Self, scratch: Allocator) !?TokenizeResult {
         },
         .host_end => {
             if (lookahead_i >= self.in.len) {
-                break :fsm;
+                return null;
             }
 
             switch (self.in[lookahead_i]) {
@@ -850,8 +893,19 @@ fn matchEmailAddress(self: Self, scratch: Allocator) !?TokenizeResult {
                     continue :fsm .host_start;
                 },
                 'a'...'z', 'A'...'Z', '0'...'9', '-' => continue :fsm .host,
-                else => break :fsm,
+                else => continue :fsm .end,
             }
+        },
+        .end => {
+            if (lookahead_i >= self.in.len) {
+                return null;
+            }
+
+            if (self.in[lookahead_i] != '>') {
+                return null;
+            }
+
+            lookahead_i += 1;
         },
     }
 
@@ -859,7 +913,8 @@ fn matchEmailAddress(self: Self, scratch: Allocator) !?TokenizeResult {
         scratch,
         .email,
         .default,
-        self.in[self.i..lookahead_i],
+        // Don't include angle brackets in lexeme
+        self.in[self.i + 1..lookahead_i - 1],
     );
     return .{
         .tokens = tokens,
@@ -1141,6 +1196,11 @@ fn evaluateDelimUnderscoreContext(
     };
 }
 
+/// Creates a slice of inline tokens of the specified type.
+///
+/// Typically just returns a slice of length one. But for the complicated
+/// delimiter characters, handles adding context and creating multiple tokens
+/// to handle a single run of delimiter characters.
 fn evaluateTokens(
     scratch: Allocator,
     token_type: InlineTokenType,
@@ -1361,12 +1421,15 @@ test "quotes" {
 }
 
 test "absolute URI" {
-    const line = "http://foo.com/bar?f=1&b=bim%20bam next";
+    const line = "<http://foo.com/bar?f=1&b=bim%20bam> next";
     try expectEqualTokens(&.{.absolute_uri, .whitespace, .text}, line);
+
+    const line2 = "<http://foo.com/(!)bar?bim[]=zam&bim[]=fam> next";
+    try expectEqualTokens(&.{.absolute_uri, .whitespace, .text}, line2);
 }
 
 test "email address" {
-    const line = "person@gmail.com next";
+    const line = "<person@gmail.com> next";
     try expectEqualTokens(&.{.email, .whitespace, .text}, line);
 }
 

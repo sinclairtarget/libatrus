@@ -1887,24 +1887,10 @@ fn parseURIAutolink(
     alloc: Allocator,
     scratch: Allocator,
 ) Error!?*ast.Node {
-    const open_token = try self.peek(scratch) orelse return null;
-    if (open_token.token_type != .l_angle_bracket) {
-        return null;
-    }
-
-    const uri_token = try self.peekAhead(scratch, 2) orelse return null;
-    if (uri_token.token_type != .absolute_uri) {
-        return null;
-    }
-
-    const close_token = try self.peekAhead(scratch, 3) orelse return null;
-    if (close_token.token_type != .r_angle_bracket) {
-        return null;
-    }
-
-    _ = try self.consume(scratch, &.{.l_angle_bracket}) orelse return null;
-    _ = try self.consume(scratch, &.{.absolute_uri}) orelse return null;
-    _ = try self.consume(scratch, &.{.r_angle_bracket}) orelse return null;
+    const uri_token = try self.consume(
+        scratch,
+        &.{.absolute_uri},
+    ) orelse return null;
 
     const url = try cmark.uri.normalize(scratch, scratch, uri_token.lexeme);
     const text = try createTextNode(
@@ -1919,6 +1905,7 @@ fn parseURIAutolink(
     errdefer alloc.free(ownedUrl);
     const ownedTitle = try alloc.dupeZ(u8, "");
     errdefer alloc.free(ownedTitle);
+
     const inline_link = try alloc.create(ast.Node);
     inline_link.* = .{
         .tag = .link,
@@ -1939,24 +1926,10 @@ fn parseEmailAutolink(
     alloc: Allocator,
     scratch: Allocator,
 ) Error!?*ast.Node {
-    const open_token = try self.peek(scratch) orelse return null;
-    if (open_token.token_type != .l_angle_bracket) {
-        return null;
-    }
-
-    const email_token = try self.peekAhead(scratch, 2) orelse return null;
-    if (email_token.token_type != .email) {
-        return null;
-    }
-
-    const close_token = try self.peekAhead(scratch, 3) orelse return null;
-    if (close_token.token_type != .r_angle_bracket) {
-        return null;
-    }
-
-    _ = try self.consume(scratch, &.{.l_angle_bracket}) orelse return null;
-    _ = try self.consume(scratch, &.{.email}) orelse return null;
-    _ = try self.consume(scratch, &.{.r_angle_bracket}) orelse return null;
+    const email_token = try self.consume(
+        scratch,
+        &.{.email},
+    ) orelse return null;
 
     const url = try std.fmt.allocPrintSentinel(
         alloc,
