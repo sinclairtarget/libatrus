@@ -101,6 +101,7 @@ pub fn main() !void {
                 .html => try atrus.renderHTML(ast, stdout, .{}),
             }
             try stdout.print("\n", .{});
+            try stdout.flush();
             logger.info("Done.", .{});
         },
         .tokenize => {
