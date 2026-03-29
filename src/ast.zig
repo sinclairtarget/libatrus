@@ -3,8 +3,8 @@
 //! See https://mystmd.org/spec
 //!
 //! The data structures comprising the AST are defined as "extern" because they
-//! are exposed via the libatrus C API. They must be kept in sync with the C
-//! data structures in atrus.h.
+//! are exposed via the libatrus C API. Their definitions must be kept in sync
+//! with the C data structures defined in atrus.h.
 //!
 //! Because "extern" data structures need to have a defined memory layout, some
 //! useful Zig features are prohibited here, in particular slices and
@@ -26,9 +26,10 @@ pub const NodeType = enum(c_uint) {
     strong = 9,
     inline_code = 10,
     link = 11,
-    definition = 12,     // link definition
+    definition = 12,    // link definition
     image = 13,
     blockquote = 14,
+    html = 15,          // either an HTML block or a single inline HTML tag
 };
 
 pub const Node = extern struct {
@@ -48,6 +49,7 @@ pub const Node = extern struct {
         definition: LinkDefinition,
         image: Image,
         blockquote: Container,
+        html: Text,
     },
     tag: NodeType,
 

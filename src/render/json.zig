@@ -64,13 +64,8 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
             try stringify.write(n.depth);
             try render_children(stringify, n);
         },
-        .text => {
-            const n = node.payload.text;
-            try stringify.objectField("value");
-            try stringify.write(n.value);
-        },
-        .inline_code => {
-            const n = node.payload.inline_code;
+        inline .text, .inline_code, .html => |node_type| {
+            const n = @field(node.payload, @tagName(node_type));
             try stringify.objectField("value");
             try stringify.write(n.value);
         },

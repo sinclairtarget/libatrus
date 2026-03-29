@@ -122,7 +122,7 @@ fn fillLinkDefs(
             try map.add(alloc, &root.payload.definition);
         },
         .paragraph, .heading, .strong, .emphasis, .text, .code, .@"break",
-        .thematic_break, .inline_code, .link, .image => {},
+        .thematic_break, .inline_code, .link, .image, .html => {},
     }
 }
 

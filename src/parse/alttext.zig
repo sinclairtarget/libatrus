@@ -19,7 +19,7 @@ pub fn write(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
                 try write(out, child);
             }
         },
-        inline .text, .code, .inline_code => |node_type| {
+        inline .text, .code, .inline_code, .html => |node_type| {
             const n = @field(node.payload, @tagName(node_type));
             _ = try out.write(std.mem.span(n.value));
         },

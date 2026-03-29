@@ -25,6 +25,7 @@ typedef enum : unsigned int {
     ATRUS_NODE_TYPE_DEFINITION = 12,
     ATRUS_NODE_TYPE_IMAGE = 13,
     ATRUS_NODE_TYPE_BLOCKQUOTE = 14,
+    ATRUS_NODE_TYPE_HTML = 15,
 } atrus_node_type_t;
 
 struct atrus_ast_node_root {

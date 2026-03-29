@@ -99,8 +99,9 @@ pub fn transform(
             };
             return node;
         },
+        // These nodes are leaf nodes or contain no inline content
         .text, .code, .@"break", .thematic_break, .emphasis, .strong,
-        .inline_code, .link, .image, .definition => {
+        .inline_code, .link, .image, .definition, .html => {
             return original_node;
         },
     }

@@ -152,6 +152,11 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
 
             try out.print("/>", .{});
         },
+        .html => {
+            // Rendered verbatim, unescaped!
+            const n = node.payload.html;
+            try out.print("{s}", .{n.value});
+        },
         // Doesn't get rendered
         .definition => return false,
     }
