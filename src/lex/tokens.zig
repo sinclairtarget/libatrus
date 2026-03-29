@@ -42,6 +42,7 @@ pub const InlineTokenType = enum {
     r_paren,
     exclamation_mark,
     equals,
+    slash,
     // delimiters
     l_delim_star,
     r_delim_star,

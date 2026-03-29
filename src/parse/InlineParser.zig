@@ -2081,6 +2081,7 @@ fn resolveInlineCode(scratch: Allocator, token: InlineToken) ![]const u8 {
         .double_quote => "\"",
         .exclamation_mark => "!",
         .equals => "=",
+        .slash => "/",
     };
     return value;
 }
@@ -2108,6 +2109,7 @@ fn resolveInlineText(scratch: Allocator, token: InlineToken) ![]const u8 {
         .double_quote => "\"",
         .exclamation_mark => "!",
         .equals => "=",
+        .slash => "/",
     };
     return value;
 }

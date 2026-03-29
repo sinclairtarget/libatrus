@@ -197,6 +197,7 @@ fn matchSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
             '"'  => .{ .double_quote, .punct },
             '!'  => .{ .exclamation_mark, .punct },
             '='  => .{ .equals, .punct },
+            '/'  => .{ .slash, .punct },
             else => return null,
     };
 
@@ -1050,7 +1051,7 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
             // break on.
             switch (self.in[lookahead_i]) {
                 '&', '`', '[', ']', '<', '>', '(', ')', '\'', '"', '!',
-                '=' => {
+                '=', '/' => {
                     lookahead_i += 1;
                     continue :fsm .punct;
                 },
@@ -1074,11 +1075,10 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
 
             switch (self.in[lookahead_i]) {
                 '\n', ' ', '\t', '&', '`', '[', ']', '<', '>', '(', ')', '*',
-                '_', '\'', '"', '!', '\\', '=' => {
+                '_', '\'', '"', '!', '\\', '=', '/' => {
                     break :fsm .normal;
                 },
-                '#'...'%', '+'...'/', ':', ';', '?', '@', '^',
-                '{'...'~' => {
+                '#'...'%', '+'...'.', ':', ';', '?', '@', '^', '{'...'~' => {
                     continue :fsm .punct;
                 },
                 else => {
@@ -1119,11 +1119,10 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
 
             switch (self.in[lookahead_i]) {
                 '\n', ' ', '\t' ,'&', '`', '[', ']', '<', '>', '(', ')', '*',
-                '_', '\'', '"', '!', '=' => {
+                '_', '\'', '"', '!', '=', '/' => {
                     break :fsm .punct;
                 },
-                '#'...'%', '+'...'/', ':', ';', '?', '@', '^',
-                '{'...'~' => {
+                '#'...'%', '+'...'.', ':', ';', '?', '@', '^', '{'...'~' => {
                     lookahead_i += 1;
                     continue :fsm .punct;
                 },
@@ -1451,9 +1450,9 @@ test "hard line break with backslash" {
     try expectEqualTokens(&.{.text, .hard_break, .text}, line);
 }
 
-// We want to make sure that the "=" gets tokenized as a separate token.
+// We want to make sure that the "=" and "/" get tokenized as a separate token.
 test "HTML open tag" {
-    const line = "<span class=\"foo\">";
+    const line = "<foo class=\"bar\" />";
     try expectEqualTokens(&.{
         .l_angle_bracket,
         .text,
@@ -1463,6 +1462,8 @@ test "HTML open tag" {
         .double_quote,
         .text,
         .double_quote,
+        .whitespace,
+        .slash,
         .r_angle_bracket,
     }, line);
 }
