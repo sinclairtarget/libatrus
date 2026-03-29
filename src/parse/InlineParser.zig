@@ -1,11 +1,20 @@
 //! Parser for the second parsing stage that handles inline elements.
 //!
 //! This is a recursive-descent parser with backtracking.
+//!
+//! A naming convention used here is that parseX() functions return AST nodes
+//! allocated using the non-scratch allocator, while scanX() functions return
+//! strings allocated using the scratch allocator. The scanX() functions parse
+//! subcomponents of recognized constructs that aren't themselves represented
+//! in the final AST as nodes. Both kinds of functions are responsible for
+//! backtracking to ensure that the parser is only advanced after successfully
+//! parsing something.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const Io = std.Io;
+const fmt = std.fmt;
 
 const tokens = @import("../lex/tokens.zig");
 const InlineToken = tokens.InlineToken;
@@ -72,6 +81,11 @@ pub fn parse(
 
         if (try self.parseEmailAutolink(alloc, scratch)) |link| {
             try nodes.append(link);
+            continue;
+        }
+
+        if (try self.parseHTMLTag(alloc, scratch)) |html| {
+            try nodes.append(html);
             continue;
         }
 
@@ -1931,7 +1945,7 @@ fn parseEmailAutolink(
         &.{.email},
     ) orelse return null;
 
-    const url = try std.fmt.allocPrintSentinel(
+    const url = try fmt.allocPrintSentinel(
         alloc,
         "mailto:{s}",
         .{email_token.lexeme},
@@ -1987,6 +2001,268 @@ fn parseHardLineBreak(
         },
     };
     return break_node;
+}
+
+/// Parses inline raw HTML.
+///
+/// https://spec.commonmark.org/0.30/#raw-html
+///
+/// An HTML tag could be an open tag, a closing tag, an HTML comment, a
+/// processing instruction, a declaration, or a CDATA section.
+fn parseHTMLTag(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) Error!?*ast.Node {
+    if (try self.parseHTMLOpenTag(alloc, scratch)) |node| {
+        return node;
+    }
+
+    return null;
+}
+
+/// Parses an HTML open tag.
+///
+/// Must have a tag name.
+///
+/// Can have: zero or more attributes; optional spaces, tabs and up to one
+/// line ending; an optional "/".
+fn parseHTMLOpenTag(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) Error!?*ast.Node {
+    var did_parse = false;
+    var running_text = Io.Writer.Allocating.init(alloc);
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+        running_text.deinit();
+    };
+
+    _ = try self.consume(scratch, &.{.l_angle_bracket}) orelse return null;
+    _ = try running_text.writer.write("<");
+
+    const tag = try self.scanHTMLTagName(scratch) orelse return null;
+    _ = try running_text.writer.write(tag);
+
+    for (0..util.safety.loop_bound) |_| {
+        if (try self.consume(scratch, &.{.whitespace})) |ws| {
+            _ = try running_text.writer.write(ws.lexeme);
+        } else {
+            // whitespace is required before attributes
+            break;
+        }
+
+        if (try self.scanHTMLAttribute(scratch)) |attr| {
+            _ = try running_text.writer.write(attr);
+        } else {
+            // no more attributes, we are done
+            break;
+        }
+    } else @panic(util.safety.loop_bound_panic_msg);
+
+    // Allow "/" before closing bracket
+    if (try self.consume(scratch, &.{.slash})) |_| {
+        _ = try running_text.writer.write("/");
+    }
+
+    _ = try self.consume(scratch, &.{.r_angle_bracket}) orelse return null;
+    _ = try running_text.writer.write(">");
+
+    const ownedTag = try running_text.toOwnedSliceSentinel(0);
+    errdefer alloc.free(ownedTag);
+
+    const node = try alloc.create(ast.Node);
+    node.* = .{
+        .tag = .html,
+        .payload = .{
+            .html = .{
+                .value = ownedTag,
+            },
+        },
+    };
+    did_parse = true;
+    return node;
+}
+
+/// A tag name consists of an ASCII letter followed by zero or more ASCII
+/// letters, digits, or hyphens.
+fn scanHTMLTagName(self: *Self, scratch: Allocator) !?[]const u8 {
+    const tag_text = try self.peek(scratch) orelse return null;
+    if (tag_text.token_type != .text) {
+        return null;
+    }
+
+    if (tag_text.lexeme.len == 0) {
+        return null;
+    }
+
+    if (!std.ascii.isAlphabetic(tag_text.lexeme[0])) {
+        return null;
+    }
+
+    for (1..tag_text.lexeme.len) |i| {
+        if (
+            !std.ascii.isAlphanumeric(tag_text.lexeme[i])
+            and tag_text.lexeme[i] != '-'
+        ) {
+            return null;
+        }
+    }
+
+    _ = try self.consume(scratch, &.{.text});
+    return tag_text.lexeme;
+}
+
+/// https://spec.commonmark.org/0.30/#attribute
+fn scanHTMLAttribute(self: *Self, scratch: Allocator) !?[]const u8 {
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+    };
+
+    // attribute name
+    // ASCII letter, _, or :, followed by zero or more ASCII letters, digits,
+    // _, ., :, or -.
+    const attr_name = blk: {
+        const token = try self.consume(scratch, &.{.text}) orelse return null;
+        const value = try resolveInlineCode(scratch, token);
+
+        if (value.len == 0) {
+            break :blk null;
+        }
+
+        if (
+            !std.ascii.isAlphabetic(value[0])
+            and !util.strings.containsScalar("_:", value[0])
+        ) {
+            break :blk null;
+        }
+
+        for (1..value.len) |i| {
+            if (
+                !std.ascii.isAlphanumeric(value[i])
+                and !util.strings.containsScalar("_:.-", value[i])
+            ) {
+                break :blk null;
+            }
+        }
+
+        break :blk value;
+    } orelse return null;
+
+    if (try self.peekAhead(scratch, 2)) |token| {
+        if (token.token_type == .equals) {
+            // Consume optional whitespace but only before "="
+            _ = try self.consume(scratch, &.{.whitespace});
+        }
+    }
+
+    if (try self.consume(scratch, &.{.equals}) == null) {
+        // attribute without value
+        did_parse = true;
+        return attr_name;
+    }
+
+    _ = try self.consume(scratch, &.{.whitespace});
+
+    const attr_val = blk: {
+        if (try self.scanHTMLAttrValQuoted(scratch)) |val| {
+            break :blk val;
+        }
+
+        if (try self.scanHTMLAttrValUnquoted(scratch)) |val| {
+            break :blk val;
+        }
+
+        break :blk null;
+    } orelse return null;
+
+    did_parse = true;
+    return try fmt.allocPrint(scratch, "{s}={s}", .{attr_name, attr_val});
+}
+
+fn scanHTMLAttrValQuoted(self: *Self, scratch: Allocator) !?[]const u8 {
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+    };
+
+    var running_text = Io.Writer.Allocating.init(scratch);
+
+    const open_quote = try self.consume(
+        scratch,
+        &.{.single_quote, .double_quote},
+    ) orelse return null;
+    _ = try running_text.writer.write(open_quote.lexeme);
+
+    const allowed_quote: InlineTokenType =
+        if (open_quote.token_type == .double_quote)
+            .single_quote
+        else
+            .double_quote;
+
+    while (try self.consume(scratch, &.{
+        .text,
+        allowed_quote,
+        .whitespace,
+        .l_square_bracket,
+        .r_square_bracket,
+        .l_angle_bracket,
+        .r_angle_bracket,
+        .l_paren,
+        .r_paren,
+        .exclamation_mark,
+        .equals,
+    })) |token| {
+        const value = try resolveInlineCode(scratch, token);
+        _ = try running_text.writer.write(value);
+    }
+
+    const close_quote = try self.consume(
+        scratch,
+        &.{.single_quote, .double_quote},
+    ) orelse return null;
+    _ = try running_text.writer.write(close_quote.lexeme);
+
+    if (close_quote.token_type != open_quote.token_type) {
+        return null;
+    }
+
+    did_parse = true;
+    return try running_text.toOwnedSlice();
+}
+
+fn scanHTMLAttrValUnquoted(self: *Self, scratch: Allocator) !?[]const u8 {
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+    };
+
+    var running_text = Io.Writer.Allocating.init(scratch);
+
+    while (try self.consume(scratch, &.{
+        .text,
+        .l_square_bracket,
+        .r_square_bracket,
+        .l_paren,
+        .r_paren,
+        .exclamation_mark,
+    })) |token| {
+        const value = try resolveInlineCode(scratch, token);
+        _ = try running_text.writer.write(value);
+    }
+
+    if (running_text.written().len == 0) {
+        return null; // val cannot be empty
+    }
+
+    did_parse = true;
+    return try running_text.toOwnedSlice();
 }
 
 fn scanText(self: *Self, scratch: Allocator) ![]const u8 {
@@ -3374,5 +3650,96 @@ test "soft line break" {
     try testing.expectEqualStrings(
         "foo bar\nbim bam",
         std.mem.span(nodes[0].payload.text.value),
+    );
+}
+
+test "html open tag" {
+    const value = "<span>";
+
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
+    try testing.expectEqualStrings(
+        "<span>",
+        std.mem.span(nodes[0].payload.html.value),
+    );
+}
+
+test "html open tag with empty element" {
+    const value = "<foo/>";
+
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
+    try testing.expectEqualStrings(
+        "<foo/>",
+        std.mem.span(nodes[0].payload.html.value),
+    );
+}
+
+test "html open tag with number in tag name" {
+    const value = "<h2>";
+
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
+    try testing.expectEqualStrings(
+        "<h2>",
+        std.mem.span(nodes[0].payload.html.value),
+    );
+}
+
+test "html open tag unquoted attributes" {
+    const value = "<span bim class=foobar>";
+
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
+    try testing.expectEqualStrings(
+        "<span bim class=foobar>",
+        std.mem.span(nodes[0].payload.html.value),
+    );
+}
+
+test "html open tag quoted attributes" {
+    const value = "<span id=\"bim baz\" class='foobar'>";
+
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
+    try testing.expectEqualStrings(
+        "<span id=\"bim baz\" class='foobar'>",
+        std.mem.span(nodes[0].payload.html.value),
+    );
+}
+
+test "html open tag multiple" {
+    const value = "<foo /><bar />";
+
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(2, nodes.len);
+
+    try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
+    try testing.expectEqualStrings(
+        "<foo />",
+        std.mem.span(nodes[0].payload.html.value),
+    );
+
+    try testing.expectEqual(ast.NodeType.html, nodes[1].tag);
+    try testing.expectEqualStrings(
+        "<bar />",
+        std.mem.span(nodes[1].payload.html.value),
     );
 }

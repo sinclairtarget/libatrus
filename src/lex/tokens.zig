@@ -30,7 +30,6 @@ pub const BlockTokenType = enum {
 /// Tokens recognized by the inline parser.
 pub const InlineTokenType = enum {
     // single-character tokens
-    whitespace,                        // space or tab (NOT unicode whitespace)
     newline,
     single_quote,
     double_quote,
@@ -43,15 +42,18 @@ pub const InlineTokenType = enum {
     exclamation_mark,
     equals,
     slash,
-    // delimiters
+    // single-character delimiters
+    // These get matched as a run of multiple characters but then emitted as
+    // single-character tokens.
     l_delim_star,
     r_delim_star,
     lr_delim_star,
     l_delim_underscore,
     r_delim_underscore,
     lr_delim_underscore,
-    backtick,                          // one or more consecutive backticks
-    // other multi-character tokens
+    // multi-character tokens
+    backtick,                    // one or more consecutive backticks
+    whitespace,                  // run of spaces/tabs (NOT unicode whitespace)
     text,
     decimal_character_reference,
     hexadecimal_character_reference,

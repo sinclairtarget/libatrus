@@ -1,6 +1,11 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
+/// Returns true if needle appears in haystack, false otherwise.
+pub fn containsScalar(haystack: []const u8, needle: u8) bool {
+    return std.mem.containsAtLeastScalar(u8, haystack, 1, needle);
+}
+
 /// If s contains only the bytes in chars, returns true. False otherwise.
 pub fn containsOnly(s: []const u8, chars: []const u8) bool {
     for (s) |byte| {
