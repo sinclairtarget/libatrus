@@ -5,7 +5,7 @@ const Io = std.Io;
 /// Tokens recognized by the block parsers.
 pub const BlockTokenType = enum {
     text,
-    pound,                   // one or more consecutive '#' symbols
+    pound,                  // one or more consecutive '#' symbols
     newline,
     whitespace,
     rule_star,
@@ -22,15 +22,15 @@ pub const BlockTokenType = enum {
     r_paren,
     single_quote,
     double_quote,
-    backtick_fence,          // three or more consecutive '`' symbols
-    tilde_fence,             // three or more consecutive '~' symbols
-    close,                   // special token inserted by container block parser
+    backtick_fence,         // three or more consecutive '`' symbols
+    tilde_fence,            // three or more consecutive '~' symbols
+    close,                  // special token inserted by container block parser
 };
 
 /// Tokens recognized by the inline parser.
 pub const InlineTokenType = enum {
     // single-character tokens
-    whitespace,                         // space or tab (NOT unicode whitespace)
+    whitespace,                        // space or tab (NOT unicode whitespace)
     newline,
     single_quote,
     double_quote,
@@ -41,6 +41,7 @@ pub const InlineTokenType = enum {
     l_paren,
     r_paren,
     exclamation_mark,
+    equals,
     // delimiters
     l_delim_star,
     r_delim_star,
@@ -48,7 +49,7 @@ pub const InlineTokenType = enum {
     l_delim_underscore,
     r_delim_underscore,
     lr_delim_underscore,
-    backtick,                           // one or more consecutive backticks
+    backtick,                          // one or more consecutive backticks
     // other multi-character tokens
     text,
     decimal_character_reference,

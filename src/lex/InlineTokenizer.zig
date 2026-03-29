@@ -196,6 +196,7 @@ fn matchSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
             '\'' => .{ .single_quote, .punct },
             '"'  => .{ .double_quote, .punct },
             '!'  => .{ .exclamation_mark, .punct },
+            '='  => .{ .equals, .punct },
             else => return null,
     };
 
@@ -1048,7 +1049,8 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
             // Allow the first character to be something that later we will
             // break on.
             switch (self.in[lookahead_i]) {
-                '&', '`', '[', ']', '<', '>', '(', ')', '\'', '"', '!' => {
+                '&', '`', '[', ']', '<', '>', '(', ')', '\'', '"', '!',
+                '=' => {
                     lookahead_i += 1;
                     continue :fsm .punct;
                 },
@@ -1072,10 +1074,10 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
 
             switch (self.in[lookahead_i]) {
                 '\n', ' ', '\t', '&', '`', '[', ']', '<', '>', '(', ')', '*',
-                '_', '\'', '"', '!', '\\' => {
+                '_', '\'', '"', '!', '\\', '=' => {
                     break :fsm .normal;
                 },
-                '#'...'%', '+'...'/', ':', ';', '=', '?', '@', '^',
+                '#'...'%', '+'...'/', ':', ';', '?', '@', '^',
                 '{'...'~' => {
                     continue :fsm .punct;
                 },
@@ -1117,10 +1119,10 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
 
             switch (self.in[lookahead_i]) {
                 '\n', ' ', '\t' ,'&', '`', '[', ']', '<', '>', '(', ')', '*',
-                '_', '\'', '"', '!' => {
+                '_', '\'', '"', '!', '=' => {
                     break :fsm .punct;
                 },
-                '#'...'%', '+'...'/', ':', ';', '=', '?', '@', '^',
+                '#'...'%', '+'...'/', ':', ';', '?', '@', '^',
                 '{'...'~' => {
                     lookahead_i += 1;
                     continue :fsm .punct;
@@ -1447,4 +1449,20 @@ test "hard line break" {
 test "hard line break with backslash" {
     const line = "hello\\\n friend";
     try expectEqualTokens(&.{.text, .hard_break, .text}, line);
+}
+
+// We want to make sure that the "=" gets tokenized as a separate token.
+test "HTML open tag" {
+    const line = "<span class=\"foo\">";
+    try expectEqualTokens(&.{
+        .l_angle_bracket,
+        .text,
+        .whitespace,
+        .text,
+        .equals,
+        .double_quote,
+        .text,
+        .double_quote,
+        .r_angle_bracket,
+    }, line);
 }
