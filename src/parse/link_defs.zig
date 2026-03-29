@@ -91,15 +91,35 @@ pub const LinkDefMap = struct {
     }
 };
 
+/// Normalizes the given link label, returning a new string.
+///
+/// To normalize a label, strip off the opening and closing brackets,
+/// perform the Unicode case fold, strip leading and trailing spaces, tabs,
+/// and line endings, and collapse consecutive internal spaces, tabs, and
+/// line endings to a single space.
+/// https://spec.commonmark.org/0.30/#matches
+///
+/// Caller owns the returned string.
+fn normalize(alloc: Allocator, link_label: []const u8) Error![]const u8 {
+    // TODO: Full normalization logic
+    return try std.ascii.allocLowerString(alloc, link_label);
+}
+
+// ----------------------------------------------------------------------------
+// Unit Tests
+// ----------------------------------------------------------------------------
+const testing = std.testing;
+const util = @import("../util/util.zig");
+
 /// Returns a hashmap mapping link labels to link definition nodes in the given
 /// AST.
 ///
 /// The returned hashmap is valid as long as the link definition nodes are
-/// valid. If the AST is freed or the link definition nodes are removed from the
-/// tree the hashmap will contain dangling pointers.
+/// valid. If the AST is freed or the link definition nodes are removed from
+/// the tree the hashmap will contain dangling pointers.
 ///
 /// The caller owns the memory used for the returned hashmap itself.
-pub fn buildMap(alloc: Allocator, root: *ast.Node) Error!LinkDefMap {
+fn buildMap(alloc: Allocator, root: *ast.Node) Error!LinkDefMap {
     var map: LinkDefMap = .empty;
     try fillLinkDefs(alloc, root, &map);
     return map;
@@ -125,27 +145,6 @@ fn fillLinkDefs(
         .thematic_break, .inline_code, .link, .image, .html => {},
     }
 }
-
-/// Normalizes the given link label, returning a new string.
-///
-/// To normalize a label, strip off the opening and closing brackets,
-/// perform the Unicode case fold, strip leading and trailing spaces, tabs,
-/// and line endings, and collapse consecutive internal spaces, tabs, and
-/// line endings to a single space.
-/// https://spec.commonmark.org/0.30/#matches
-///
-/// Caller owns the returned string.
-fn normalize(alloc: Allocator, link_label: []const u8) Error![]const u8 {
-    // TODO: Full normalization logic
-    return try std.ascii.allocLowerString(alloc, link_label);
-}
-
-// ----------------------------------------------------------------------------
-// Unit Tests
-// ----------------------------------------------------------------------------
-const testing = std.testing;
-const util = @import("../util/util.zig");
-
 test "can map single link def" {
     var def: ast.Node = .{
         .tag = .definition,
