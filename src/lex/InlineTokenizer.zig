@@ -729,7 +729,8 @@ fn matchAbsoluteURI(self: Self, scratch: Allocator) !?TokenizeResult {
                     continue :fsm .scheme;
                 },
                 ':' => {
-                    const scheme_len = lookahead_i - self.i;
+                    const scheme_start = self.i + 1; // handles leading '<'
+                    const scheme_len = lookahead_i - scheme_start;
                     if (scheme_len < 2 or scheme_len > 32) {
                         return null;
                     }
