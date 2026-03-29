@@ -2018,6 +2018,10 @@ fn parseHTMLTag(
         return node;
     }
 
+    if (try self.parseHTMLCloseTag(alloc, scratch)) |node| {
+        return node;
+    }
+
     return null;
 }
 
@@ -2070,15 +2074,66 @@ fn parseHTMLOpenTag(
     _ = try self.consume(scratch, &.{.r_angle_bracket}) orelse return null;
     _ = try running_text.writer.write(">");
 
-    const ownedTag = try running_text.toOwnedSliceSentinel(0);
-    errdefer alloc.free(ownedTag);
+    const content = try running_text.toOwnedSliceSentinel(0);
+    errdefer alloc.free(content);
 
     const node = try alloc.create(ast.Node);
     node.* = .{
         .tag = .html,
         .payload = .{
             .html = .{
-                .value = ownedTag,
+                .value = content,
+            },
+        },
+    };
+    did_parse = true;
+    return node;
+}
+
+/// Parses an HTML closing tag.
+///
+/// Closing tags start with "</", must have a tag name, and cannot have
+/// attributes.
+fn parseHTMLCloseTag(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) Error!?*ast.Node {
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+    };
+
+    _ = try self.consume(scratch, &.{.l_angle_bracket}) orelse return null;
+    _ = try self.consume(scratch, &.{.slash}) orelse return null;
+
+    const tag = try self.scanHTMLTagName(scratch) orelse return null;
+
+    const ws = blk: {
+        const maybe_token = try self.consume(scratch, &.{.whitespace});
+        if (maybe_token) |token| {
+            break :blk token.lexeme;
+        }
+        break :blk "";
+    };
+
+    _ = try self.consume(scratch, &.{.r_angle_bracket}) orelse return null;
+
+    const content = try fmt.allocPrintSentinel(
+        alloc,
+        "</{s}{s}>",
+        .{ tag, ws },
+        0,
+    );
+    errdefer alloc.free(content);
+
+    const node = try alloc.create(ast.Node);
+    node.* = .{
+        .tag = .html,
+        .payload = .{
+            .html = .{
+                .value = content,
             },
         },
     };
@@ -3740,6 +3795,27 @@ test "html open tag multiple" {
     try testing.expectEqual(ast.NodeType.html, nodes[1].tag);
     try testing.expectEqualStrings(
         "<bar />",
+        std.mem.span(nodes[1].payload.html.value),
+    );
+}
+
+test "html close tag multiple" {
+    const value = "</foo></bar>";
+
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(2, nodes.len);
+
+    try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
+    try testing.expectEqualStrings(
+        "</foo>",
+        std.mem.span(nodes[0].payload.html.value),
+    );
+
+    try testing.expectEqual(ast.NodeType.html, nodes[1].tag);
+    try testing.expectEqualStrings(
+        "</bar>",
         std.mem.span(nodes[1].payload.html.value),
     );
 }
