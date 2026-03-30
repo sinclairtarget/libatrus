@@ -2044,6 +2044,8 @@ fn parseHTMLOpenTag(
         running_text.deinit();
     };
 
+    var newline_count: u8 = 0;
+
     _ = try self.consume(scratch, &.{.l_angle_bracket}) orelse return null;
     _ = try running_text.writer.write("<");
 
@@ -2053,6 +2055,9 @@ fn parseHTMLOpenTag(
     for (0..util.safety.loop_bound) |_| {
         if (try self.consume(scratch, &.{.whitespace})) |ws| {
             _ = try running_text.writer.write(ws.lexeme);
+        } else if (try self.consume(scratch, &.{.newline})) |_| {
+            _ = try running_text.writer.write("\n");
+            newline_count += 1;
         } else {
             // whitespace is required before attributes
             break;
@@ -2073,6 +2078,11 @@ fn parseHTMLOpenTag(
 
     _ = try self.consume(scratch, &.{.r_angle_bracket}) orelse return null;
     _ = try running_text.writer.write(">");
+
+    if (newline_count > 1) {
+        // At most one line ending allowed
+        return null;
+    }
 
     const content = try running_text.toOwnedSliceSentinel(0);
     errdefer alloc.free(content);
@@ -2173,55 +2183,53 @@ fn scanHTMLTagName(self: *Self, scratch: Allocator) !?[]const u8 {
 /// https://spec.commonmark.org/0.30/#attribute
 fn scanHTMLAttribute(self: *Self, scratch: Allocator) !?[]const u8 {
     var did_parse = false;
+    var running_text = Io.Writer.Allocating.init(scratch);
     const checkpoint_index = self.checkpoint();
     defer if (!did_parse) {
         self.backtrack(checkpoint_index);
     };
 
-    // attribute name
-    // ASCII letter, _, or :, followed by zero or more ASCII letters, digits,
-    // _, ., :, or -.
-    const attr_name = blk: {
-        const token = try self.consume(scratch, &.{.text}) orelse return null;
-        const value = try resolveInlineCode(scratch, token);
+    var newline_count: u8 = 0;
 
-        if (value.len == 0) {
+    const attr_name = try self.scanHTMLAttrName(scratch) orelse return null;
+    _ = try running_text.writer.write(attr_name);
+
+    const equals = blk: {
+        // We want to allow whitespace and a newline before the "=", but don't
+        // want to consume it unless it is indeed followed by a "=".
+        const lookahead_checkpoint = self.checkpoint();
+
+        if (try self.consume(scratch, &.{.whitespace})) |ws| {
+            _ = try running_text.writer.write(ws.lexeme);
+        }
+        if (try self.consume(scratch, &.{.newline})) |_| {
+            _ = try running_text.writer.write("\n");
+            newline_count += 1;
+        }
+
+        if (try self.consume(scratch, &.{.equals})) |token| {
+            break :blk token;
+        } else {
+            self.backtrack(lookahead_checkpoint);
             break :blk null;
         }
+    };
 
-        if (
-            !std.ascii.isAlphabetic(value[0])
-            and !util.strings.containsScalar("_:", value[0])
-        ) {
-            break :blk null;
-        }
-
-        for (1..value.len) |i| {
-            if (
-                !std.ascii.isAlphanumeric(value[i])
-                and !util.strings.containsScalar("_:.-", value[i])
-            ) {
-                break :blk null;
-            }
-        }
-
-        break :blk value;
-    } orelse return null;
-
-    if (try self.peekAhead(scratch, 2)) |token| {
-        if (token.token_type == .equals) {
-            // Consume optional whitespace but only before "="
-            _ = try self.consume(scratch, &.{.whitespace});
-        }
-    }
-
-    if (try self.consume(scratch, &.{.equals}) == null) {
+    if (equals == null) {
         // attribute without value
         did_parse = true;
         return attr_name;
     }
 
-    _ = try self.consume(scratch, &.{.whitespace});
+    _ = try running_text.writer.write("=");
+
+    if (try self.consume(scratch, &.{.whitespace})) |ws| {
+        _ = try running_text.writer.write(ws.lexeme);
+    }
+    if (try self.consume(scratch, &.{.newline})) |_| {
+        _ = try running_text.writer.write("\n");
+        newline_count += 1;
+    }
 
     const attr_val = blk: {
         if (try self.scanHTMLAttrValQuoted(scratch)) |val| {
@@ -2235,8 +2243,63 @@ fn scanHTMLAttribute(self: *Self, scratch: Allocator) !?[]const u8 {
         break :blk null;
     } orelse return null;
 
+    _ = try running_text.writer.write(attr_val);
+
+    if (newline_count > 1) {
+        // At most one newline
+        return null;
+    }
+
     did_parse = true;
-    return try fmt.allocPrint(scratch, "{s}={s}", .{attr_name, attr_val});
+    return try running_text.toOwnedSlice();
+}
+
+/// Parse HTML attribute name.
+///
+/// ASCII letter, _, or :, followed by zero or more ASCII letters, digits,
+/// _, ., :, or -.
+fn scanHTMLAttrName(self: *Self, scratch: Allocator) !?[]const u8 {
+    var did_parse = false;
+    var running_text = Io.Writer.Allocating.init(scratch);
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+    };
+
+    while (try self.consume(scratch, &.{
+        .text,
+        .l_delim_underscore,
+        .r_delim_underscore,
+        .lr_delim_underscore,
+    })) |token| {
+        const value = try resolveInlineCode(scratch, token);
+        _ = try running_text.writer.write(value);
+    }
+
+    const attr_name = try running_text.toOwnedSlice();
+
+    if (attr_name.len == 0) {
+        return null;
+    }
+
+    if (
+        !std.ascii.isAlphabetic(attr_name[0])
+        and !util.strings.containsScalar("_:", attr_name[0])
+    ) {
+        return null;
+    }
+
+    for (1..attr_name.len) |i| {
+        if (
+            !std.ascii.isAlphanumeric(attr_name[i])
+            and !util.strings.containsScalar("_:.-", attr_name[i])
+        ) {
+            return null;
+        }
+    }
+
+    did_parse = true;
+    return attr_name;
 }
 
 fn scanHTMLAttrValQuoted(self: *Self, scratch: Allocator) !?[]const u8 {
@@ -2254,38 +2317,26 @@ fn scanHTMLAttrValQuoted(self: *Self, scratch: Allocator) !?[]const u8 {
     ) orelse return null;
     _ = try running_text.writer.write(open_quote.lexeme);
 
-    const allowed_quote: InlineTokenType =
-        if (open_quote.token_type == .double_quote)
-            .single_quote
-        else
-            .double_quote;
+    while (try self.peek(scratch)) |token| {
+        if (token.token_type == open_quote.token_type) {
+            break;
+        }
 
-    while (try self.consume(scratch, &.{
-        .text,
-        allowed_quote,
-        .whitespace,
-        .l_square_bracket,
-        .r_square_bracket,
-        .l_angle_bracket,
-        .r_angle_bracket,
-        .l_paren,
-        .r_paren,
-        .exclamation_mark,
-        .equals,
-    })) |token| {
-        const value = try resolveInlineCode(scratch, token);
-        _ = try running_text.writer.write(value);
+        switch (token.token_type) {
+            .newline => break,
+            else => |token_type| {
+                _ = try self.consume(scratch, &.{token_type});
+                const value = try resolveInlineCode(scratch, token);
+                _ = try running_text.writer.write(value);
+            },
+        }
     }
 
     const close_quote = try self.consume(
         scratch,
-        &.{.single_quote, .double_quote},
+        &.{open_quote.token_type},
     ) orelse return null;
     _ = try running_text.writer.write(close_quote.lexeme);
-
-    if (close_quote.token_type != open_quote.token_type) {
-        return null;
-    }
 
     did_parse = true;
     return try running_text.toOwnedSlice();
@@ -2307,6 +2358,9 @@ fn scanHTMLAttrValUnquoted(self: *Self, scratch: Allocator) !?[]const u8 {
         .l_paren,
         .r_paren,
         .exclamation_mark,
+        .l_delim_underscore,
+        .r_delim_underscore,
+        .lr_delim_underscore,
     })) |token| {
         const value = try resolveInlineCode(scratch, token);
         _ = try running_text.writer.write(value);
@@ -3765,7 +3819,7 @@ test "html open tag unquoted attributes" {
 }
 
 test "html open tag quoted attributes" {
-    const value = "<span id=\"bim baz\" class='foobar'>";
+    const value = "<span id=\"bim baz\" class='foo_bar'>";
 
     const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
@@ -3773,7 +3827,7 @@ test "html open tag quoted attributes" {
     try testing.expectEqual(1, nodes.len);
     try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
     try testing.expectEqualStrings(
-        "<span id=\"bim baz\" class='foobar'>",
+        "<span id=\"bim baz\" class='foo_bar'>",
         std.mem.span(nodes[0].payload.html.value),
     );
 }
