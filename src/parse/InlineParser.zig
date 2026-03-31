@@ -2154,30 +2154,37 @@ fn parseHTMLCloseTag(
 /// A tag name consists of an ASCII letter followed by zero or more ASCII
 /// letters, digits, or hyphens.
 fn scanHTMLTagName(self: *Self, scratch: Allocator) !?[]const u8 {
-    const tag_text = try self.peek(scratch) orelse return null;
-    if (tag_text.token_type != .text) {
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+    };
+
+    var running_text = Io.Writer.Allocating.init(scratch);
+
+    while (try self.consume(scratch, &.{.text, .hyphen})) |token| {
+        const value = try resolveInlineCode(scratch, token);
+        _ = try running_text.writer.write(value);
+    }
+
+    const tag_name = try running_text.toOwnedSlice();
+
+    if (tag_name.len == 0) {
         return null;
     }
 
-    if (tag_text.lexeme.len == 0) {
+    if (!std.ascii.isAlphabetic(tag_name[0])) {
         return null;
     }
 
-    if (!std.ascii.isAlphabetic(tag_text.lexeme[0])) {
-        return null;
-    }
-
-    for (1..tag_text.lexeme.len) |i| {
-        if (
-            !std.ascii.isAlphanumeric(tag_text.lexeme[i])
-            and tag_text.lexeme[i] != '-'
-        ) {
+    for (1..tag_name.len) |i| {
+        if (!std.ascii.isAlphanumeric(tag_name[i]) and tag_name[i] != '-') {
             return null;
         }
     }
 
-    _ = try self.consume(scratch, &.{.text});
-    return tag_text.lexeme;
+    did_parse = true;
+    return tag_name;
 }
 
 /// https://spec.commonmark.org/0.30/#attribute
@@ -2266,8 +2273,10 @@ fn scanHTMLAttrName(self: *Self, scratch: Allocator) !?[]const u8 {
     };
 
     var running_text = Io.Writer.Allocating.init(scratch);
+
     while (try self.consume(scratch, &.{
         .text,
+        .hyphen,
         .l_delim_underscore,
         .r_delim_underscore,
         .lr_delim_underscore,
@@ -2353,6 +2362,7 @@ fn scanHTMLAttrValUnquoted(self: *Self, scratch: Allocator) !?[]const u8 {
 
     while (try self.consume(scratch, &.{
         .text,
+        .hyphen,
         .l_square_bracket,
         .r_square_bracket,
         .l_paren,
@@ -2467,6 +2477,7 @@ fn resolveInlineCode(scratch: Allocator, token: InlineToken) ![]const u8 {
         .exclamation_mark => "!",
         .equals => "=",
         .slash => "/",
+        .hyphen => "-",
     };
     return value;
 }
@@ -2495,6 +2506,7 @@ fn resolveInlineText(scratch: Allocator, token: InlineToken) ![]const u8 {
         .exclamation_mark => "!",
         .equals => "=",
         .slash => "/",
+        .hyphen => "-",
     };
     return value;
 }
@@ -3265,7 +3277,28 @@ test "inline link emphasis precedence" {
     );
 }
 
-test "inline link nesting" {
+test "inline link with hyphens, slashes, and equals" {
+    const value = "[foo-bar](google.com/bim-bam?q=bar)";
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.link, nodes[0].tag);
+    try testing.expectEqualStrings(
+        "google.com/bim-bam?q=bar",
+        std.mem.span(nodes[0].payload.link.url),
+    );
+
+    try testing.expectEqual(1, nodes[0].payload.link.n_children);
+    const text = nodes[0].payload.link.children[0];
+    try testing.expectEqual(ast.NodeType.text, text.tag);
+    try testing.expectEqualStrings(
+        "foo-bar",
+        std.mem.span(text.payload.text.value),
+    );
+}
+
+test "inline link nesting not allowed" {
     const value = "[foo [bar]()]()";
     const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
@@ -3870,6 +3903,27 @@ test "html close tag multiple" {
     try testing.expectEqual(ast.NodeType.html, nodes[1].tag);
     try testing.expectEqualStrings(
         "</bar>",
+        std.mem.span(nodes[1].payload.html.value),
+    );
+}
+
+test "html tags with hyphens" {
+    const value = "<foo-bar bim-bam=zim-zap></foo-bar>";
+
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(2, nodes.len);
+
+    try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
+    try testing.expectEqualStrings(
+        "<foo-bar bim-bam=zim-zap>",
+        std.mem.span(nodes[0].payload.html.value),
+    );
+
+    try testing.expectEqual(ast.NodeType.html, nodes[1].tag);
+    try testing.expectEqualStrings(
+        "</foo-bar>",
         std.mem.span(nodes[1].payload.html.value),
     );
 }

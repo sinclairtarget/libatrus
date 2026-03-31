@@ -40,8 +40,9 @@ pub const InlineTokenType = enum {
     l_paren,
     r_paren,
     exclamation_mark,
-    equals,
-    slash,
+    equals,           // needed for HTML parsing
+    slash,            // needed for HTML parsing
+    hyphen,           // needed for HTML parsing
     // single-character delimiters
     // These get matched as a run of multiple characters but then emitted as
     // single-character tokens.

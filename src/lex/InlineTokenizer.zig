@@ -198,6 +198,7 @@ fn matchSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
             '!'  => .{ .exclamation_mark, .punct },
             '='  => .{ .equals, .punct },
             '/'  => .{ .slash, .punct },
+            '-'  => .{ .hyphen, .punct },
             else => return null,
     };
 
@@ -1051,7 +1052,7 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
             // break on.
             switch (self.in[lookahead_i]) {
                 '&', '`', '[', ']', '<', '>', '(', ')', '\'', '"', '!',
-                '=', '/' => {
+                '=', '/', '-' => {
                     lookahead_i += 1;
                     continue :fsm .punct;
                 },
@@ -1075,10 +1076,11 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
 
             switch (self.in[lookahead_i]) {
                 '\n', ' ', '\t', '&', '`', '[', ']', '<', '>', '(', ')', '*',
-                '_', '\'', '"', '!', '\\', '=', '/' => {
+                '_', '\'', '"', '!', '\\', '=', '/', '-' => {
                     break :fsm .normal;
                 },
-                '#'...'%', '+'...'.', ':', ';', '?', '@', '^', '{'...'~' => {
+                '#'...'%', '+', ',', '.', ':', ';', '?', '@', '^',
+                '{'...'~' => {
                     continue :fsm .punct;
                 },
                 else => {
@@ -1119,10 +1121,11 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
 
             switch (self.in[lookahead_i]) {
                 '\n', ' ', '\t' ,'&', '`', '[', ']', '<', '>', '(', ')', '*',
-                '_', '\'', '"', '!', '=', '/' => {
+                '_', '\'', '"', '!', '=', '/', '-' => {
                     break :fsm .punct;
                 },
-                '#'...'%', '+'...'.', ':', ';', '?', '@', '^', '{'...'~' => {
+                '#'...'%', '+', ',', '.', ':', ';', '?', '@', '^',
+                '{'...'~' => {
                     lookahead_i += 1;
                     continue :fsm .punct;
                 },
