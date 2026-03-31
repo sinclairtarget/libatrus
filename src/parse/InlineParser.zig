@@ -2030,6 +2030,10 @@ fn parseHTMLTag(
         return node;
     }
 
+    if (try self.parseHTMLDeclaration(alloc, scratch)) |node| {
+        return node;
+    }
+
     return null;
 }
 
@@ -2246,6 +2250,7 @@ fn parseHTMLComment(
     return node;
 }
 
+/// https://spec.commonmark.org/0.30/#processing-instruction
 fn parseHTMLProcessingInstruction(
     self: *Self,
     alloc: Allocator,
@@ -2310,6 +2315,73 @@ fn parseHTMLProcessingInstruction(
     did_parse = true;
     return node;
 }
+
+/// https://spec.commonmark.org/0.30/#declaration
+fn parseHTMLDeclaration(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) Error!?*ast.Node {
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+    };
+
+    _ = try self.consume(scratch, &.{.l_angle_bracket}) orelse return null;
+    _ = try self.consume(scratch, &.{.exclamation_mark}) orelse return null;
+
+    var running_text = Io.Writer.Allocating.init(scratch);
+
+    while (try self.peek(scratch)) |token| {
+        switch (token.token_type) {
+            .r_angle_bracket => {
+                break;
+            },
+            .newline => {
+                // TODO: This prong is only here because resolveInlineCode()
+                // below replaces newlines with spaces. Can we do something
+                // smarter than just having this separate prong?
+                _ = try running_text.writer.write("\n");
+                _ = try self.consume(scratch, &.{.newline});
+            },
+            else => |token_type| {
+                const value = try resolveInlineCode(scratch, token);
+                _ = try running_text.writer.write(value);
+                _ = try self.consume(scratch, &.{token_type});
+            },
+        }
+    }
+
+    _ = try self.consume(scratch, &.{.r_angle_bracket}) orelse return null;
+
+    const content = try running_text.toOwnedSlice();
+    if (content.len == 0 or !std.ascii.isAlphabetic(content[0])) {
+        // must start with ASCII letter
+        return null;
+    }
+
+    const declaration = try fmt.allocPrintSentinel(
+        alloc,
+        "<!{s}>",
+        .{content},
+        0,
+    );
+    errdefer alloc.free(declaration);
+
+    const node = try alloc.create(ast.Node);
+    node.* = .{
+        .tag = .html,
+        .payload = .{
+            .html = .{
+                .value = declaration,
+            },
+        },
+    };
+    did_parse = true;
+    return node;
+}
+
 
 /// A tag name consists of an ASCII letter followed by zero or more ASCII
 /// letters, digits, or hyphens.
@@ -4115,6 +4187,20 @@ test "html/xml processing instruction" {
     try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
     try testing.expectEqualStrings(
         "<? foobar-bim zap:foo ?>",
+        std.mem.span(nodes[0].payload.html.value),
+    );
+}
+
+test "html/xml declaration" {
+    const value = "<!foobar-bim zap:foo >";
+
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
+    try testing.expectEqualStrings(
+        "<!foobar-bim zap:foo >",
         std.mem.span(nodes[0].payload.html.value),
     );
 }
