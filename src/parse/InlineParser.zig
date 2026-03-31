@@ -2454,6 +2454,7 @@ fn scanHTMLAttrValUnquoted(self: *Self, scratch: Allocator) !?[]const u8 {
     while (try self.consume(scratch, &.{
         .text,
         .hyphen,
+        .question_mark,
         .l_square_bracket,
         .r_square_bracket,
         .l_paren,
@@ -2569,6 +2570,7 @@ fn resolveInlineCode(scratch: Allocator, token: InlineToken) ![]const u8 {
         .equals => "=",
         .slash => "/",
         .hyphen => "-",
+        .question_mark => "?",
     };
     return value;
 }
@@ -2598,6 +2600,7 @@ fn resolveInlineText(scratch: Allocator, token: InlineToken) ![]const u8 {
         .equals => "=",
         .slash => "/",
         .hyphen => "-",
+        .question_mark => "?",
     };
     return value;
 }
