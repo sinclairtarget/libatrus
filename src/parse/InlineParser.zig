@@ -2022,6 +2022,10 @@ fn parseHTMLTag(
         return node;
     }
 
+    if (try self.parseHTMLComment(alloc, scratch)) |node| {
+        return node;
+    }
+
     return null;
 }
 
@@ -2144,6 +2148,93 @@ fn parseHTMLCloseTag(
         .payload = .{
             .html = .{
                 .value = content,
+            },
+        },
+    };
+    did_parse = true;
+    return node;
+}
+
+/// Parses an HTML comment.
+///
+/// Comments consist of <!-- (text) -->, where (text) does not start with > or
+/// ->, does not end with -, and does not contain --.
+fn parseHTMLComment(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) Error!?*ast.Node {
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+    };
+
+    _ = try self.consume(scratch, &.{.l_angle_bracket}) orelse return null;
+    _ = try self.consume(scratch, &.{.exclamation_mark}) orelse return null;
+    _ = try self.consume(scratch, &.{.hyphen}) orelse return null;
+    _ = try self.consume(scratch, &.{.hyphen}) orelse return null;
+
+    var running_text = Io.Writer.Allocating.init(scratch);
+
+    while (try self.peek(scratch)) |token| {
+        switch (token.token_type) {
+            .hyphen => {
+                _ = try self.consume(scratch, &.{.hyphen});
+                _ = try self.consume(scratch, &.{.hyphen}) orelse {
+                    _ = try running_text.writer.write("-");
+                    continue;
+                };
+                _ = try self.consume(scratch, &.{.r_angle_bracket}) orelse {
+                    // comment contained "--"
+                    return null;
+                };
+
+                // reached "-->"
+                break;
+            },
+            .newline => {
+                // TODO: This prong is only here because resolveInlineCode()
+                // below replaces newlines with spaces. Can we do something
+                // smarter than just having this separate prong?
+                _ = try running_text.writer.write("\n");
+                _ = try self.consume(scratch, &.{.newline});
+            },
+            else => |token_type| {
+                const value = try resolveInlineCode(scratch, token);
+                _ = try running_text.writer.write(value);
+                _ = try self.consume(scratch, &.{token_type});
+            },
+        }
+    }
+
+    const content = try running_text.toOwnedSlice();
+
+    if (
+        std.mem.startsWith(u8, content, ">")
+        or std.mem.startsWith(u8, content, "->")
+    ) {
+        return null;
+    }
+
+    if (std.mem.endsWith(u8, content, "-")) {
+        return null;
+    }
+
+    const comment = try fmt.allocPrintSentinel(
+        alloc,
+        "<!--{s}-->",
+        .{content},
+        0,
+    );
+    errdefer alloc.free(comment);
+
+    const node = try alloc.create(ast.Node);
+    node.* = .{
+        .tag = .html,
+        .payload = .{
+            .html = .{
+                .value = comment,
             },
         },
     };
@@ -3925,5 +4016,19 @@ test "html tags with hyphens" {
     try testing.expectEqualStrings(
         "</foo-bar>",
         std.mem.span(nodes[1].payload.html.value),
+    );
+}
+
+test "html comment" {
+    const value = "<!-- I am a comment -->";
+
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
+    try testing.expectEqualStrings(
+        "<!-- I am a comment -->",
+        std.mem.span(nodes[0].payload.html.value),
     );
 }
