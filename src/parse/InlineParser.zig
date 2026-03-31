@@ -2183,12 +2183,12 @@ fn scanHTMLTagName(self: *Self, scratch: Allocator) !?[]const u8 {
 /// https://spec.commonmark.org/0.30/#attribute
 fn scanHTMLAttribute(self: *Self, scratch: Allocator) !?[]const u8 {
     var did_parse = false;
-    var running_text = Io.Writer.Allocating.init(scratch);
     const checkpoint_index = self.checkpoint();
     defer if (!did_parse) {
         self.backtrack(checkpoint_index);
     };
 
+    var running_text = Io.Writer.Allocating.init(scratch);
     var newline_count: u8 = 0;
 
     const attr_name = try self.scanHTMLAttrName(scratch) orelse return null;
@@ -2260,12 +2260,12 @@ fn scanHTMLAttribute(self: *Self, scratch: Allocator) !?[]const u8 {
 /// _, ., :, or -.
 fn scanHTMLAttrName(self: *Self, scratch: Allocator) !?[]const u8 {
     var did_parse = false;
-    var running_text = Io.Writer.Allocating.init(scratch);
     const checkpoint_index = self.checkpoint();
     defer if (!did_parse) {
         self.backtrack(checkpoint_index);
     };
 
+    var running_text = Io.Writer.Allocating.init(scratch);
     while (try self.consume(scratch, &.{
         .text,
         .l_delim_underscore,
