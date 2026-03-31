@@ -2034,6 +2034,10 @@ fn parseHTMLTag(
         return node;
     }
 
+    if (try self.parseHTMLCDATA(alloc, scratch)) |node| {
+        return node;
+    }
+
     return null;
 }
 
@@ -2375,6 +2379,81 @@ fn parseHTMLDeclaration(
         .payload = .{
             .html = .{
                 .value = declaration,
+            },
+        },
+    };
+    did_parse = true;
+    return node;
+}
+
+fn parseHTMLCDATA(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) Error!?*ast.Node {
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+    };
+
+    _ = try self.consume(scratch, &.{.l_angle_bracket}) orelse return null;
+    _ = try self.consume(scratch, &.{.exclamation_mark}) orelse return null;
+    _ = try self.consume(scratch, &.{.l_square_bracket}) orelse return null;
+    const text = try self.consume(scratch, &.{.text}) orelse return null;
+    if (!std.mem.eql(u8, text.lexeme, "CDATA")) {
+        return null;
+    }
+    _ = try self.consume(scratch, &.{.l_square_bracket}) orelse return null;
+
+    var running_text = Io.Writer.Allocating.init(scratch);
+
+    while (try self.peek(scratch)) |token| {
+        switch (token.token_type) {
+            .r_square_bracket => {
+                _ = try self.consume(scratch, &.{.r_square_bracket});
+                _ = try self.consume(scratch, &.{.r_square_bracket}) orelse {
+                    _ = try running_text.writer.write("]");
+                    continue;
+                };
+                _ = try self.consume(scratch, &.{.r_angle_bracket}) orelse {
+                    _ = try running_text.writer.write("]]");
+                    continue;
+                };
+
+                // reached "]]>"
+                break;
+            },
+            .newline => {
+                // TODO: This prong is only here because resolveInlineCode()
+                // below replaces newlines with spaces. Can we do something
+                // smarter than just having this separate prong?
+                _ = try running_text.writer.write("\n");
+                _ = try self.consume(scratch, &.{.newline});
+            },
+            else => |token_type| {
+                const value = try resolveInlineCode(scratch, token);
+                _ = try running_text.writer.write(value);
+                _ = try self.consume(scratch, &.{token_type});
+            },
+        }
+    }
+
+    const content = try running_text.toOwnedSlice();
+    const cdata = try fmt.allocPrintSentinel(
+        alloc,
+        "<![CDATA[{s}]]>",
+        .{content},
+        0,
+    );
+    errdefer alloc.free(cdata);
+
+    const node = try alloc.create(ast.Node);
+    node.* = .{
+        .tag = .html,
+        .payload = .{
+            .html = .{
+                .value = cdata,
             },
         },
     };
@@ -4201,6 +4280,20 @@ test "html/xml declaration" {
     try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
     try testing.expectEqualStrings(
         "<!foobar-bim zap:foo >",
+        std.mem.span(nodes[0].payload.html.value),
+    );
+}
+
+test "html CDATA section" {
+    const value = "<![CDATA[ foo bar bim < & ]]>";
+
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
+    try testing.expectEqualStrings(
+        "<![CDATA[ foo bar bim < & ]]>",
         std.mem.span(nodes[0].payload.html.value),
     );
 }
