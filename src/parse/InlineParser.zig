@@ -2026,6 +2026,10 @@ fn parseHTMLTag(
         return node;
     }
 
+    if (try self.parseHTMLProcessingInstruction(alloc, scratch)) |node| {
+        return node;
+    }
+
     return null;
 }
 
@@ -2235,6 +2239,71 @@ fn parseHTMLComment(
         .payload = .{
             .html = .{
                 .value = comment,
+            },
+        },
+    };
+    did_parse = true;
+    return node;
+}
+
+fn parseHTMLProcessingInstruction(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) Error!?*ast.Node {
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+    };
+
+    _ = try self.consume(scratch, &.{.l_angle_bracket}) orelse return null;
+    _ = try self.consume(scratch, &.{.question_mark}) orelse return null;
+
+    var running_text = Io.Writer.Allocating.init(scratch);
+
+    while (try self.peek(scratch)) |token| {
+        switch (token.token_type) {
+            .question_mark => {
+                _ = try self.consume(scratch, &.{.question_mark});
+                _ = try self.consume(scratch, &.{.r_angle_bracket}) orelse {
+                    _ = try running_text.writer.write("?");
+                    continue;
+                };
+
+                // reached "?>"
+                break;
+            },
+            .newline => {
+                // TODO: This prong is only here because resolveInlineCode()
+                // below replaces newlines with spaces. Can we do something
+                // smarter than just having this separate prong?
+                _ = try running_text.writer.write("\n");
+                _ = try self.consume(scratch, &.{.newline});
+            },
+            else => |token_type| {
+                const value = try resolveInlineCode(scratch, token);
+                _ = try running_text.writer.write(value);
+                _ = try self.consume(scratch, &.{token_type});
+            },
+        }
+    }
+
+    const content = try running_text.toOwnedSlice();
+    const instruction = try fmt.allocPrintSentinel(
+        alloc,
+        "<?{s}?>",
+        .{content},
+        0,
+    );
+    errdefer alloc.free(instruction);
+
+    const node = try alloc.create(ast.Node);
+    node.* = .{
+        .tag = .html,
+        .payload = .{
+            .html = .{
+                .value = instruction,
             },
         },
     };
@@ -4032,6 +4101,20 @@ test "html comment" {
     try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
     try testing.expectEqualStrings(
         "<!-- I am a comment -->",
+        std.mem.span(nodes[0].payload.html.value),
+    );
+}
+
+test "html/xml processing instruction" {
+    const value = "<? foobar-bim zap:foo ?>";
+
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
+    try testing.expectEqualStrings(
+        "<? foobar-bim zap:foo ?>",
         std.mem.span(nodes[0].payload.html.value),
     );
 }
