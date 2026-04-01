@@ -29,7 +29,7 @@ pub const BlockTokenType = enum {
 
 /// Tokens recognized by the inline parser.
 pub const InlineTokenType = enum {
-    // single-character tokens
+    // --- single-character tokens ---
     newline,
     single_quote,
     double_quote,
@@ -44,7 +44,7 @@ pub const InlineTokenType = enum {
     equals,                      // used only for HTML parsing
     slash,                       // used only for HTML parsing
     hyphen,                      // used only for HTML parsing
-    // single-character delimiters
+    // --- single-character delimiters ---
     // These get matched as a run of multiple characters but then emitted as
     // single-character tokens.
     l_delim_star,
@@ -53,7 +53,7 @@ pub const InlineTokenType = enum {
     l_delim_underscore,
     r_delim_underscore,
     lr_delim_underscore,
-    // multi-character tokens
+    // --- multi-character tokens ---
     backtick,                    // one or more consecutive backticks
     whitespace,                  // run of spaces/tabs (NOT unicode whitespace)
     text,
@@ -63,9 +63,9 @@ pub const InlineTokenType = enum {
     absolute_uri,
     email,
     hard_break,                  // char sequence that could be parsed as break
-    // escaped tokens
+    // --- escaped tokens ---
     // Escaping is sometimes not allowed. See InlineTokenizer.
-    // We need escaped versions of these tokens only because where
+    // We need escaped versions of only these tokens because where
     // backslash-escaping isn't allowed these are the only tokens whose meaning
     // is important.
     escaped_backtick,
