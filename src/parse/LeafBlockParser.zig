@@ -726,7 +726,7 @@ fn parseLinkReferenceDefinition(
     const scanned_url = try self.scanLinkDefDestination(
         scratch,
     ) orelse return null;
-    const escaped_url = try escape.copyEscape(scratch, scanned_url);
+    const escaped_url = try escape.strip(scratch, scanned_url);
     const url = try cmark.uri.normalize(scratch, scratch, escaped_url);
 
     // whitespace allowed and up to one newline
@@ -1146,7 +1146,7 @@ fn createTextNode(alloc: Allocator, value: []const u8) !*ast.Node {
 /// the inline parser.
 fn resolveText(scratch: Allocator, token: BlockToken) ![]const u8 {
     const value = switch (token.token_type) {
-        .text => try escape.copyEscape(scratch, token.lexeme),
+        .text => try escape.strip(scratch, token.lexeme),
         else => token.lexeme,
     };
     return value;

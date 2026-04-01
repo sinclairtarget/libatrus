@@ -1216,11 +1216,30 @@ fn evaluateTokens(
     var tokens: ArrayList(InlineToken) = .empty;
 
     switch (token_type) {
+        .l_square_bracket,
+        .r_square_bracket,
+        .l_angle_bracket,
+        .r_angle_bracket,
+        .l_paren,
+        .r_paren,
+        .single_quote,
+        .double_quote,
+        .exclamation_mark,
+        .equals,
+        .slash,
+        .hyphen,
+        .question_mark,
         .newline => {
-            try tokens.append(scratch, InlineToken{ .token_type = .newline });
+            try tokens.append(scratch, InlineToken{
+                .token_type = token_type,
+            });
         },
-        .l_delim_star, .r_delim_star, .lr_delim_star, .l_delim_underscore,
-        .r_delim_underscore, .lr_delim_underscore => {
+        .l_delim_star,
+        .r_delim_star,
+        .lr_delim_star,
+        .l_delim_underscore,
+        .r_delim_underscore,
+        .lr_delim_underscore => {
             for (0..range.len) |_| {
                 try tokens.append(scratch, InlineToken{
                     .token_type = token_type,
@@ -1228,7 +1247,15 @@ fn evaluateTokens(
                 });
             }
         },
-        else => {
+        .decimal_character_reference,
+        .hexadecimal_character_reference,
+        .entity_reference,
+        .absolute_uri,
+        .email,
+        .backtick,
+        .whitespace,
+        .hard_break,
+        .text => {
             try tokens.append(scratch, InlineToken{
                 .token_type = token_type,
                 .lexeme = try scratch.dupe(u8, range),

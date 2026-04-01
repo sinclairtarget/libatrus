@@ -818,13 +818,13 @@ fn parseInlineCode(
                     break;
                 }
 
-                const value = try resolveInlineCode(scratch, token);
+                const value = try emitInlineCode(scratch, token);
                 try values.append(scratch, value);
             },
             else => |t| {
                 _ = try self.consume(scratch, &.{t});
 
-                const value = try resolveInlineCode(scratch, token);
+                const value = try emitInlineCode(scratch, token);
                 try values.append(scratch, value);
             }
         }
@@ -993,7 +993,7 @@ fn parseImageDescription(
             }
 
             _ = try self.consume(scratch, &.{token.token_type});
-            const value = try resolveInlineText(scratch, token);
+            const value = try emitInlineText(scratch, token);
             break :blk value;
         };
         if (allowed_bracket.len > 0) {
@@ -1375,7 +1375,7 @@ fn parseLinkText(
             }
 
             _ = try self.consume(scratch, &.{token.token_type});
-            const value = try resolveInlineText(scratch, token);
+            const value = try emitInlineText(scratch, token);
             break :blk value;
         };
         if (allowed_bracket.len > 0) {
@@ -1443,7 +1443,7 @@ fn scanLinkDestination(self: *Self, scratch: Allocator) !?[]const u8 {
                 .r_angle_bracket => break,
                 else => |t| {
                     _ = try self.consume(scratch, &.{t});
-                    const value = try resolveInlineText(scratch, token);
+                    const value = try emitInlineText(scratch, token);
                     _ = try running_text.writer.write(value);
                 },
             }
@@ -1462,7 +1462,7 @@ fn scanLinkDestination(self: *Self, scratch: Allocator) !?[]const u8 {
                 .l_paren => {
                     paren_depth += 1;
                     _ = try self.consume(scratch, &.{.l_paren});
-                    const value = try resolveInlineText(scratch, token);
+                    const value = try emitInlineText(scratch, token);
                     _ = try running_text.writer.write(value);
                 },
                 .r_paren => {
@@ -1472,13 +1472,13 @@ fn scanLinkDestination(self: *Self, scratch: Allocator) !?[]const u8 {
 
                     paren_depth -= 1;
                     _ = try self.consume(scratch, &.{.r_paren});
-                    const value = try resolveInlineText(scratch, token);
+                    const value = try emitInlineText(scratch, token);
                     _ = try running_text.writer.write(value);
                 },
                 .whitespace => break,
                 else => |t| {
                     _ = try self.consume(scratch, &.{t});
-                    const value = try resolveInlineText(scratch, token);
+                    const value = try emitInlineText(scratch, token);
                     if (util.strings.containsAsciiControl(value)) {
                         return "";
                     }
@@ -1529,14 +1529,14 @@ fn scanLinkTitle(self: *Self, scratch: Allocator) !?[]const u8 {
                     return null; // link title cannot contain blank line
                 }
                 _ = try self.consume(scratch, &.{.newline});
-                const value = try resolveInlineText(scratch, token);
+                const value = try emitInlineText(scratch, token);
                 _ = try running_text.writer.write(value);
 
                 blank_line_so_far = true;
             },
             .whitespace => {
                 _ = try self.consume(scratch, &.{.whitespace});
-                const value = try resolveInlineText(scratch, token);
+                const value = try emitInlineText(scratch, token);
                 _ = try running_text.writer.write(value);
             },
             else => |t| {
@@ -1545,7 +1545,7 @@ fn scanLinkTitle(self: *Self, scratch: Allocator) !?[]const u8 {
                 }
 
                 _ = try self.consume(scratch, &.{t});
-                const value = try resolveInlineText(scratch, token);
+                const value = try emitInlineText(scratch, token);
                 _ = try running_text.writer.write(value);
                 blank_line_so_far = false;
             },
@@ -1576,7 +1576,7 @@ fn scanSeparatingWhitespace(self: *Self, scratch: Allocator) Error!?[]const u8 {
             seen_newline = true;
         }
 
-        const value = try resolveInlineText(scratch, token);
+        const value = try emitInlineText(scratch, token);
         _ = try running_text.writer.write(value);
     }
 
@@ -1790,12 +1790,12 @@ fn scanLinkLabel(self: *Self, scratch: Allocator) Error!?[]const u8 {
         switch (token.token_type) {
             .whitespace => {
                 _ = try self.consume(scratch, &.{.whitespace});
-                const value = try resolveInlineText(scratch, token);
+                const value = try emitInlineText(scratch, token);
                 _ = try running_text.writer.write(value);
             },
             .newline => {
                 _ = try self.consume(scratch, &.{.newline});
-                const value = try resolveInlineText(scratch, token);
+                const value = try emitInlineText(scratch, token);
                 _ = try running_text.writer.write(value);
             },
             .l_square_bracket => return null,
@@ -1803,7 +1803,7 @@ fn scanLinkLabel(self: *Self, scratch: Allocator) Error!?[]const u8 {
             else => |t| {
                 saw_non_blank = true;
                 _ = try self.consume(scratch, &.{t});
-                const value = try resolveInlineText(scratch, token);
+                const value = try emitInlineText(scratch, token);
                 _ = try running_text.writer.write(value);
             },
         }
@@ -1909,7 +1909,7 @@ fn parseURIAutolink(
     const url = try cmark.uri.normalize(scratch, scratch, uri_token.lexeme);
     const text = try createTextNode(
         alloc,
-        try resolveInlineText(scratch, uri_token),
+        try emitInlineText(scratch, uri_token),
     );
     errdefer text.deinit(alloc);
 
@@ -1953,7 +1953,7 @@ fn parseEmailAutolink(
     );
     const text = try createTextNode(
         alloc,
-        try resolveInlineText(scratch, email_token),
+        try emitInlineText(scratch, email_token),
     );
 
     const children = try alloc.dupe(*ast.Node, &.{text});
@@ -2070,9 +2070,9 @@ fn parseHTMLOpenTag(
 
     for (0..util.safety.loop_bound) |_| {
         if (try self.consume(scratch, &.{.whitespace})) |ws| {
-            _ = try running_text.writer.write(ws.lexeme);
-        } else if (try self.consume(scratch, &.{.newline})) |_| {
-            _ = try running_text.writer.write("\n");
+            _ = try running_text.writer.write(emitInlineLiteral(ws));
+        } else if (try self.consume(scratch, &.{.newline})) |nl| {
+            _ = try running_text.writer.write(emitInlineLiteral(nl));
             newline_count += 1;
         } else {
             // whitespace is required before attributes
@@ -2139,7 +2139,7 @@ fn parseHTMLCloseTag(
     const ws = blk: {
         const maybe_token = try self.consume(scratch, &.{.whitespace});
         if (maybe_token) |token| {
-            break :blk token.lexeme;
+            break :blk emitInlineLiteral(token);
         }
         break :blk "";
     };
@@ -2205,15 +2205,8 @@ fn parseHTMLComment(
                 // reached "-->"
                 break;
             },
-            .newline => {
-                // TODO: This prong is only here because resolveInlineCode()
-                // below replaces newlines with spaces. Can we do something
-                // smarter than just having this separate prong?
-                _ = try running_text.writer.write("\n");
-                _ = try self.consume(scratch, &.{.newline});
-            },
             else => |token_type| {
-                const value = try resolveInlineCode(scratch, token);
+                const value = emitInlineLiteral(token);
                 _ = try running_text.writer.write(value);
                 _ = try self.consume(scratch, &.{token_type});
             },
@@ -2283,15 +2276,8 @@ fn parseHTMLProcessingInstruction(
                 // reached "?>"
                 break;
             },
-            .newline => {
-                // TODO: This prong is only here because resolveInlineCode()
-                // below replaces newlines with spaces. Can we do something
-                // smarter than just having this separate prong?
-                _ = try running_text.writer.write("\n");
-                _ = try self.consume(scratch, &.{.newline});
-            },
             else => |token_type| {
-                const value = try resolveInlineCode(scratch, token);
+                const value = emitInlineLiteral(token);
                 _ = try running_text.writer.write(value);
                 _ = try self.consume(scratch, &.{token_type});
             },
@@ -2342,15 +2328,8 @@ fn parseHTMLDeclaration(
             .r_angle_bracket => {
                 break;
             },
-            .newline => {
-                // TODO: This prong is only here because resolveInlineCode()
-                // below replaces newlines with spaces. Can we do something
-                // smarter than just having this separate prong?
-                _ = try running_text.writer.write("\n");
-                _ = try self.consume(scratch, &.{.newline});
-            },
             else => |token_type| {
-                const value = try resolveInlineCode(scratch, token);
+                const value = emitInlineLiteral(token);
                 _ = try running_text.writer.write(value);
                 _ = try self.consume(scratch, &.{token_type});
             },
@@ -2424,15 +2403,8 @@ fn parseHTMLCDATA(
                 // reached "]]>"
                 break;
             },
-            .newline => {
-                // TODO: This prong is only here because resolveInlineCode()
-                // below replaces newlines with spaces. Can we do something
-                // smarter than just having this separate prong?
-                _ = try running_text.writer.write("\n");
-                _ = try self.consume(scratch, &.{.newline});
-            },
             else => |token_type| {
-                const value = try resolveInlineCode(scratch, token);
+                const value = emitInlineLiteral(token);
                 _ = try running_text.writer.write(value);
                 _ = try self.consume(scratch, &.{token_type});
             },
@@ -2474,7 +2446,7 @@ fn scanHTMLTagName(self: *Self, scratch: Allocator) !?[]const u8 {
     var running_text = Io.Writer.Allocating.init(scratch);
 
     while (try self.consume(scratch, &.{.text, .hyphen})) |token| {
-        const value = try resolveInlineCode(scratch, token);
+        const value = emitInlineLiteral(token);
         _ = try running_text.writer.write(value);
     }
 
@@ -2518,10 +2490,10 @@ fn scanHTMLAttribute(self: *Self, scratch: Allocator) !?[]const u8 {
         const lookahead_checkpoint = self.checkpoint();
 
         if (try self.consume(scratch, &.{.whitespace})) |ws| {
-            _ = try running_text.writer.write(ws.lexeme);
+            _ = try running_text.writer.write(emitInlineLiteral(ws));
         }
-        if (try self.consume(scratch, &.{.newline})) |_| {
-            _ = try running_text.writer.write("\n");
+        if (try self.consume(scratch, &.{.newline})) |nl| {
+            _ = try running_text.writer.write(emitInlineLiteral(nl));
             newline_count += 1;
         }
 
@@ -2542,10 +2514,10 @@ fn scanHTMLAttribute(self: *Self, scratch: Allocator) !?[]const u8 {
     _ = try running_text.writer.write("=");
 
     if (try self.consume(scratch, &.{.whitespace})) |ws| {
-        _ = try running_text.writer.write(ws.lexeme);
+        _ = try running_text.writer.write(emitInlineLiteral(ws));
     }
-    if (try self.consume(scratch, &.{.newline})) |_| {
-        _ = try running_text.writer.write("\n");
+    if (try self.consume(scratch, &.{.newline})) |nl| {
+        _ = try running_text.writer.write(emitInlineLiteral(nl));
         newline_count += 1;
     }
 
@@ -2592,7 +2564,7 @@ fn scanHTMLAttrName(self: *Self, scratch: Allocator) !?[]const u8 {
         .r_delim_underscore,
         .lr_delim_underscore,
     })) |token| {
-        const value = try resolveInlineCode(scratch, token);
+        const value = emitInlineLiteral(token);
         _ = try running_text.writer.write(value);
     }
 
@@ -2635,7 +2607,7 @@ fn scanHTMLAttrValQuoted(self: *Self, scratch: Allocator) !?[]const u8 {
         scratch,
         &.{.single_quote, .double_quote},
     ) orelse return null;
-    _ = try running_text.writer.write(open_quote.lexeme);
+    _ = try running_text.writer.write(emitInlineLiteral(open_quote));
 
     while (try self.peek(scratch)) |token| {
         if (token.token_type == open_quote.token_type) {
@@ -2646,7 +2618,7 @@ fn scanHTMLAttrValQuoted(self: *Self, scratch: Allocator) !?[]const u8 {
             .newline => break,
             else => |token_type| {
                 _ = try self.consume(scratch, &.{token_type});
-                const value = try resolveInlineCode(scratch, token);
+                const value = emitInlineLiteral(token);
                 _ = try running_text.writer.write(value);
             },
         }
@@ -2656,7 +2628,7 @@ fn scanHTMLAttrValQuoted(self: *Self, scratch: Allocator) !?[]const u8 {
         scratch,
         &.{open_quote.token_type},
     ) orelse return null;
-    _ = try running_text.writer.write(close_quote.lexeme);
+    _ = try running_text.writer.write(emitInlineLiteral(close_quote));
 
     did_parse = true;
     return try running_text.toOwnedSlice();
@@ -2684,7 +2656,7 @@ fn scanHTMLAttrValUnquoted(self: *Self, scratch: Allocator) !?[]const u8 {
         .r_delim_underscore,
         .lr_delim_underscore,
     })) |token| {
-        const value = try resolveInlineCode(scratch, token);
+        const value = emitInlineLiteral(token);
         _ = try running_text.writer.write(value);
     }
 
@@ -2709,7 +2681,7 @@ fn scanText(self: *Self, scratch: Allocator) ![]const u8 {
                 .text => |t| {
                     _ = try self.consume(scratch, &.{t});
 
-                    const value = try resolveInlineText(scratch, token);
+                    const value = try emitInlineText(scratch, token);
                     _ = try running_text.writer.write(value);
                 },
                 .whitespace, .newline => {
@@ -2725,7 +2697,7 @@ fn scanText(self: *Self, scratch: Allocator) ![]const u8 {
                     }
                     _ = try self.consume(scratch, &.{.lr_delim_underscore});
 
-                    const value = try resolveInlineText(scratch, token);
+                    const value = try emitInlineText(scratch, token);
                     _ = try running_text.writer.write(value);
                 },
                 else => break :fsm,
@@ -2738,10 +2710,10 @@ fn scanText(self: *Self, scratch: Allocator) ![]const u8 {
 
             if (try self.consume(scratch, &.{.newline})) |newline| {
                 _ = try self.consume(scratch, &.{.whitespace});
-                const value = try resolveInlineText(scratch, newline);
+                const value = try emitInlineText(scratch, newline);
                 _ = try running_text.writer.write(value);
             } else if (maybe_whitespace) |whitespace| {
-                const value = try resolveInlineText(scratch, whitespace);
+                const value = try emitInlineText(scratch, whitespace);
                 _ = try running_text.writer.write(value);
             }
 
@@ -2756,58 +2728,64 @@ fn scanTextFallback(self: *Self, scratch: Allocator) ![]const u8 {
     const token = try self.peek(scratch) orelse return "";
     _ = try self.consume(scratch, &.{token.token_type});
 
-    const text_value = try resolveInlineText(scratch, token);
+    const text_value = try emitInlineText(scratch, token);
     return text_value;
 }
 
-/// Resolve token to actual string content within an inline code node.
-fn resolveInlineCode(scratch: Allocator, token: InlineToken) ![]const u8 {
+/// Emit tokens as "regular" inline text.
+///
+/// Strips backslash escapes. Resolves character references.
+fn emitInlineText(scratch: Allocator, token: InlineToken) ![]const u8 {
     const value = switch (token.token_type) {
-        .decimal_character_reference, .hexadecimal_character_reference,
-        .entity_reference, .absolute_uri, .email, .backtick, .whitespace,
-        .text => token.lexeme,
-        .newline => " ",
-        .hard_break => {
-            return try std.mem.replaceOwned(
-                u8,
-                scratch,
-                token.lexeme,
-                "\n",
-                " ",
-            );
-        },
-        .l_delim_star, .r_delim_star, .lr_delim_star => "*",
-        .l_delim_underscore, .r_delim_underscore, .lr_delim_underscore => "_",
-        .l_square_bracket => "[",
-        .r_square_bracket => "]",
-        .l_angle_bracket => "<",
-        .r_angle_bracket => ">",
-        .l_paren => "(",
-        .r_paren => ")",
-        .single_quote => "'",
-        .double_quote => "\"",
-        .exclamation_mark => "!",
-        .equals => "=",
-        .slash => "/",
-        .hyphen => "-",
-        .question_mark => "?",
+        .decimal_character_reference,
+        .hexadecimal_character_reference,
+        .entity_reference
+            => try resolveCharacterReference(scratch, token),
+        .text => try escape.strip(scratch, token.lexeme),
+        else => emitInlineLiteral(token),
     };
+
     return value;
 }
 
-/// Resolve token to actual string content within a text node.
-fn resolveInlineText(scratch: Allocator, token: InlineToken) ![]const u8 {
+/// Emit tokens as inline code.
+///
+/// Newlines and hard linebreaks get converted to whitespace.
+fn emitInlineCode(scratch: Allocator, token: InlineToken) ![]const u8 {
     const value = switch (token.token_type) {
-        .decimal_character_reference, .hexadecimal_character_reference,
-        .entity_reference => blk: {
-            break :blk try resolveCharacterReference(scratch, token);
-        },
-        .newline => "\n",
-        .absolute_uri, .email, .backtick, .whitespace,
-        .hard_break => token.lexeme,
+        .newline => " ",
+        // Hard line breaks not allowed in inline code. Just emit the chars as
+        // text, keeping to the rule that newlines are replaced with spaces.
+        .hard_break => try std.mem.replaceOwned(
+            u8,
+            scratch,
+            token.lexeme,
+            "\n",
+            " ",
+        ),
+        else => emitInlineLiteral(token),
+    };
+
+    return value;
+}
+
+/// Emit tokens with no modification.
+fn emitInlineLiteral(token: InlineToken) []const u8 {
+    const value = switch (token.token_type) {
+        .decimal_character_reference,
+        .hexadecimal_character_reference,
+        .entity_reference,
+        .absolute_uri,
+        .email,
+        .backtick,
+        .whitespace,
+        .text,
+        // If we are emitting the hard break, it was matched in a place where
+        // hard linebreaks aren't allowed. So just emit the chars as text
+        .hard_break
+            => token.lexeme,
         .l_delim_star, .r_delim_star, .lr_delim_star => "*",
         .l_delim_underscore, .r_delim_underscore, .lr_delim_underscore => "_",
-        .text => try escape.copyEscape(scratch, token.lexeme),
         .l_square_bracket => "[",
         .r_square_bracket => "]",
         .l_angle_bracket => "<",
@@ -2821,7 +2799,9 @@ fn resolveInlineText(scratch: Allocator, token: InlineToken) ![]const u8 {
         .slash => "/",
         .hyphen => "-",
         .question_mark => "?",
+        .newline => "\n",
     };
+
     return value;
 }
 

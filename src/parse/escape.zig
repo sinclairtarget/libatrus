@@ -11,7 +11,7 @@ const Allocator = std.mem.Allocator;
 /// Returns a copy of the given string with backslash escapes removed.
 ///
 /// https://spec.commonmark.org/0.30/#backslash-escapes
-pub fn copyEscape(alloc: Allocator, s: []const u8) ![]const u8 {
+pub fn strip(alloc: Allocator, s: []const u8) ![]const u8 {
     const copy = try alloc.alloc(u8, s.len);
 
     const State = enum { normal, escape };
@@ -74,7 +74,7 @@ const testing = std.testing;
 
 test "escape text" {
     const value = "/url\\bar\\*baz";
-    const result = try copyEscape(testing.allocator, value);
+    const result = try strip(testing.allocator, value);
     defer testing.allocator.free(result);
 
     try testing.expectEqualStrings("/url\\bar*baz", result);
@@ -82,7 +82,7 @@ test "escape text" {
 
 test "escape escaped backslash" {
     const value = "foo\\\\bar";
-    const result = try copyEscape(testing.allocator, value);
+    const result = try strip(testing.allocator, value);
     defer testing.allocator.free(result);
 
     try testing.expectEqualStrings("foo\\bar", result);
@@ -90,7 +90,7 @@ test "escape escaped backslash" {
 
 test "terminating backslash not removed" {
     const value = "foo\\";
-    const result = try copyEscape(testing.allocator, value);
+    const result = try strip(testing.allocator, value);
     defer testing.allocator.free(result);
 
     try testing.expectEqualStrings("foo\\", result);

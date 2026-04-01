@@ -62,7 +62,7 @@ pub const InlineTokenType = enum {
     entity_reference,
     absolute_uri,
     email,
-    hard_break,
+    hard_break,                  // char sequence that could be parsed as break
 };
 
 pub const BlockToken = Token(BlockTokenType);
