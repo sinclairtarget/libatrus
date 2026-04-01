@@ -7,11 +7,14 @@
 //! at a time, when we have multiple tokens we "stage" them in an array list
 //! until they can be consumed.
 //!
-//! Note on backslash-escaping: A backslash will be respected by the tokenizer,
-//! such that the next character will not have its usual meaning (and probably
-//! lead to a different token being emitted). The backslash stays present in
-//! the lexeme for the token though and needs to be stripped out later if the
-//! backslash is not supposed to appear in the final output.
+//! Note on backslash-escaping: Commonmark specifies that backslash escaping is
+//! allowed in some constructs but not others. This makes it impossible to
+//! handle backslash-escaping entirely in the tokenizer. Our strategy is to
+//! mostly respect backslash-escapes here (such that the next character will
+//! not have its usual meaning as far as the tokenizer is concerned) with some
+//! exceptions. The backslash characters themselves are still copied into each
+//! token's lexeme so that the decision about whether to strip them can be
+//! deferred.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -91,6 +94,10 @@ fn tokenize(self: *Self, scratch: Allocator) !InlineToken {
             }
 
             if (try self.matchSingleCharTokens(scratch)) |result| {
+                break :blk result;
+            }
+
+            if (try self.matchEscapedTokens(scratch)) |result| {
                 break :blk result;
             }
 
@@ -214,6 +221,39 @@ fn matchSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
         .tokens = tokens,
         .next_i = self.i + 1,
         .next_state = next_state,
+    };
+}
+
+fn matchEscapedTokens(self: Self, scratch: Allocator) !?TokenizeResult {
+    var lookahead_i = self.i;
+
+    if (self.in[lookahead_i] != '\\') {
+        return null;
+    }
+
+    lookahead_i += 1;
+    if (lookahead_i >= self.in.len) {
+        return null;
+    }
+
+    const token_type: InlineTokenType = switch (self.in[lookahead_i]) {
+        '`'  => .escaped_backtick,
+        '\'' => .escaped_single_quote,
+        '"'  => .escaped_double_quote,
+        else => return null,
+    };
+    lookahead_i += 1;
+
+    const tokens = try evaluateTokens(
+        scratch,
+        token_type,
+        .default,
+        self.in[self.i..lookahead_i],
+    );
+    return .{
+        .tokens = tokens,
+        .next_i = lookahead_i,
+        .next_state = .punct,
     };
 }
 
@@ -1095,10 +1135,10 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
             }
 
             switch (self.in[lookahead_i]) {
-                '`' => {
-                    // Can't escape backticks
-                    continue :fsm .normal;
-                },
+                '`', '\'', '"' => @panic(
+                    "escaped backtick or quote should have been matched " ++
+                    "already as escaped token"
+                ),
                 '&', '[', ']', '<', '>', '(', ')', '*', '_',
                 '!', '#'...'%', '+'...'/', ':', ';', '=', '?', '@', '^',
                 '{'...'~' => {
@@ -1229,7 +1269,10 @@ fn evaluateTokens(
         .slash,
         .hyphen,
         .question_mark,
-        .newline => {
+        .newline,
+        .escaped_backtick,
+        .escaped_single_quote,
+        .escaped_double_quote => {
             try tokens.append(scratch, InlineToken{
                 .token_type = token_type,
             });

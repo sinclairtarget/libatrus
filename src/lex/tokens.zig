@@ -40,10 +40,10 @@ pub const InlineTokenType = enum {
     l_paren,
     r_paren,
     exclamation_mark,
-    question_mark,    // used only for HTML parsing
-    equals,           // used only for HTML parsing
-    slash,            // used only for HTML parsing
-    hyphen,           // used only for HTML parsing
+    question_mark,               // used only for HTML parsing
+    equals,                      // used only for HTML parsing
+    slash,                       // used only for HTML parsing
+    hyphen,                      // used only for HTML parsing
     // single-character delimiters
     // These get matched as a run of multiple characters but then emitted as
     // single-character tokens.
@@ -63,6 +63,14 @@ pub const InlineTokenType = enum {
     absolute_uri,
     email,
     hard_break,                  // char sequence that could be parsed as break
+    // escaped tokens
+    // Escaping is sometimes not allowed. See InlineTokenizer.
+    // We need escaped versions of these tokens only because where
+    // backslash-escaping isn't allowed these are the only tokens whose meaning
+    // is important.
+    escaped_backtick,
+    escaped_single_quote,
+    escaped_double_quote,
 };
 
 pub const BlockToken = Token(BlockTokenType);

@@ -821,6 +821,38 @@ fn parseInlineCode(
                 const value = try emitInlineCode(scratch, token);
                 try values.append(scratch, value);
             },
+            .escaped_backtick => {
+                // Backslash-escaping is not allowed in code spans. Treat as a
+                // backslash followed by a backtick.
+                _ = try self.consume(scratch, &.{ .escaped_backtick });
+                try values.append(scratch, "\\");
+
+                if (try self.consume(scratch, &.{.backtick})) |following| {
+                    // Handle case where escaped backtick should be counted
+                    // with folloiwng backticks.
+                    const backtick_count = following.lexeme.len + 1;
+                    if (open.lexeme.len == backtick_count) {
+                        break;
+                    }
+
+                    const value_escaped = try emitInlineCode(scratch, token);
+                    const value_following = try emitInlineCode(
+                        scratch,
+                        following,
+                    );
+                    try values.append(scratch, value_escaped);
+                    try values.append(scratch, value_following);
+                } else {
+                    // No following backticks, so we just have a single
+                    // backtick.
+                    if (open.lexeme.len == 1) {
+                        break;
+                    }
+
+                    const value = try emitInlineCode(scratch, token);
+                    try values.append(scratch, value);
+                }
+            },
             else => |t| {
                 _ = try self.consume(scratch, &.{t});
 
@@ -845,6 +877,7 @@ fn parseInlineCode(
 
     const value_copy = try alloc.dupeZ(u8, value);
     errdefer alloc.free(value_copy);
+
     const inline_code_node = try alloc.create(ast.Node);
     inline_code_node.* = .{
         .tag = .inline_code,
@@ -2610,12 +2643,38 @@ fn scanHTMLAttrValQuoted(self: *Self, scratch: Allocator) !?[]const u8 {
     _ = try running_text.writer.write(emitInlineLiteral(open_quote));
 
     while (try self.peek(scratch)) |token| {
-        if (token.token_type == open_quote.token_type) {
-            break;
-        }
-
         switch (token.token_type) {
             .newline => break,
+            .single_quote, .double_quote => |token_type| {
+                _ = try self.consume(scratch, &.{token_type});
+
+                const value = emitInlineLiteral(token);
+                _ = try running_text.writer.write(value);
+
+                if (token.token_type == open_quote.token_type) {
+                    break;
+                }
+            },
+            .escaped_single_quote => {
+                _ = try self.consume(scratch, &.{.escaped_single_quote});
+
+                const value = emitInlineLiteral(token);
+                _ = try running_text.writer.write(value);
+
+                if (open_quote.token_type == .single_quote) {
+                    break;
+                }
+            },
+            .escaped_double_quote => {
+                _ = try self.consume(scratch, &.{.escaped_double_quote});
+
+                const value = emitInlineLiteral(token);
+                _ = try running_text.writer.write(value);
+
+                if (open_quote.token_type == .double_quote) {
+                    break;
+                }
+            },
             else => |token_type| {
                 _ = try self.consume(scratch, &.{token_type});
                 const value = emitInlineLiteral(token);
@@ -2623,12 +2682,6 @@ fn scanHTMLAttrValQuoted(self: *Self, scratch: Allocator) !?[]const u8 {
             },
         }
     }
-
-    const close_quote = try self.consume(
-        scratch,
-        &.{open_quote.token_type},
-    ) orelse return null;
-    _ = try running_text.writer.write(emitInlineLiteral(close_quote));
 
     did_parse = true;
     return try running_text.toOwnedSlice();
@@ -2742,6 +2795,9 @@ fn emitInlineText(scratch: Allocator, token: InlineToken) ![]const u8 {
         .entity_reference
             => try resolveCharacterReference(scratch, token),
         .text => try escape.strip(scratch, token.lexeme),
+        .escaped_backtick => "`",
+        .escaped_single_quote => "'",
+        .escaped_double_quote => "\"",
         else => emitInlineLiteral(token),
     };
 
@@ -2800,6 +2856,9 @@ fn emitInlineLiteral(token: InlineToken) []const u8 {
         .hyphen => "-",
         .question_mark => "?",
         .newline => "\n",
+        .escaped_backtick => "\\`",
+        .escaped_single_quote => "\\'",
+        .escaped_double_quote => "\\\"",
     };
 
     return value;
@@ -3515,6 +3574,27 @@ test "codespan strip space" {
     );
 }
 
+// Escaping is not allowed in code spans.
+test "codespan escaped backtick" {
+    const value = "``foo\\`` bar\\`";
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(2, nodes.len);
+
+    try testing.expectEqual(ast.NodeType.inline_code, nodes[0].tag);
+    try testing.expectEqualStrings(
+        "foo\\",
+        std.mem.span(nodes[0].payload.inline_code.value),
+    );
+
+    try testing.expectEqual(ast.NodeType.text, nodes[1].tag);
+    try testing.expectEqualStrings(
+        " bar`",
+        std.mem.span(nodes[1].payload.inline_code.value),
+    );
+}
+
 test "inline link containing emphasis" {
     const value = "[*my link*]()";
     const nodes = try parseIntoNodes(value, .empty);
@@ -4155,6 +4235,44 @@ test "html open tag quoted attributes" {
     try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
     try testing.expectEqualStrings(
         "<span id=\"bim baz\" class='foo_bar'>",
+        std.mem.span(nodes[0].payload.html.value),
+    );
+}
+
+// Backslash escapes don't work within HTML attributes but should work outside.
+test "html open tag quoted attribute escape" {
+    const value = "<span id=\"bim\\\" class='foo_bar\\'> foo\\' \\\"bar\\\"";
+
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(2, nodes.len);
+
+    try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
+    try testing.expectEqualStrings(
+        "<span id=\"bim\\\" class='foo_bar\\'>",
+        std.mem.span(nodes[0].payload.html.value),
+    );
+
+    try testing.expectEqual(ast.NodeType.text, nodes[1].tag);
+    try testing.expectEqualStrings(
+        " foo' \"bar\"",
+        std.mem.span(nodes[1].payload.html.value),
+    );
+}
+
+// Escaped backtick is allowed in quoted attribute.
+test "html open tag quoted attribute escaped backtick" {
+    const value = "<span class='foo_\\`bar'>";
+
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+
+    try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
+    try testing.expectEqualStrings(
+        "<span class='foo_\\`bar'>",
         std.mem.span(nodes[0].payload.html.value),
     );
 }

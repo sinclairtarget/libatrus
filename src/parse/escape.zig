@@ -8,7 +8,18 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-/// Returns a copy of the given string with backslash escapes removed.
+/// Returns a copy of the given string with backslash characters that are
+/// backslash-escaping removed.
+///
+/// This function just cleans up the backslash characters that we no longer
+/// need. The actual semantic backslash-escaping is done elsewhere. This
+/// function should only be called on text where the backslash-escapes were
+/// respected.
+///
+/// This function only removes backslashes before ASCII punctuation characters
+/// since only ASCII punctuation characters can be escaped. This function
+/// removes all such backslashes since we assume all valid backslash-escapes in
+/// the input string were respected.
 ///
 /// https://spec.commonmark.org/0.30/#backslash-escapes
 pub fn strip(alloc: Allocator, s: []const u8) ![]const u8 {
