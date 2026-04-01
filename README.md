@@ -1,9 +1,9 @@
+# Atrus
 > Reward? I'm sorry but all I have to offer you is... the library on the island
 > of Myst. The books, that are contained there. Feel free to explore.
 
 —Atrus, _Myst (1993)_
 
-# Atrus
 Atrus parses [MyST-flavored Markdown](https://mystmd.org/spec/overview) into
 the MyST abstract syntax tree. It can render the AST as JSON or as HTML. Other
 renderers might be added in the future.
