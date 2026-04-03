@@ -85,14 +85,6 @@ fn tokenize(self: *Self, scratch: Allocator) !InlineToken {
     const result: ?TokenizeResult = while (self.i < self.in.len) {
         // First, try regular tokens
         const regular_result: ?TokenizeResult = blk: {
-            if (try self.matchAbsoluteURI(scratch)) |result| {
-                break :blk result;
-            }
-
-            if (try self.matchEmailAddress(scratch)) |result| {
-                break :blk result;
-            }
-
             if (try self.matchSingleCharTokens(scratch)) |result| {
                 break :blk result;
             }
@@ -237,9 +229,10 @@ fn matchEscapedTokens(self: Self, scratch: Allocator) !?TokenizeResult {
     }
 
     const token_type: InlineTokenType = switch (self.in[lookahead_i]) {
-        '`'  => .escaped_backtick,
         '\'' => .escaped_single_quote,
         '"'  => .escaped_double_quote,
+        '>'  => .escaped_r_angle_bracket,
+        '`'  => .escaped_backtick,
         else => return null,
     };
     lookahead_i += 1;
@@ -736,237 +729,6 @@ fn matchDelimUnderRun(
     };
 }
 
-fn matchAbsoluteURI(self: Self, scratch: Allocator) !?TokenizeResult {
-    var lookahead_i = self.i;
-
-    const State = enum { start, scheme_start, scheme, rest, end };
-    fsm: switch (State.start) {
-        .start => {
-            if (self.in[lookahead_i] != '<') {
-                return null;
-            }
-
-            lookahead_i += 1;
-            continue :fsm .scheme_start;
-        },
-        .scheme_start => {
-            if (lookahead_i >= self.in.len) {
-                return null;
-            }
-
-            switch (self.in[lookahead_i]) {
-                'a'...'z', 'A'...'Z' => {
-                    lookahead_i += 1;
-                    continue :fsm .scheme;
-                },
-                else => return null,
-            }
-        },
-        .scheme => {
-            if (lookahead_i >= self.in.len) {
-                return null;
-            }
-
-            switch (self.in[lookahead_i]) {
-                'a'...'z', 'A'...'Z', '0'...'9', '+', '.', '-' => {
-                    lookahead_i += 1;
-                    continue :fsm .scheme;
-                },
-                ':' => {
-                    const scheme_start = self.i + 1; // handles leading '<'
-                    const scheme_len = lookahead_i - scheme_start;
-                    if (scheme_len < 2 or scheme_len > 32) {
-                        return null;
-                    }
-
-                    lookahead_i += 1;
-                    continue :fsm .rest;
-                },
-                else => return null,
-            }
-        },
-        .rest => {
-            if (lookahead_i >= self.in.len) {
-                return null;
-            }
-
-            switch (self.in[lookahead_i]) {
-                '<', ' ' => return null,
-                '>' => continue :fsm .end,
-                else => |b| {
-                    if (std.ascii.isControl(b)) {
-                        return null;
-                    }
-
-                    lookahead_i += 1;
-                    continue :fsm .rest;
-                },
-            }
-        },
-        .end => {
-            if (self.in[lookahead_i] != '>') {
-                return null;
-            }
-
-            lookahead_i += 1;
-        }
-    }
-
-    const tokens = try evaluateTokens(
-        scratch,
-        .absolute_uri,
-        .default,
-        // Don't include angle brackets in lexeme
-        self.in[self.i + 1..lookahead_i - 1],
-    );
-    return .{
-        .tokens = tokens,
-        .next_i = lookahead_i,
-    };
-}
-
-/// Recognizes an email address.
-///
-/// <
-/// [a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+
-/// @
-/// [a-zA-Z0-9]([a-zA-Z0-9-]{0, 61}[a-zA-Z0-9])?
-/// (\.[a-zA-Z0-9]([a-zA-Z0-9-]{0, 61}[a-zA-Z0-9])*
-/// >
-fn matchEmailAddress(self: Self, scratch: Allocator) !?TokenizeResult {
-    var lookahead_i = self.i;
-
-    var host_component_len: usize = 0; // max of 63 for each '.'-delimited part
-    const State = enum {
-        start,
-        name_start,
-        name,
-        host_start,
-        host,
-        host_end,
-        end,
-    };
-    fsm: switch (State.start) {
-        .start => {
-            if (self.in[lookahead_i] != '<') {
-                return null;
-            }
-
-            lookahead_i += 1;
-            continue :fsm .name_start;
-        },
-        .name_start => {
-            if (lookahead_i >= self.in.len) {
-                return null;
-            }
-
-            switch (self.in[lookahead_i]) {
-                'a'...'z', 'A'...'Z', '0'...'9', '.', '!', '#', '$', '%', '&',
-                '\'', '*', '+', '/', '=', '?', '^', '_', '`', '{', '|', '}',
-                '~', '-' => {
-                    lookahead_i += 1;
-                    continue :fsm .name;
-                },
-                else => return null,
-            }
-        },
-        .name => {
-            if (lookahead_i >= self.in.len) {
-                return null;
-            }
-
-            switch (self.in[lookahead_i]) {
-                'a'...'z', 'A'...'Z', '0'...'9', '.', '!', '#', '$', '%', '&',
-                '\'', '*', '+', '/', '=', '?', '^', '_', '`', '{', '|', '}',
-                '~', '-' => {
-                    lookahead_i += 1;
-                    continue :fsm .name;
-                },
-                '@' => {
-                    lookahead_i += 1;
-                    continue :fsm .host_start;
-                },
-                else => return null,
-            }
-        },
-        .host_start => {
-            if (lookahead_i >= self.in.len) {
-                return null;
-            }
-
-            switch (self.in[lookahead_i]) {
-                'a'...'z', 'A'...'Z', '0'...'9' => {
-                    lookahead_i += 1;
-                    host_component_len += 1;
-                    continue :fsm .host_end;
-                },
-                else => return null,
-            }
-        },
-        .host => {
-            if (lookahead_i >= self.in.len) {
-                return null;
-            }
-
-            if (host_component_len >= 63) {
-                return null;
-            }
-
-            switch (self.in[lookahead_i]) {
-                'a'...'z', 'A'...'Z', '0'...'9' => {
-                    lookahead_i += 1;
-                    host_component_len += 1;
-                    continue :fsm .host_end;
-                },
-                '-' => {
-                    lookahead_i += 1;
-                    host_component_len += 1;
-                    continue :fsm .host;
-                },
-                else => return null,
-            }
-        },
-        .host_end => {
-            if (lookahead_i >= self.in.len) {
-                return null;
-            }
-
-            switch (self.in[lookahead_i]) {
-                '.' => {
-                    lookahead_i += 1;
-                    host_component_len = 0;
-                    continue :fsm .host_start;
-                },
-                'a'...'z', 'A'...'Z', '0'...'9', '-' => continue :fsm .host,
-                else => continue :fsm .end,
-            }
-        },
-        .end => {
-            if (lookahead_i >= self.in.len) {
-                return null;
-            }
-
-            if (self.in[lookahead_i] != '>') {
-                return null;
-            }
-
-            lookahead_i += 1;
-        },
-    }
-
-    const tokens = try evaluateTokens(
-        scratch,
-        .email,
-        .default,
-        // Don't include angle brackets in lexeme
-        self.in[self.i + 1..lookahead_i - 1],
-    );
-    return .{
-        .tokens = tokens,
-        .next_i = lookahead_i,
-    };
-}
-
 fn matchHardLineBreak(self: Self, scratch: Allocator) !?TokenizeResult {
     var lookahead_i = self.i;
 
@@ -1135,11 +897,11 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
             }
 
             switch (self.in[lookahead_i]) {
-                '`', '\'', '"' => @panic(
-                    "escaped backtick or quote should have been matched " ++
-                    "already as escaped token"
+                '`', '\'', '"', '>' => @panic(
+                    "escaped backtick, quote, or right angle bracket " ++
+                    "should have been matched already as escaped token"
                 ),
-                '&', '[', ']', '<', '>', '(', ')', '*', '_',
+                '&', '[', ']', '<', '(', ')', '*', '_',
                 '!', '#'...'%', '+'...'/', ':', ';', '=', '?', '@', '^',
                 '{'...'~' => {
                     lookahead_i += 1; // skip escaped character
@@ -1270,9 +1032,10 @@ fn evaluateTokens(
         .hyphen,
         .question_mark,
         .newline,
-        .escaped_backtick,
         .escaped_single_quote,
-        .escaped_double_quote => {
+        .escaped_double_quote,
+        .escaped_r_angle_bracket,
+        .escaped_backtick => {
             try tokens.append(scratch, InlineToken{
                 .token_type = token_type,
             });
@@ -1293,8 +1056,6 @@ fn evaluateTokens(
         .decimal_character_reference,
         .hexadecimal_character_reference,
         .entity_reference,
-        .absolute_uri,
-        .email,
         .backtick,
         .whitespace,
         .hard_break,
@@ -1492,19 +1253,6 @@ test "quotes" {
         .text,
         .single_quote,
     }, line);
-}
-
-test "absolute URI" {
-    const line = "<http://foo.com/bar?f=1&b=bim%20bam> next";
-    try expectEqualTokens(&.{.absolute_uri, .whitespace, .text}, line);
-
-    const line2 = "<http://foo.com/(!)bar?bim[]=zam&bim[]=fam> next";
-    try expectEqualTokens(&.{.absolute_uri, .whitespace, .text}, line2);
-}
-
-test "email address" {
-    const line = "<person@gmail.com> next";
-    try expectEqualTokens(&.{.email, .whitespace, .text}, line);
 }
 
 test "exclamation mark" {

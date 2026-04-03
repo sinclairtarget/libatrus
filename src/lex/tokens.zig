@@ -60,17 +60,18 @@ pub const InlineTokenType = enum {
     decimal_character_reference,
     hexadecimal_character_reference,
     entity_reference,
-    absolute_uri,
-    email,
     hard_break,                  // char sequence that could be parsed as break
     // --- escaped tokens ---
     // Escaping is sometimes not allowed. See InlineTokenizer.
     // We need escaped versions of only these tokens because where
     // backslash-escaping isn't allowed these are the only tokens whose meaning
-    // is important.
-    escaped_backtick,
+    // is important. In those contexts, these tokens get treated as equivalent
+    // to their non-escaped counterparts. Otherwise they should be treated as
+    // equivalent to text.
     escaped_single_quote,
     escaped_double_quote,
+    escaped_r_angle_bracket,
+    escaped_backtick,
 };
 
 pub const BlockToken = Token(BlockTokenType);

@@ -1934,16 +1934,43 @@ fn parseURIAutolink(
     alloc: Allocator,
     scratch: Allocator,
 ) Error!?*ast.Node {
-    const uri_token = try self.consume(
-        scratch,
-        &.{.absolute_uri},
-    ) orelse return null;
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+    };
 
-    const url = try cmark.uri.normalize(scratch, scratch, uri_token.lexeme);
-    const text = try createTextNode(
-        alloc,
-        try emitInlineText(scratch, uri_token),
-    );
+    _ = try self.consume(scratch, &.{.l_angle_bracket}) orelse return null;
+
+    var running_text = Io.Writer.Allocating.init(scratch);
+
+    while (try self.peek(scratch)) |token| {
+        switch (token.token_type) {
+            .r_angle_bracket => break,
+            .escaped_r_angle_bracket => {
+                _ = try running_text.writer.write("\\");
+                break;
+            },
+            else => {
+                const value = emitInlineLiteral(token);
+                _ = try running_text.writer.write(value);
+                _ = try self.consume(scratch, &.{token.token_type});
+            },
+        }
+    }
+
+    _ = try self.consume(
+        scratch,
+        &.{.r_angle_bracket, .escaped_r_angle_bracket},
+        ) orelse return null;
+
+    const content = try running_text.toOwnedSlice();
+    if (!isValidAbsoluteURI(content)) {
+        return null;
+    }
+
+    const url = try cmark.uri.normalize(scratch, scratch, content);
+    const text = try createTextNode(alloc, content);
     errdefer text.deinit(alloc);
 
     const children = try alloc.dupe(*ast.Node, &.{text});
@@ -1965,7 +1992,74 @@ fn parseURIAutolink(
             },
         },
     };
+    did_parse = true;
     return inline_link;
+}
+
+/// Returns true if the given string is a valid absolute URI according to the
+/// commonmark spec, false otherwise.
+///
+/// https://spec.commonmark.org/0.30/#absolute-uri
+fn isValidAbsoluteURI(content: []const u8) bool {
+    var lookahead_i: usize = 0;
+
+    const State = enum { start, scheme, rest };
+    fsm: switch (State.start) {
+        .start => {
+            if (lookahead_i >= content.len) {
+                return false;
+            }
+
+            switch (content[lookahead_i]) {
+                'a'...'z', 'A'...'Z' => {
+                    lookahead_i += 1;
+                    continue :fsm .scheme;
+                },
+                else => return false,
+            }
+        },
+        .scheme => {
+            if (lookahead_i >= content.len) {
+                return false;
+            }
+
+            switch (content[lookahead_i]) {
+                'a'...'z', 'A'...'Z', '0'...'9', '+', '.', '-' => {
+                    lookahead_i += 1;
+                    continue :fsm .scheme;
+                },
+                ':' => {
+                    const scheme_len = lookahead_i;
+                    if (scheme_len < 2 or scheme_len > 32) {
+                        return false;
+                    }
+
+                    lookahead_i += 1;
+                    continue :fsm .rest;
+                },
+                else => return false,
+            }
+        },
+        .rest => {
+            if (lookahead_i >= content.len) {
+                break :fsm; // 0 characters after the scheme is allowed
+            }
+
+            switch (content[lookahead_i]) {
+                '<', '>', ' ' => return false,
+                else => |b| {
+                    if (std.ascii.isControl(b)) {
+                        return false;
+                    }
+
+                    lookahead_i += 1;
+                    continue :fsm .rest;
+                },
+            }
+        },
+    }
+
+    return true;
 }
 
 fn parseEmailAutolink(
@@ -1973,21 +2067,51 @@ fn parseEmailAutolink(
     alloc: Allocator,
     scratch: Allocator,
 ) Error!?*ast.Node {
-    const email_token = try self.consume(
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+    };
+
+    _ = try self.consume(scratch, &.{.l_angle_bracket}) orelse return null;
+
+    var running_text = Io.Writer.Allocating.init(scratch);
+
+    while (try self.peek(scratch)) |token| {
+        switch (token.token_type) {
+            .r_angle_bracket => break,
+            .escaped_r_angle_bracket => {
+                _ = try running_text.writer.write("\\");
+                break;
+            },
+            else => {
+                const value = emitInlineLiteral(token);
+                _ = try running_text.writer.write(value);
+                _ = try self.consume(scratch, &.{token.token_type});
+            },
+        }
+    }
+
+    _ = try self.consume(
         scratch,
-        &.{.email},
+        &.{.r_angle_bracket, .escaped_r_angle_bracket},
     ) orelse return null;
+
+    const content = try running_text.toOwnedSlice();
+    if (!isValidEmailAddress(content)) {
+        return null;
+    }
+
+    const text = try createTextNode(alloc, content);
+    errdefer text.deinit(alloc);
 
     const url = try fmt.allocPrintSentinel(
         alloc,
         "mailto:{s}",
-        .{email_token.lexeme},
+        .{content},
         0,
     );
-    const text = try createTextNode(
-        alloc,
-        try emitInlineText(scratch, email_token),
-    );
+    errdefer alloc.free(url);
 
     const children = try alloc.dupe(*ast.Node, &.{text});
     errdefer alloc.free(children);
@@ -2005,7 +2129,118 @@ fn parseEmailAutolink(
             },
         },
     };
+    did_parse = true;
     return inline_link;
+}
+
+/// Returns true if the given string is a valid email address according to the
+/// commonmark spec; false otherwise.
+///
+/// [a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+
+/// @
+/// [a-zA-Z0-9]([a-zA-Z0-9-]{0, 61}[a-zA-Z0-9])?
+/// (\.[a-zA-Z0-9]([a-zA-Z0-9-]{0, 61}[a-zA-Z0-9])*
+fn isValidEmailAddress(content: []const u8) bool {
+    var lookahead_i: usize = 0;
+
+    var host_component_len: usize = 0; // max of 63 for each '.'-delimited part
+    const State = enum {
+        name_start,
+        name,
+        host_start,
+        host,
+        host_end,
+    };
+    fsm: switch (State.name_start) {
+        .name_start => {
+            if (lookahead_i >= content.len) {
+                return false;
+            }
+
+            switch (content[lookahead_i]) {
+                'a'...'z', 'A'...'Z', '0'...'9', '.', '!', '#', '$', '%', '&',
+                '\'', '*', '+', '/', '=', '?', '^', '_', '`', '{', '|', '}',
+                '~', '-' => {
+                    lookahead_i += 1;
+                    continue :fsm .name;
+                },
+                else => return false,
+            }
+        },
+        .name => {
+            if (lookahead_i >= content.len) {
+                return false;
+            }
+
+            switch (content[lookahead_i]) {
+                'a'...'z', 'A'...'Z', '0'...'9', '.', '!', '#', '$', '%', '&',
+                '\'', '*', '+', '/', '=', '?', '^', '_', '`', '{', '|', '}',
+                '~', '-' => {
+                    lookahead_i += 1;
+                    continue :fsm .name;
+                },
+                '@' => {
+                    lookahead_i += 1;
+                    continue :fsm .host_start;
+                },
+                else => return false,
+            }
+        },
+        .host_start => {
+            if (lookahead_i >= content.len) {
+                return false;
+            }
+
+            switch (content[lookahead_i]) {
+                'a'...'z', 'A'...'Z', '0'...'9' => {
+                    lookahead_i += 1;
+                    host_component_len += 1;
+                    continue :fsm .host_end;
+                },
+                else => return false,
+            }
+        },
+        .host => {
+            if (lookahead_i >= content.len) {
+                return false;
+            }
+
+            if (host_component_len >= 63) {
+                return false;
+            }
+
+            switch (content[lookahead_i]) {
+                'a'...'z', 'A'...'Z', '0'...'9' => {
+                    lookahead_i += 1;
+                    host_component_len += 1;
+                    continue :fsm .host_end;
+                },
+                '-' => {
+                    lookahead_i += 1;
+                    host_component_len += 1;
+                    continue :fsm .host;
+                },
+                else => return false,
+            }
+        },
+        .host_end => {
+            if (lookahead_i >= content.len) {
+                break :fsm;
+            }
+
+            switch (content[lookahead_i]) {
+                '.' => {
+                    lookahead_i += 1;
+                    host_component_len = 0;
+                    continue :fsm .host_start;
+                },
+                'a'...'z', 'A'...'Z', '0'...'9', '-' => continue :fsm .host,
+                else => return false,
+            }
+        },
+    }
+
+    return true;
 }
 
 /// https://spec.commonmark.org/0.30/#hard-line-breaks
@@ -2795,9 +3030,10 @@ fn emitInlineText(scratch: Allocator, token: InlineToken) ![]const u8 {
         .entity_reference
             => try resolveCharacterReference(scratch, token),
         .text => try escape.strip(scratch, token.lexeme),
-        .escaped_backtick => "`",
         .escaped_single_quote => "'",
         .escaped_double_quote => "\"",
+        .escaped_r_angle_bracket => ">",
+        .escaped_backtick => "`",
         else => emitInlineLiteral(token),
     };
 
@@ -2831,8 +3067,6 @@ fn emitInlineLiteral(token: InlineToken) []const u8 {
         .decimal_character_reference,
         .hexadecimal_character_reference,
         .entity_reference,
-        .absolute_uri,
-        .email,
         .backtick,
         .whitespace,
         .text,
@@ -2856,9 +3090,10 @@ fn emitInlineLiteral(token: InlineToken) []const u8 {
         .hyphen => "-",
         .question_mark => "?",
         .newline => "\n",
-        .escaped_backtick => "\\`",
         .escaped_single_quote => "\\'",
         .escaped_double_quote => "\\\"",
+        .escaped_r_angle_bracket => "\\>",
+        .escaped_backtick => "\\`",
     };
 
     return value;
