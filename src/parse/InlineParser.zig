@@ -172,10 +172,6 @@ pub fn parse(
     return try nodes.toOwnedSlice();
 }
 
-// strong => open inner close
-// open   => l_star l_star | lr_star lr_star
-// close  => r_star r_star | lr_star lr_star
-// inner  => (link | emph | strong | text)+
 fn parseStarStrong(
     self: *Self,
     alloc: Allocator,
@@ -192,6 +188,10 @@ fn parseStarStrong(
         children.deinit();
     };
 
+    // strong => open inner close
+    // open   => l_star l_star | lr_star lr_star
+    // close  => r_star r_star | lr_star lr_star
+    // inner  => (link | emph | strong | text etc.)+
     const open_token = try self.consume(scratch, &.{
         .l_delim_star,
         .lr_delim_star,
@@ -239,17 +239,22 @@ fn parseStarStrong(
         }
 
         // Check for closing condition
-        if (try self.peek(scratch)) |node| {
-            switch (node.token_type) {
-                .r_delim_star, .lr_delim_star => |t| {
-                    if (try self.peekAhead(scratch, 2)) |next_node| {
-                        if (next_node.token_type == t) {
-                            break;
-                        }
-                    }
-                },
-                else => {},
+        const can_close = blk: {
+            const token = try self.peek(scratch) orelse break :blk false;
+            const close_token_type = switch (token.token_type) {
+                .r_delim_star, .lr_delim_star => |t| t,
+                else => break :blk false,
+            };
+
+            const next = try self.peekAhead(scratch, 2) orelse break :blk false;
+            if (next.token_type != close_token_type) {
+                break :blk false;
             }
+
+            break :blk isValidBySumOfLengthsRule(open_token, token);
+        };
+        if (can_close) {
+            break;
         }
 
         const text_fallback_value = try self.scanTextFallback(scratch);
@@ -295,11 +300,6 @@ fn parseStarStrong(
     return node;
 }
 
-// star_emph  => open inner close
-// open  => l_star | lr_star
-// close => r_star | lr_star
-// inner => (star_emph? (link | under_emph | strong | text) star_emph?)+
-//
 /// Parse emphasis using star delimiters.
 ///
 /// We don't allow star-delimited emphasis to nest immediately inside each
@@ -320,14 +320,21 @@ fn parseStarEmphasis(
         children.deinit();
     };
 
+    // star_emph  => open inner close
+    // open  => l_star | lr_star
+    // close => r_star | lr_star
+    // inner => (star_emph? (non-text | text) star_emph?)+
+    // non-text => image | link | strong | code etc. etc.
     const open_token = try self.consume(scratch, &.{
         .l_delim_star,
         .lr_delim_star,
     }) orelse return null;
 
     for (0..util.safety.loop_bound) |_| {
+        // leading star_emph?
         const maybe_leading_emph = try self.parseStarEmphasis(alloc, scratch);
 
+        // Handle non-text nodes
         if (blk: {
             if (try self.parseInlineCode(alloc, scratch)) |code| {
                 break :blk code;
@@ -359,43 +366,60 @@ fn parseStarEmphasis(
                 try children.append(emph);
             }
             try children.append(node);
+
+            // trailing star_emph?
             if (try self.parseStarEmphasis(alloc, scratch)) |emph| {
                 try children.append(emph);
             }
             continue;
         }
 
-        const text_value = try self.scanText(scratch);
-        if (text_value.len > 0) {
+        // Handle text node. Here we need to make sure not to consume the
+        // closing delimiter.
+        const text_content = blk: {
+            const text_value = try self.scanText(scratch);
+            if (text_value.len > 0) {
+                break :blk text_value;
+            }
+
+            // Check for closing condition
+            if (try self.peek(scratch)) |token| {
+                switch (token.token_type) {
+                    .r_delim_star, .lr_delim_star => {
+                        if (isValidBySumOfLengthsRule(open_token, token)) {
+                            break :blk "";
+                        }
+                    },
+                    else => {},
+                }
+            }
+
+            // Okay, if we don't have a closing condition, allow basically
+            // anything.
+            const fallback_text_value = try self.scanTextFallback(scratch);
+            break :blk fallback_text_value;
+        };
+        if (text_content.len > 0) {
             if (maybe_leading_emph) |emph| {
                 try children.append(emph);
             }
-            try children.appendText(text_value);
+            try children.appendText(text_content);
+
+            // trailing star_emph?
             if (try self.parseStarEmphasis(alloc, scratch)) |emph| {
                 try children.append(emph);
             }
             continue;
         }
 
-        // failed to parse anything
+        // We failed to parse anything valid this loop. If we parsed just a
+        // single emphasis node, that's not allowed.
         if (maybe_leading_emph) |emph| {
             emph.deinit(alloc);
+            return null;
         }
 
-        // Check for closing condition
-        if (try self.peek(scratch)) |node| {
-            switch (node.token_type) {
-                .r_delim_star, .lr_delim_star => break,
-                else => {},
-            }
-        }
-
-        const text_fallback_value = try self.scanTextFallback(scratch);
-        if (text_fallback_value.len > 0) {
-            try children.appendText(text_fallback_value);
-            continue;
-        }
-
+        // Reached end of interior content
         break;
     } else @panic(util.safety.loop_bound_panic_msg);
 
@@ -429,10 +453,6 @@ fn parseStarEmphasis(
     return emphasis_node;
 }
 
-// strong => open inner close
-// open   => l_star l_star | lr_star lr_star
-// close  => r_star r_star | lr_star lr_star
-// inner  => (link | emph | strong | text)+
 fn parseUnderscoreStrong(
     self: *Self,
     alloc: Allocator,
@@ -449,6 +469,10 @@ fn parseUnderscoreStrong(
         children.deinit();
     };
 
+    // strong => open inner close
+    // open   => l_star l_star | lr_star lr_star
+    // close  => r_star r_star | lr_star lr_star
+    // inner  => (link | emph | strong | text)+
     const open_token = try self.peek(scratch) orelse return null;
     switch (open_token.token_type) {
         .l_delim_underscore => |t| {
@@ -505,17 +529,22 @@ fn parseUnderscoreStrong(
         }
 
         // Check for closing condition
-        if (try self.peek(scratch)) |node| {
-            switch (node.token_type) {
-                .r_delim_underscore, .lr_delim_underscore => |t| {
-                    if (try self.peekAhead(scratch, 2)) |next_node| {
-                        if (next_node.token_type == t) {
-                            break;
-                        }
-                    }
-                },
-                else => {},
+        const can_close = blk: {
+            const token = try self.peek(scratch) orelse break :blk false;
+            const close_token_type = switch (token.token_type) {
+                .r_delim_underscore, .lr_delim_underscore => |t| t,
+                else => break :blk false,
+            };
+
+            const next = try self.peekAhead(scratch, 2) orelse break :blk false;
+            if (next.token_type != close_token_type) {
+                break :blk false;
             }
+
+            break :blk isValidBySumOfLengthsRule(open_token, token);
+        };
+        if (can_close) {
+            break;
         }
 
         const text_fallback_value = try self.scanTextFallback(scratch);
@@ -570,15 +599,10 @@ fn parseUnderscoreStrong(
     return strong_node;
 }
 
-// under_emph  => open inner close
-// open  => l_underscore | lr_underscore
-// close => r_underscore | lr_underscore
-// inner => (under_emph? (link | star_emph | strong | text) under_emph?)+
-//
 /// Parse underscore-delimited emphasis.
 ///
-/// We don't allow underscore-delimited emphasis to nest immediately inside each
-/// other. (That should get parsed as strong.)
+/// We don't allow underscore-delimited emphasis to nest immediately inside
+/// each other. (That should get parsed as strong.)
 fn parseUnderscoreEmphasis(
     self: *Self,
     alloc: Allocator,
@@ -595,6 +619,11 @@ fn parseUnderscoreEmphasis(
         children.deinit();
     };
 
+    // under_emph  => open inner close
+    // open  => l_underscore | lr_underscore
+    // close => r_underscore | lr_underscore
+    // inner => (under_emph? (non-text | text) under_emph?)+
+    // non-text => image | link | strong etc. etc.
     const open_token = try self.peek(scratch) orelse return null;
     switch (open_token.token_type) {
         .l_delim_underscore => _ = try self.consume(scratch, &.{.l_delim_underscore}),
@@ -610,8 +639,10 @@ fn parseUnderscoreEmphasis(
     }
 
     for (0..util.safety.loop_bound) |_| {
+        // leading under_emph?
         const maybe_leading_emph = try self.parseUnderscoreEmphasis(alloc, scratch);
 
+        // Handle non-text nodes
         if (blk: {
             if (try self.parseInlineCode(alloc, scratch)) |code| {
                 break :blk code;
@@ -643,43 +674,58 @@ fn parseUnderscoreEmphasis(
                 try children.append(emph);
             }
             try children.append(node);
+
+            // trailing under_emph?
             if (try self.parseUnderscoreEmphasis(alloc, scratch)) |emph| {
                 try children.append(emph);
             }
             continue;
         }
 
-        const text_value = try self.scanText(scratch);
-        if (text_value.len > 0) {
+        // Handle text node. Here we need to make sure not to consume the
+        // closing delimiter.
+        const text_content = blk: {
+            const text_value = try self.scanText(scratch);
+            if (text_value.len > 0) {
+                break :blk text_value;
+            }
+
+            // Check for closing condition
+            if (try self.peek(scratch)) |token| {
+                switch (token.token_type) {
+                    .r_delim_underscore, .lr_delim_underscore => {
+                        if (isValidBySumOfLengthsRule(open_token, token)) {
+                            break :blk "";
+                        }
+                    },
+                    else => {},
+                }
+            }
+
+            // Okay, if we don't have a closing delimiter, allow basically
+            // anything.
+            const fallback_text_value = try self.scanTextFallback(scratch);
+            break :blk fallback_text_value;
+        };
+        if (text_content.len > 0) {
             if (maybe_leading_emph) |emph| {
                 try children.append(emph);
             }
-            try children.appendText(text_value);
+            try children.appendText(text_content);
             if (try self.parseStarEmphasis(alloc, scratch)) |emph| {
                 try children.append(emph);
             }
             continue;
         }
 
-        // failed to parse anything
+        // We failed to parse anything valid this loop. If we parsed just a
+        // single emphasis node, that's not allowed.
         if (maybe_leading_emph) |emph| {
             emph.deinit(alloc);
+            return null;
         }
 
-        // Check for closing condition
-        if (try self.peek(scratch)) |node| {
-            switch (node.token_type) {
-                .r_delim_underscore, .lr_delim_underscore => break,
-                else => {},
-            }
-        }
-
-        const text_fallback_value = try self.scanTextFallback(scratch);
-        if (text_fallback_value.len > 0) {
-            try children.appendText(text_fallback_value);
-            continue;
-        }
-
+        // Reached end of interior content
         break;
     } else @panic(util.safety.loop_bound_panic_msg);
 
@@ -690,9 +736,12 @@ fn parseUnderscoreEmphasis(
 
     const close_token = try self.peek(scratch) orelse return null;
     switch (close_token.token_type) {
-        .r_delim_underscore => _ = try self.consume(scratch, &.{.r_delim_underscore}),
+        .r_delim_underscore => {
+            _ = try self.consume(scratch, &.{.r_delim_underscore});
+        },
         .lr_delim_underscore => {
-            // Can only close emphasis if delimiter run is followed by punctuation
+            // Can only close emphasis if delimiter run is followed by
+            // punctuation.
             if (!close_token.context.delim_underscore.followed_by_punct) {
                 return null;
             }
@@ -723,9 +772,12 @@ fn parseUnderscoreEmphasis(
 }
 
 /// Checks commonmark spec rule 9. and 10. for parsing emphasis and strong
-/// emphasis.
+/// emphasis. Returns true if the emphasis is valid, false otherwise.
 ///
-/// Returns true if the emphasis is valid, false otherwise.
+/// Delimiter run length comes from token context.
+///
+/// This function trivially evaluates to true if neither the open nor the close
+/// token is an lr delimiter.
 fn isValidBySumOfLengthsRule(open: InlineToken, close: InlineToken) bool {
     if (
         open.token_type == .lr_delim_star
@@ -738,14 +790,14 @@ fn isValidBySumOfLengthsRule(open: InlineToken, close: InlineToken) bool {
         if (sum_of_len % 3 == 0) {
             return (
                 open.context.delim_star.run_len % 3 == 0
-                and open.context.delim_star.run_len % 3 == 0
+                and close.context.delim_star.run_len % 3 == 0
             );
         }
     }
 
     if (
         open.token_type == .lr_delim_underscore
-        and close.token_type == .lr_delim_underscore
+        or close.token_type == .lr_delim_underscore
     ) {
         const sum_of_len = (
             open.context.delim_underscore.run_len
@@ -754,7 +806,7 @@ fn isValidBySumOfLengthsRule(open: InlineToken, close: InlineToken) bool {
         if (sum_of_len % 3 == 0) {
             return (
                 open.context.delim_underscore.run_len % 3 == 0
-                and open.context.delim_underscore.run_len % 3 == 0
+                and close.context.delim_underscore.run_len % 3 == 0
             );
         }
     }
@@ -3012,6 +3064,7 @@ fn scanText(self: *Self, scratch: Allocator) ![]const u8 {
     return try running_text.toOwnedSlice();
 }
 
+/// Consumes exactly one token of ANY type and emits it as regular text.
 fn scanTextFallback(self: *Self, scratch: Allocator) ![]const u8 {
     const token = try self.peek(scratch) orelse return "";
     _ = try self.consume(scratch, &.{token.token_type});
@@ -3413,59 +3466,6 @@ test "bad star strong given spacing" {
     try testing.expectEqual(ast.NodeType.text, nodes[0].tag);
 }
 
-test "unmatched nested underscore" {
-    const value = "*foo _bar*";
-    const nodes = try parseIntoNodes(value, .empty);
-    defer freeNodes(nodes);
-
-    try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(
-        ast.NodeType.emphasis,
-        nodes[0].tag,
-    );
-    try testing.expectEqual(1, nodes[0].payload.emphasis.n_children);
-
-    try testing.expectEqual(
-        ast.NodeType.text,
-        nodes[0].payload.emphasis.children[0].tag,
-    );
-    try testing.expectEqualStrings(
-        "foo _bar",
-        std.mem.span(nodes[0].payload.emphasis.children[0].payload.text.value),
-    );
-}
-
-test "triple underscore strong nested" {
-    const value = "This is ___a strong in an emphasis___.";
-    const nodes = try parseIntoNodes(value, .empty);
-    defer freeNodes(nodes);
-
-    try testing.expectEqual(3, nodes.len);
-    try testing.expectEqual(ast.NodeType.text, nodes[0].tag);
-    try testing.expectEqualStrings(
-        "This is ",
-        std.mem.span(nodes[0].payload.text.value),
-    );
-
-    try testing.expectEqual(
-        ast.NodeType.emphasis,
-        nodes[1].tag,
-    );
-    try testing.expectEqual(
-        ast.NodeType.strong,
-        nodes[1].payload.emphasis.children[0].tag,
-    );
-    try testing.expectEqualStrings(
-        "a strong in an emphasis",
-        std.mem.span(
-            nodes[1].payload.emphasis.children[0].payload.strong.children[0].payload.text.value,
-        ),
-    );
-
-    try testing.expectEqual(ast.NodeType.text, nodes[2].tag);
-    try testing.expectEqualStrings(".", std.mem.span(nodes[2].payload.text.value));
-}
-
 test "star strong nested inside star emphasis" {
     const value = "This ***is strong** that is also emphasized*.";
     const nodes = try parseIntoNodes(value, .empty);
@@ -3536,6 +3536,30 @@ test "star emphasis nested inside star strong" {
     );
 
     try testing.expectEqual(ast.NodeType.text, nodes[2].tag);
+}
+
+test "star strong interior sum of lengths rule" {
+    // See the "underscore emphasis interior sum of lengths rule" for a fuller
+    // explanation of this test.
+    //
+    // This test is similar to commonmark example 411 but uses strong nodes
+    // instead of emphasis nodes.
+    const value = "**(foo)****(bar)**";
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.strong, nodes[0].tag);
+    try testing.expectEqual(1, nodes[0].payload.strong.n_children);
+
+    try testing.expectEqual(
+        ast.NodeType.text,
+        nodes[0].payload.strong.children[0].tag,
+    );
+    try testing.expectEqualStrings(
+        "(foo)****(bar)",
+        std.mem.span(nodes[0].payload.strong.children[0].payload.text.value),
+    );
 }
 
 test "underscore emphasis" {
@@ -3629,6 +3653,37 @@ test "underscore emphasis nested unmatched" {
     );
 }
 
+test "underscore emphasis interior sum of lengths rule" {
+    // Just "_(foo)_(bar)_" with a single underscore in the middle would parse
+    // as one emphasis containing "(foo)" and then "(bar)_" as text.
+    //
+    // Adding a second underscore in the middle means that the sum of lengths
+    // rule becomes relevant. The emphasis opened by the underscore before
+    // "(foo)" can't close with the underscores immediately following "(foo)",
+    // because the lengths sum to three. So the interior underscores should get
+    // parsed as simple text content and the emphasis should be closed with the
+    // last underscore after "(bar)".
+    //
+    // See Commonmark example 411 for a similar test for star-delimited
+    // emphasis.
+    const value = "_(foo)__(bar)_";
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.emphasis, nodes[0].tag);
+    try testing.expectEqual(1, nodes[0].payload.emphasis.n_children);
+
+    try testing.expectEqual(
+        ast.NodeType.text,
+        nodes[0].payload.emphasis.children[0].tag,
+    );
+    try testing.expectEqualStrings(
+        "(foo)__(bar)",
+        std.mem.span(nodes[0].payload.emphasis.children[0].payload.text.value),
+    );
+}
+
 test "underscore strong" {
     const value = "This is __strongly emphasized__.";
     const nodes = try parseIntoNodes(value, .empty);
@@ -3662,6 +3717,80 @@ test "underscore strong with nested unmatched" {
     try testing.expectEqualStrings(
         "foo*bar",
         std.mem.span(nodes[0].payload.strong.children[0].payload.text.value),
+    );
+}
+
+test "underscore strong interior sum of lengths rule" {
+    // See the "underscore emphasis interior sum of lengths rule" for a fuller
+    // explanation of this test.
+    const value = "__(foo)____(bar)__";
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.strong, nodes[0].tag);
+    try testing.expectEqual(1, nodes[0].payload.strong.n_children);
+
+    try testing.expectEqual(
+        ast.NodeType.text,
+        nodes[0].payload.strong.children[0].tag,
+    );
+    try testing.expectEqualStrings(
+        "(foo)____(bar)",
+        std.mem.span(nodes[0].payload.strong.children[0].payload.text.value),
+    );
+}
+
+test "triple underscore strong nested" {
+    const value = "This is ___a strong in an emphasis___.";
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(3, nodes.len);
+    try testing.expectEqual(ast.NodeType.text, nodes[0].tag);
+    try testing.expectEqualStrings(
+        "This is ",
+        std.mem.span(nodes[0].payload.text.value),
+    );
+
+    try testing.expectEqual(
+        ast.NodeType.emphasis,
+        nodes[1].tag,
+    );
+    try testing.expectEqual(
+        ast.NodeType.strong,
+        nodes[1].payload.emphasis.children[0].tag,
+    );
+    try testing.expectEqualStrings(
+        "a strong in an emphasis",
+        std.mem.span(
+            nodes[1].payload.emphasis.children[0].payload.strong.children[0].payload.text.value,
+        ),
+    );
+
+    try testing.expectEqual(ast.NodeType.text, nodes[2].tag);
+    try testing.expectEqualStrings(".", std.mem.span(nodes[2].payload.text.value));
+}
+
+test "unmatched nested underscore" {
+    const value = "*foo _bar*";
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(
+        ast.NodeType.emphasis,
+        nodes[0].tag,
+    );
+    try testing.expectEqual(1, nodes[0].payload.emphasis.n_children);
+
+    try testing.expectEqual(
+        ast.NodeType.text,
+        nodes[0].payload.emphasis.children[0].tag,
+    );
+    try testing.expectEqualStrings(
+        "foo _bar",
+        std.mem.span(nodes[0].payload.emphasis.children[0].payload.text.value),
     );
 }
 
