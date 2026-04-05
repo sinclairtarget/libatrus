@@ -9,6 +9,14 @@
 //! in the final AST as nodes. Both kinds of functions are responsible for
 //! backtracking to ensure that the parser is only advanced after successfully
 //! parsing something.
+//!
+//! One of the most complicated parts of the inline parser is parsing emphasis
+//! and strong emphasis. In particular, making sure that interleaved
+//! star- and underscore-delimited emphasis is parsed correctly requires us to
+//! pass down the last opening token (of the other delimiter type) through the
+//! recursive descent parser. This gives us enough information to make sure
+//! that the emphasis opening sooner always takes precedence. (This is emphasis
+//! parsing rule 15 in the CommonMark specification.)
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -176,6 +184,7 @@ fn parseStarStrong(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
+    options: struct { maybe_underscore_open_token: ?InlineToken = null },
 ) Error!?*ast.Node {
     var did_parse = false;
     var children = NodeList.init(alloc, scratch, createTextNode);
@@ -222,12 +231,52 @@ fn parseStarStrong(
             continue;
         }
 
-        if (try self.parseAnyEmphasis(alloc, scratch)) |emph| {
+        if (
+            try self.parseStarEmphasis(
+                alloc,
+                scratch,
+                .{
+                    .maybe_underscore_open_token =
+                        options.maybe_underscore_open_token,
+                },
+            )
+        ) |emph| {
             try children.append(emph);
             continue;
         }
 
-        if (try self.parseAnyStrong(alloc, scratch)) |strong| {
+        if (
+            try self.parseUnderscoreEmphasis(
+                alloc,
+                scratch,
+                .{.maybe_star_open_token = open_token},
+            )
+        ) |emph| {
+            try children.append(emph);
+            continue;
+        }
+
+        if (
+            try self.parseStarStrong(
+                alloc,
+                scratch,
+                .{
+                    .maybe_underscore_open_token =
+                        options.maybe_underscore_open_token,
+                },
+            )
+        ) |strong| {
+            try children.append(strong);
+            continue;
+        }
+
+        if (
+            try self.parseUnderscoreStrong(
+                alloc,
+                scratch,
+                .{.maybe_star_open_token = open_token},
+            )
+        ) |strong| {
             try children.append(strong);
             continue;
         }
@@ -243,6 +292,20 @@ fn parseStarStrong(
             const token = try self.peek(scratch) orelse break :blk false;
             const close_token_type = switch (token.token_type) {
                 .r_delim_star, .lr_delim_star => |t| t,
+                .r_delim_underscore, .lr_delim_underscore => {
+                    // Handle interleaved emphasis.
+                    const underscore_open_token = (
+                        options.maybe_underscore_open_token
+                        orelse break :blk false
+                    );
+                    if (isValidBySumOfLengthsRule(underscore_open_token, token)) {
+                        // Ancestor closes before this emphasis can close.
+                        // Give up.
+                        return null;
+                    }
+
+                    break :blk false;
+                },
                 else => break :blk false,
             };
 
@@ -308,6 +371,7 @@ fn parseStarEmphasis(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
+    options: struct { maybe_underscore_open_token: ?InlineToken = null },
 ) Error!?*ast.Node {
     var did_parse = false;
     var children = NodeList.init(alloc, scratch, createTextNode);
@@ -331,8 +395,19 @@ fn parseStarEmphasis(
     }) orelse return null;
 
     for (0..util.safety.loop_bound) |_| {
+        var did_parse_this_loop = false;
+
         // leading star_emph?
-        const maybe_leading_emph = try self.parseStarEmphasis(alloc, scratch);
+        const maybe_leading_emph = try self.parseStarEmphasis(
+            alloc,
+            scratch,
+            .{.maybe_underscore_open_token = options.maybe_underscore_open_token},
+        );
+        defer if (!did_parse_this_loop) {
+            if (maybe_leading_emph) |emph| {
+                emph.deinit(alloc);
+            }
+        };
 
         // Handle non-text nodes
         if (blk: {
@@ -352,12 +427,39 @@ fn parseStarEmphasis(
                 break :blk brk;
             }
 
-            if (try self.parseUnderscoreEmphasis(alloc, scratch)) |emph| {
+            if (
+                try self.parseUnderscoreEmphasis(
+                    alloc,
+                    scratch,
+                    .{.maybe_star_open_token = open_token},
+                )
+            ) |emph| {
                 break :blk emph;
             }
 
-            if (try self.parseAnyStrong(alloc, scratch)) |strong| {
-                break :blk strong;
+            if (
+                try self.parseStarStrong(
+                    alloc,
+                    scratch,
+                    .{
+                        .maybe_underscore_open_token =
+                            options.maybe_underscore_open_token,
+                    },
+                )
+            ) |strong| {
+                try children.append(strong);
+                continue;
+            }
+
+            if (
+                try self.parseUnderscoreStrong(
+                    alloc,
+                    scratch,
+                    .{.maybe_star_open_token = open_token},
+                )
+            ) |strong| {
+                try children.append(strong);
+                continue;
             }
 
             break :blk null;
@@ -368,9 +470,17 @@ fn parseStarEmphasis(
             try children.append(node);
 
             // trailing star_emph?
-            if (try self.parseStarEmphasis(alloc, scratch)) |emph| {
+            if (
+                try self.parseStarEmphasis(
+                    alloc,
+                    scratch,
+                    .{.maybe_underscore_open_token = options.maybe_underscore_open_token},
+                )
+            ) |emph| {
                 try children.append(emph);
             }
+
+            did_parse_this_loop = true;
             continue;
         }
 
@@ -384,10 +494,24 @@ fn parseStarEmphasis(
 
             // Check for closing condition
             if (try self.peek(scratch)) |token| {
-                switch (token.token_type) {
+                swtch: switch (token.token_type) {
                     .r_delim_star, .lr_delim_star => {
                         if (isValidBySumOfLengthsRule(open_token, token)) {
                             break :blk "";
+                        }
+                    },
+                    .r_delim_underscore, .lr_delim_underscore => {
+                        // Handle interleaved emphasis. If we are nested within
+                        // another emphasis, check if this could be the close
+                        // token.
+                        const underscore_open_token = (
+                            options.maybe_underscore_open_token
+                            orelse break :swtch
+                        );
+                        if (isValidBySumOfLengthsRule(underscore_open_token, token)) {
+                            // Ancestor closes before this emphasis can close.
+                            // Give up.
+                            return null;
                         }
                     },
                     else => {},
@@ -406,16 +530,23 @@ fn parseStarEmphasis(
             try children.appendText(text_content);
 
             // trailing star_emph?
-            if (try self.parseStarEmphasis(alloc, scratch)) |emph| {
+            if (
+                try self.parseStarEmphasis(
+                    alloc,
+                    scratch,
+                    .{.maybe_underscore_open_token = options.maybe_underscore_open_token},
+                )
+            ) |emph| {
                 try children.append(emph);
             }
+
+            did_parse_this_loop = true;
             continue;
         }
 
         // We failed to parse anything valid this loop. If we parsed just a
         // single emphasis node, that's not allowed.
-        if (maybe_leading_emph) |emph| {
-            emph.deinit(alloc);
+        if (maybe_leading_emph) |_| {
             return null;
         }
 
@@ -457,6 +588,7 @@ fn parseUnderscoreStrong(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
+    options: struct { maybe_star_open_token: ?InlineToken = null },
 ) Error!?*ast.Node {
     var did_parse = false;
     var children = NodeList.init(alloc, scratch, createTextNode);
@@ -512,12 +644,52 @@ fn parseUnderscoreStrong(
             continue;
         }
 
-        if (try self.parseAnyEmphasis(alloc, scratch)) |emph| {
+        if (
+            try self.parseStarEmphasis(
+                alloc,
+                scratch,
+                .{.maybe_underscore_open_token = open_token},
+            )
+        ) |emph| {
             try children.append(emph);
             continue;
         }
 
-        if (try self.parseAnyStrong(alloc, scratch)) |strong| {
+        if (
+            try self.parseUnderscoreEmphasis(
+                alloc,
+                scratch,
+                .{
+                    .maybe_star_open_token =
+                        options.maybe_star_open_token,
+                },
+            )
+        ) |emph| {
+            try children.append(emph);
+            continue;
+        }
+
+        if (
+            try self.parseStarStrong(
+                alloc,
+                scratch,
+                .{.maybe_underscore_open_token = open_token},
+            )
+        ) |strong| {
+            try children.append(strong);
+            continue;
+        }
+
+        if (
+            try self.parseUnderscoreStrong(
+                alloc,
+                scratch,
+                .{
+                    .maybe_star_open_token =
+                        options.maybe_star_open_token,
+                },
+            )
+        ) |strong| {
             try children.append(strong);
             continue;
         }
@@ -533,6 +705,20 @@ fn parseUnderscoreStrong(
             const token = try self.peek(scratch) orelse break :blk false;
             const close_token_type = switch (token.token_type) {
                 .r_delim_underscore, .lr_delim_underscore => |t| t,
+                .r_delim_star, .lr_delim_star => {
+                    // Handle interleaved emphasis.
+                    const star_open_token = (
+                        options.maybe_star_open_token
+                        orelse break :blk false
+                    );
+                    if (isValidBySumOfLengthsRule(star_open_token, token)) {
+                        // Ancestor closes before this emphasis can close.
+                        // Give up.
+                        return null;
+                    }
+
+                    break :blk false;
+                },
                 else => break :blk false,
             };
 
@@ -607,6 +793,7 @@ fn parseUnderscoreEmphasis(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
+    options: struct { maybe_star_open_token: ?InlineToken = null },
 ) Error!?*ast.Node {
     var did_parse = false;
     var children = NodeList.init(alloc, scratch, createTextNode);
@@ -626,7 +813,9 @@ fn parseUnderscoreEmphasis(
     // non-text => image | link | strong etc. etc.
     const open_token = try self.peek(scratch) orelse return null;
     switch (open_token.token_type) {
-        .l_delim_underscore => _ = try self.consume(scratch, &.{.l_delim_underscore}),
+        .l_delim_underscore => {
+            _ = try self.consume(scratch, &.{.l_delim_underscore});
+        },
         .lr_delim_underscore => {
             // Can only open emphasis if delimiter run follows punctuation
             if (!open_token.context.delim_underscore.preceded_by_punct) {
@@ -639,8 +828,19 @@ fn parseUnderscoreEmphasis(
     }
 
     for (0..util.safety.loop_bound) |_| {
+        var did_parse_this_loop = false;
+
         // leading under_emph?
-        const maybe_leading_emph = try self.parseUnderscoreEmphasis(alloc, scratch);
+        const maybe_leading_emph = try self.parseUnderscoreEmphasis(
+            alloc,
+            scratch,
+            .{.maybe_star_open_token = options.maybe_star_open_token},
+        );
+        defer if (!did_parse_this_loop) {
+            if (maybe_leading_emph) |emph| {
+                emph.deinit(alloc);
+            }
+        };
 
         // Handle non-text nodes
         if (blk: {
@@ -660,12 +860,38 @@ fn parseUnderscoreEmphasis(
                 break :blk brk;
             }
 
-            if (try self.parseStarEmphasis(alloc, scratch)) |emph| {
+            if (try self.parseStarEmphasis(
+                    alloc,
+                    scratch,
+                    .{.maybe_underscore_open_token = open_token},
+                )
+            ) |emph| {
                 break :blk emph;
             }
 
-            if (try self.parseAnyStrong(alloc, scratch)) |strong| {
-                break :blk strong;
+            if (
+                try self.parseStarStrong(
+                    alloc,
+                    scratch,
+                    .{.maybe_underscore_open_token = open_token},
+                )
+            ) |strong| {
+                try children.append(strong);
+                continue;
+            }
+
+            if (
+                try self.parseUnderscoreStrong(
+                    alloc,
+                    scratch,
+                    .{
+                        .maybe_star_open_token =
+                            options.maybe_star_open_token,
+                    },
+                )
+            ) |strong| {
+                try children.append(strong);
+                continue;
             }
 
             break :blk null;
@@ -676,9 +902,17 @@ fn parseUnderscoreEmphasis(
             try children.append(node);
 
             // trailing under_emph?
-            if (try self.parseUnderscoreEmphasis(alloc, scratch)) |emph| {
+            if (
+                try self.parseUnderscoreEmphasis(
+                    alloc,
+                    scratch,
+                    .{.maybe_star_open_token = options.maybe_star_open_token},
+                )
+            ) |emph| {
                 try children.append(emph);
             }
+
+            did_parse_this_loop = true;
             continue;
         }
 
@@ -691,15 +925,27 @@ fn parseUnderscoreEmphasis(
             }
 
             // Check for closing condition
-            if (try self.peek(scratch)) |token| {
-                switch (token.token_type) {
-                    .r_delim_underscore, .lr_delim_underscore => {
-                        if (isValidBySumOfLengthsRule(open_token, token)) {
-                            break :blk "";
-                        }
-                    },
-                    else => {},
-                }
+            const token = try self.peek(scratch) orelse break :blk "";
+            swtch: switch (token.token_type) {
+                .r_delim_underscore, .lr_delim_underscore => {
+                    if (isValidBySumOfLengthsRule(open_token, token)) {
+                        break :blk "";
+                    }
+                },
+                .r_delim_star, .lr_delim_star => {
+                    // Handle interleaved emphasis. If we are nested within
+                    // another emphasis, check if this could be the close
+                    // token.
+                    const star_open_token = (
+                        options.maybe_star_open_token orelse break :swtch
+                    );
+                    if (isValidBySumOfLengthsRule(star_open_token, token)) {
+                        // Ancestor closes before this emphasis can close.
+                        // Give up.
+                        return null;
+                    }
+                },
+                else => {},
             }
 
             // Okay, if we don't have a closing delimiter, allow basically
@@ -712,16 +958,25 @@ fn parseUnderscoreEmphasis(
                 try children.append(emph);
             }
             try children.appendText(text_content);
-            if (try self.parseStarEmphasis(alloc, scratch)) |emph| {
+
+            // trailing under_emph?
+            if (
+                try self.parseUnderscoreEmphasis(
+                    alloc,
+                    scratch,
+                    .{.maybe_star_open_token = options.maybe_star_open_token},
+                )
+            ) |emph| {
                 try children.append(emph);
             }
+
+            did_parse_this_loop = true;
             continue;
         }
 
         // We failed to parse anything valid this loop. If we parsed just a
         // single emphasis node, that's not allowed.
-        if (maybe_leading_emph) |emph| {
-            emph.deinit(alloc);
+        if (maybe_leading_emph) |_| {
             return null;
         }
 
@@ -814,32 +1069,38 @@ fn isValidBySumOfLengthsRule(open: InlineToken, close: InlineToken) bool {
     return true;
 }
 
+/// Parses either star- or underscore-delimited emphasis.
+///
+/// Shouldn't be used to parse nested emphasis.
 fn parseAnyEmphasis(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
 ) Error!?*ast.Node {
-    if (try self.parseStarEmphasis(alloc, scratch)) |emph| {
+    if (try self.parseStarEmphasis(alloc, scratch, .{})) |emph| {
         return emph;
     }
 
-    if (try self.parseUnderscoreEmphasis(alloc, scratch)) |emph| {
+    if (try self.parseUnderscoreEmphasis(alloc, scratch, .{})) |emph| {
         return emph;
     }
 
     return null;
 }
 
+/// Parses either star- or underscore-delimited strong emphasis.
+///
+/// Shouldn't be used to parse nested strong emphasis.
 fn parseAnyStrong(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
 ) Error!?*ast.Node {
-    if (try self.parseStarStrong(alloc, scratch)) |strong| {
+    if (try self.parseStarStrong(alloc, scratch, .{})) |strong| {
         return strong;
     }
 
-    if (try self.parseUnderscoreStrong(alloc, scratch)) |strong| {
+    if (try self.parseUnderscoreStrong(alloc, scratch, .{})) |strong| {
         return strong;
     }
 
@@ -3008,6 +3269,14 @@ fn scanHTMLAttrValUnquoted(self: *Self, scratch: Allocator) !?[]const u8 {
     return try running_text.toOwnedSlice();
 }
 
+/// Consumes tokens we know won't be parsed as anything else and emits them as
+/// regular text.
+///
+/// Consumes only:
+/// - text tokens
+/// - character reference tokens
+/// - whitespace / newlines
+/// - underscores that cannot start or stop emphasis
 fn scanText(self: *Self, scratch: Allocator) ![]const u8 {
     var running_text = Io.Writer.Allocating.init(scratch);
 
@@ -3791,6 +4060,192 @@ test "unmatched nested underscore" {
     try testing.expectEqualStrings(
         "foo _bar",
         std.mem.span(nodes[0].payload.emphasis.children[0].payload.text.value),
+    );
+}
+
+test "interleaved emphasis" {
+    // When emphasis is interleaved, first to open takes precedence.
+    var value = "*_bar*_";
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(2, nodes.len);
+
+    try testing.expectEqual(ast.NodeType.emphasis, nodes[0].tag);
+    try testing.expectEqual(1, nodes[0].payload.strong.n_children);
+    try testing.expectEqual(
+        ast.NodeType.text,
+        nodes[0].payload.emphasis.children[0].tag,
+    );
+    try testing.expectEqualStrings(
+        "_bar",
+        std.mem.span(nodes[0].payload.emphasis.children[0].payload.text.value),
+    );
+
+    try testing.expectEqual(ast.NodeType.text, nodes[1].tag);
+    try testing.expectEqualStrings(
+        "_",
+        std.mem.span(nodes[1].payload.text.value),
+    );
+
+    // Same test with symbols reversed
+    value = "_*bar_*";
+    const nodes2 = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes2);
+
+    try testing.expectEqual(2, nodes2.len);
+
+    try testing.expectEqual(ast.NodeType.emphasis, nodes2[0].tag);
+    try testing.expectEqual(1, nodes2[0].payload.strong.n_children);
+    try testing.expectEqual(
+        ast.NodeType.text,
+        nodes2[0].payload.emphasis.children[0].tag,
+    );
+    try testing.expectEqualStrings(
+        "*bar",
+        std.mem.span(nodes2[0].payload.emphasis.children[0].payload.text.value),
+    );
+
+    try testing.expectEqual(ast.NodeType.text, nodes2[1].tag);
+    try testing.expectEqualStrings(
+        "*",
+        std.mem.span(nodes2[1].payload.text.value),
+    );
+}
+
+test "nested interleaved emphasis" {
+    // Surely an apparition from some deeper circle of hell?
+    // This test makes sure that the rules about interleaved emphasis are
+    // respected even when the closing token for the outermost emphasis comes
+    // nested in several levels of emphasis.
+    const value = "*_(_bar*_)_";
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(2, nodes.len);
+
+    try testing.expectEqual(ast.NodeType.emphasis, nodes[0].tag);
+    try testing.expectEqual(1, nodes[0].payload.emphasis.n_children);
+    try testing.expectEqual(
+        ast.NodeType.text,
+        nodes[0].payload.emphasis.children[0].tag,
+    );
+    try testing.expectEqualStrings(
+        "_(_bar",
+        std.mem.span(nodes[0].payload.emphasis.children[0].payload.text.value),
+    );
+
+    try testing.expectEqual(ast.NodeType.emphasis, nodes[1].tag);
+    try testing.expectEqual(1, nodes[1].payload.emphasis.n_children);
+    try testing.expectEqual(
+        ast.NodeType.text,
+        nodes[1].payload.emphasis.children[0].tag,
+    );
+    try testing.expectEqualStrings(
+        ")",
+        std.mem.span(nodes[1].payload.emphasis.children[0].payload.text.value),
+    );
+}
+
+test "interleaved strong" {
+    // When strong is interleaved, first to open takes precedence.
+    var value = "**__bar**__";
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(2, nodes.len);
+
+    try testing.expectEqual(ast.NodeType.strong, nodes[0].tag);
+    try testing.expectEqual(1, nodes[0].payload.strong.n_children);
+    try testing.expectEqual(
+        ast.NodeType.text,
+        nodes[0].payload.strong.children[0].tag,
+    );
+    try testing.expectEqualStrings(
+        "__bar",
+        std.mem.span(nodes[0].payload.strong.children[0].payload.text.value),
+    );
+
+    try testing.expectEqual(ast.NodeType.text, nodes[1].tag);
+    try testing.expectEqualStrings(
+        "__",
+        std.mem.span(nodes[1].payload.text.value),
+    );
+
+    // Same test with symbols reversed
+    value = "__**bar__**";
+    const nodes2 = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes2);
+
+    try testing.expectEqual(2, nodes2.len);
+
+    try testing.expectEqual(ast.NodeType.strong, nodes2[0].tag);
+    try testing.expectEqual(1, nodes2[0].payload.strong.n_children);
+    try testing.expectEqual(
+        ast.NodeType.text,
+        nodes2[0].payload.strong.children[0].tag,
+    );
+    try testing.expectEqualStrings(
+        "**bar",
+        std.mem.span(nodes2[0].payload.strong.children[0].payload.text.value),
+    );
+
+    try testing.expectEqual(ast.NodeType.text, nodes2[1].tag);
+    try testing.expectEqualStrings(
+        "**",
+        std.mem.span(nodes2[1].payload.text.value),
+    );
+}
+
+test "nested interleaved emphasis and strong" {
+    // Surely an apparition from some deeper circle of hell?
+    // This test makes sure that the rules about interleaved strong are
+    // respected even when the closing token for the outermost strong comes
+    // nested in several levels of strong.
+    var value = "*__(_bar*_)__";
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(2, nodes.len);
+
+    try testing.expectEqual(ast.NodeType.emphasis, nodes[0].tag);
+    try testing.expectEqual(1, nodes[0].payload.emphasis.n_children);
+    try testing.expectEqual(
+        ast.NodeType.text,
+        nodes[0].payload.emphasis.children[0].tag,
+    );
+    try testing.expectEqualStrings(
+        "__(_bar",
+        std.mem.span(nodes[0].payload.emphasis.children[0].payload.text.value),
+    );
+
+    try testing.expectEqual(ast.NodeType.text, nodes[1].tag);
+    try testing.expectEqualStrings(
+        "_)__",
+        std.mem.span(nodes[1].payload.text.value),
+    );
+
+    value = "_****foo_****";
+    const nodes2 = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes2);
+
+    try testing.expectEqual(2, nodes2.len);
+
+    try testing.expectEqual(ast.NodeType.emphasis, nodes2[0].tag);
+    try testing.expectEqual(1, nodes2[0].payload.emphasis.n_children);
+    try testing.expectEqual(
+        ast.NodeType.text,
+        nodes2[0].payload.emphasis.children[0].tag,
+    );
+    try testing.expectEqualStrings(
+        "****foo",
+        std.mem.span(nodes2[0].payload.emphasis.children[0].payload.text.value),
+    );
+
+    try testing.expectEqual(ast.NodeType.text, nodes2[1].tag);
+    try testing.expectEqualStrings(
+        "****",
+        std.mem.span(nodes2[1].payload.text.value),
     );
 }
 
