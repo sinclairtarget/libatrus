@@ -180,6 +180,7 @@ pub fn parse(
     return try nodes.toOwnedSlice();
 }
 
+/// Parse star-delimited strong emphasis.
 fn parseStarStrong(
     self: *Self,
     alloc: Allocator,
@@ -213,6 +214,21 @@ fn parseStarStrong(
     for (0..util.safety.loop_bound) |_| {
         if (try self.parseInlineCode(alloc, scratch)) |code| {
             try children.append(code);
+            continue;
+        }
+
+        if (try self.parseURIAutolink(alloc, scratch)) |link| {
+            try children.append(link);
+            continue;
+        }
+
+        if (try self.parseEmailAutolink(alloc, scratch)) |link| {
+            try children.append(link);
+            continue;
+        }
+
+        if (try self.parseHTMLTag(alloc, scratch)) |html| {
+            try children.append(html);
             continue;
         }
 
@@ -415,6 +431,18 @@ fn parseStarEmphasis(
                 break :blk code;
             }
 
+            if (try self.parseURIAutolink(alloc, scratch)) |link| {
+                break :blk link;
+            }
+
+            if (try self.parseEmailAutolink(alloc, scratch)) |link| {
+                break :blk link;
+            }
+
+            if (try self.parseHTMLTag(alloc, scratch)) |html| {
+                break :blk html;
+            }
+
             if (try self.parseInlineImage(alloc, scratch)) |image| {
                 break :blk image;
             }
@@ -584,6 +612,7 @@ fn parseStarEmphasis(
     return emphasis_node;
 }
 
+/// Parse underscore-delimited strong emphasis.
 fn parseUnderscoreStrong(
     self: *Self,
     alloc: Allocator,
@@ -626,6 +655,21 @@ fn parseUnderscoreStrong(
     for (0..util.safety.loop_bound) |_| {
         if (try self.parseInlineCode(alloc, scratch)) |code| {
             try children.append(code);
+            continue;
+        }
+
+        if (try self.parseURIAutolink(alloc, scratch)) |link| {
+            try children.append(link);
+            continue;
+        }
+
+        if (try self.parseEmailAutolink(alloc, scratch)) |link| {
+            try children.append(link);
+            continue;
+        }
+
+        if (try self.parseHTMLTag(alloc, scratch)) |html| {
+            try children.append(html);
             continue;
         }
 
@@ -846,6 +890,18 @@ fn parseUnderscoreEmphasis(
         if (blk: {
             if (try self.parseInlineCode(alloc, scratch)) |code| {
                 break :blk code;
+            }
+
+            if (try self.parseURIAutolink(alloc, scratch)) |link| {
+                break :blk link;
+            }
+
+            if (try self.parseEmailAutolink(alloc, scratch)) |link| {
+                break :blk link;
+            }
+
+            if (try self.parseHTMLTag(alloc, scratch)) |html| {
+                break :blk html;
             }
 
             if (try self.parseInlineImage(alloc, scratch)) |image| {
@@ -1107,7 +1163,9 @@ fn parseAnyStrong(
     return null;
 }
 
-// @ => backtick(n) .+ backtick(n)
+/// Parses an inline code span.
+///
+/// Inline code spans must be surrouned by backticks.
 fn parseInlineCode(
     self: *Self,
     alloc: Allocator,
@@ -1119,6 +1177,7 @@ fn parseInlineCode(
         self.backtrack(checkpoint_index);
     };
 
+    // @ => backtick(n) .+ backtick(n)
     const open = try self.consume(scratch, &.{ .backtick }) orelse return null;
 
     var values: ArrayList([]const u8) = .empty;
@@ -1204,8 +1263,7 @@ fn parseInlineCode(
     return inline_code_node;
 }
 
-// @ => ! link_description l_paren (link_dest link_title?)? r_paren
-/// Parses an inline image link.
+/// Parses an inline image link like `![my alt text](bar.com/url)`.
 fn parseInlineImage(
     self: *Self,
     alloc: Allocator,
@@ -1217,6 +1275,7 @@ fn parseInlineImage(
         self.backtrack(checkpoint_index);
     };
 
+    // @ => ! link_description l_paren (link_dest link_title?)? r_paren
     _ = try self.consume(scratch, &.{.exclamation_mark}) orelse return null;
 
     const img_desc_nodes = (
@@ -1603,8 +1662,7 @@ fn parseShortcutReferenceImage(
     return img_node;
 }
 
-// @ => link_text l_paren (link_dest link_title?)? r_paren
-/// Parses an inline link.
+/// Parses an inline link looking like `[foo](bar.com/url)`.
 fn parseInlineLink(
     self: *Self,
     alloc: Allocator,
@@ -1615,6 +1673,8 @@ fn parseInlineLink(
     defer if (!did_parse) {
         self.backtrack(checkpoint_index);
     };
+
+    // @ => link_text l_paren (link_dest link_title?)? r_paren
 
     // handle link text
     const link_text_nodes = (
@@ -1699,6 +1759,11 @@ fn parseLinkText(
 
         if (try self.parseInlineCode(alloc, scratch)) |code| {
             try nodes.append(code);
+            continue;
+        }
+
+        if (try self.parseHTMLTag(alloc, scratch)) |html| {
+            try nodes.append(html);
             continue;
         }
 
@@ -5212,5 +5277,63 @@ test "html CDATA section" {
     try testing.expectEqualStrings(
         "<![CDATA[ foo bar bim < & ]]>",
         std.mem.span(nodes[0].payload.html.value),
+    );
+}
+
+test "html within emphasis" {
+    const value = "*<foo></foo>*";
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.emphasis, nodes[0].tag);
+    try testing.expectEqual(2, nodes[0].payload.emphasis.n_children);
+    try testing.expectEqual(
+        ast.NodeType.html,
+        nodes[0].payload.emphasis.children[0].tag,
+    );
+    try testing.expectEqual(
+        ast.NodeType.html,
+        nodes[0].payload.emphasis.children[1].tag,
+    );
+}
+
+test "html within strong" {
+    const value = "__<foo></foo>__";
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.strong, nodes[0].tag);
+    try testing.expectEqual(2, nodes[0].payload.strong.n_children);
+    try testing.expectEqual(
+        ast.NodeType.html,
+        nodes[0].payload.strong.children[0].tag,
+    );
+    try testing.expectEqual(
+        ast.NodeType.html,
+        nodes[0].payload.strong.children[1].tag,
+    );
+}
+
+test "html within link" {
+    const value = "[<foo></foo>](foobar.com/url)";
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.link, nodes[0].tag);
+    try testing.expectEqualStrings(
+        "foobar.com/url",
+        std.mem.span(nodes[0].payload.link.url),
+    );
+    try testing.expectEqual(2, nodes[0].payload.link.n_children);
+    try testing.expectEqual(
+        ast.NodeType.html,
+        nodes[0].payload.link.children[0].tag,
+    );
+    try testing.expectEqual(
+        ast.NodeType.html,
+        nodes[0].payload.link.children[1].tag,
     );
 }
