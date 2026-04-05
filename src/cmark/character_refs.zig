@@ -51,6 +51,8 @@ pub fn resolveCharacterEntity(name: []const u8) ?[]const u8 {
         return "∲";
     } else if (mem.eql(u8, name, "ngE")) {
         return "≧̸";
+    } else if (mem.eql(u8, name, "auml")) {
+        return "ä";
     } else {
         return null;
     }

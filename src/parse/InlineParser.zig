@@ -1687,7 +1687,14 @@ fn parseInlineLink(
         alloc.free(link_text_nodes);
     };
 
+    var newline_count: u8 = 0;
     _ = try self.consume(scratch, &.{.l_paren}) orelse return null;
+
+    while (try self.consume(scratch, &.{.newline, .whitespace})) |token| {
+        if (token.token_type == .newline) {
+            newline_count += 1;
+        }
+    }
 
     // link destination
     const raw_url = try self.scanLinkDestination(scratch) orelse "";
@@ -1696,14 +1703,32 @@ fn parseInlineLink(
     const title = blk: {
         // link title, if present, must be separated from destination by
         // whitespace
-        if (try self.consume(scratch, &.{.newline, .whitespace})) |_| {
+        var consumed_whitespace_or_newline = false;
+        while (try self.consume(scratch, &.{.newline, .whitespace})) |token| {
+            if (token.token_type == .newline) {
+                newline_count += 1;
+            }
+
+            consumed_whitespace_or_newline = true;
+        }
+
+        if (consumed_whitespace_or_newline) {
             break :blk try self.scanLinkTitle(scratch) orelse "";
         }
 
         break :blk "";
     };
 
+    while (try self.consume(scratch, &.{.newline, .whitespace})) |token| {
+        if (token.token_type == .newline) {
+            newline_count += 1;
+        }
+    }
     _ = try self.consume(scratch, &.{.r_paren}) orelse return null;
+
+    if (newline_count > 1) {
+        return null; // up to one newline allowed
+    }
 
     const ownedUrl = try alloc.dupeZ(u8, url);
     errdefer alloc.free(ownedUrl);
@@ -1869,7 +1894,6 @@ fn scanLinkDestination(self: *Self, scratch: Allocator) !?[]const u8 {
         var paren_depth: u32 = 0;
         while (try self.peek(scratch)) |token| {
             switch (token.token_type) {
-                .newline => return "",
                 .l_paren => {
                     paren_depth += 1;
                     _ = try self.consume(scratch, &.{.l_paren});
@@ -1886,7 +1910,7 @@ fn scanLinkDestination(self: *Self, scratch: Allocator) !?[]const u8 {
                     const value = try emitInlineText(scratch, token);
                     _ = try running_text.writer.write(value);
                 },
-                .whitespace => break,
+                .whitespace, .newline => break,
                 else => |t| {
                     _ = try self.consume(scratch, &.{t});
                     const value = try emitInlineText(scratch, token);
