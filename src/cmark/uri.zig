@@ -8,7 +8,8 @@ pub const Error = (
     || Io.Writer.Error
 );
 
-/// Normalizes URIs that will be used as attibute values (vs. textual content).
+/// Normalizes URIs that will be used as attribute values (vs. textual
+/// content).
 ///
 /// Performs percent-encoding.
 ///
