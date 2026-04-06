@@ -14236,7 +14236,7 @@
           "children": [
             {
               "type": "link",
-              "url": "/url \"title\"",
+              "url": "/url%C2%A0%22title%22",
               "children": [
                 {
                   "type": "text",
@@ -14248,7 +14248,7 @@
         }
       ]
     },
-    "myst": "[link](/url \"title\")\n",
+    "myst": "[link](/url \"title\")\n",
     "html": "<p><a href=\"/url%C2%A0%22title%22\">link</a></p>\n"
   },
   {
