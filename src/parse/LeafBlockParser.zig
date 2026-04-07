@@ -806,7 +806,11 @@ fn parseLinkReferenceDefinition(
     return node;
 }
 
+/// Scans the link label part of a link reference definition.
+///
 /// https://spec.commonmark.org/0.30/#link-label
+///
+/// Also see: link label scanning in the inline parser.
 fn scanLinkDefLabel(self: *Self, scratch: Allocator) !?[]const u8 {
     var did_parse = false;
     var running_text = Io.Writer.Allocating.init(scratch);
@@ -852,6 +856,11 @@ fn scanLinkDefLabel(self: *Self, scratch: Allocator) !?[]const u8 {
         scratch,
         &.{.r_square_bracket},
     ) orelse return null;
+
+    if (!saw_non_blank) {
+        // Label must contain non-whitespace character
+        return null;
+    }
 
     // TODO: Technically this should be the length in unicode code points, not
     // bytes.

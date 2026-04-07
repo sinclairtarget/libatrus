@@ -2055,19 +2055,25 @@ fn scanLinkLabel(self: *Self, scratch: Allocator) Error!?[]const u8 {
         &.{.r_square_bracket},
     ) orelse return null;
 
+    if (!saw_non_blank) {
+        // Must contain non-whitespace character
+        return null;
+    }
+
     // TODO: Technically this should be the length in unicode code points, not
     // bytes.
     if (running_text.written().len > link_label_max_chars) {
         return null;
     }
+
     did_parse = true;
     return try running_text.toOwnedSlice();
 }
 
 /// Parses a link label as inline content.
 ///
-/// This does not enforce some rules about link labels since this should only be
-/// used in concert with scanLinkLabel().
+/// This does not enforce some rules about link labels since this should only
+/// be used in concert with scanLinkLabel().
 fn parseLinkLabel(
     self: *Self,
     alloc: Allocator,
