@@ -119,12 +119,12 @@ pub fn parse(
             continue;
         }
 
-        if (try self.parseAnyEmphasis(alloc, scratch)) |emph| {
+        if (try self.parseAnyEmphasis(alloc, scratch, .{})) |emph| {
             try nodes.append(emph);
             continue;
         }
 
-        if (try self.parseAnyStrong(alloc, scratch)) |strong| {
+        if (try self.parseAnyStrong(alloc, scratch, .{})) |strong| {
             try nodes.append(strong);
             continue;
         }
@@ -159,6 +159,7 @@ fn parseStarStrong(
     scratch: Allocator,
     opts: struct {
         maybe_underscore_open_token: ?InlineToken = null,
+        is_link_allowed: bool = true,
     },
 ) Error!?*ast.Node {
     var did_parse = false;
@@ -202,6 +203,11 @@ fn parseStarStrong(
         }
 
         if (try self.parseAnyLink(alloc, scratch)) |link| {
+            if (!opts.is_link_allowed) {
+                link.deinit(alloc);
+                return null;
+            }
+
             try children.append(link);
             continue;
         }
@@ -218,6 +224,7 @@ fn parseStarStrong(
                 .{
                     .maybe_underscore_open_token =
                         opts.maybe_underscore_open_token,
+                    .is_link_allowed = opts.is_link_allowed,
                 },
             )
         ) |emph| {
@@ -229,7 +236,10 @@ fn parseStarStrong(
             try self.parseUnderscoreEmphasis(
                 alloc,
                 scratch,
-                .{.maybe_star_open_token = open_token},
+                .{
+                    .maybe_star_open_token = open_token,
+                    .is_link_allowed = opts.is_link_allowed,
+                },
             )
         ) |emph| {
             try children.append(emph);
@@ -243,6 +253,7 @@ fn parseStarStrong(
                 .{
                     .maybe_underscore_open_token =
                         opts.maybe_underscore_open_token,
+                    .is_link_allowed = opts.is_link_allowed,
                 },
             )
         ) |strong| {
@@ -254,7 +265,10 @@ fn parseStarStrong(
             try self.parseUnderscoreStrong(
                 alloc,
                 scratch,
-                .{.maybe_star_open_token = open_token},
+                .{
+                    .maybe_star_open_token = open_token,
+                    .is_link_allowed = opts.is_link_allowed,
+                },
             )
         ) |strong| {
             try children.append(strong);
@@ -351,7 +365,10 @@ fn parseStarEmphasis(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
-    opts: struct { maybe_underscore_open_token: ?InlineToken = null },
+    opts: struct {
+        maybe_underscore_open_token: ?InlineToken = null,
+        is_link_allowed: bool = true,
+    },
 ) Error!?*ast.Node {
     var did_parse = false;
     var children = NodeList.init(alloc, scratch, createTextNode);
@@ -381,7 +398,10 @@ fn parseStarEmphasis(
         const maybe_leading_emph = try self.parseStarEmphasis(
             alloc,
             scratch,
-            .{.maybe_underscore_open_token = opts.maybe_underscore_open_token},
+            .{
+                .maybe_underscore_open_token = opts.maybe_underscore_open_token,
+                .is_link_allowed = opts.is_link_allowed,
+            },
         );
         defer if (!did_parse_this_loop) {
             if (maybe_leading_emph) |emph| {
@@ -404,6 +424,11 @@ fn parseStarEmphasis(
             }
 
             if (try self.parseAnyLink(alloc, scratch)) |link| {
+                if (!opts.is_link_allowed) {
+                    link.deinit(alloc);
+                    return null;
+                }
+
                 break :blk link;
             }
 
@@ -415,7 +440,10 @@ fn parseStarEmphasis(
                 try self.parseUnderscoreEmphasis(
                     alloc,
                     scratch,
-                    .{.maybe_star_open_token = open_token},
+                    .{
+                        .maybe_star_open_token = open_token,
+                        .is_link_allowed = opts.is_link_allowed,
+                    },
                 )
             ) |emph| {
                 break :blk emph;
@@ -428,6 +456,7 @@ fn parseStarEmphasis(
                     .{
                         .maybe_underscore_open_token =
                             opts.maybe_underscore_open_token,
+                        .is_link_allowed = opts.is_link_allowed,
                     },
                 )
             ) |strong| {
@@ -439,7 +468,10 @@ fn parseStarEmphasis(
                 try self.parseUnderscoreStrong(
                     alloc,
                     scratch,
-                    .{.maybe_star_open_token = open_token},
+                    .{
+                        .maybe_star_open_token = open_token,
+                        .is_link_allowed = opts.is_link_allowed,
+                    },
                 )
             ) |strong| {
                 try children.append(strong);
@@ -458,7 +490,10 @@ fn parseStarEmphasis(
                 try self.parseStarEmphasis(
                     alloc,
                     scratch,
-                    .{.maybe_underscore_open_token = opts.maybe_underscore_open_token},
+                    .{
+                        .maybe_underscore_open_token = opts.maybe_underscore_open_token,
+                        .is_link_allowed = opts.is_link_allowed,
+                    },
                 )
             ) |emph| {
                 try children.append(emph);
@@ -518,7 +553,10 @@ fn parseStarEmphasis(
                 try self.parseStarEmphasis(
                     alloc,
                     scratch,
-                    .{.maybe_underscore_open_token = opts.maybe_underscore_open_token},
+                    .{
+                        .maybe_underscore_open_token = opts.maybe_underscore_open_token,
+                        .is_link_allowed = opts.is_link_allowed,
+                    },
                 )
             ) |emph| {
                 try children.append(emph);
@@ -573,7 +611,10 @@ fn parseUnderscoreStrong(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
-    opts: struct { maybe_star_open_token: ?InlineToken = null },
+    opts: struct {
+        maybe_star_open_token: ?InlineToken = null,
+        is_link_allowed: bool = true,
+    },
 ) Error!?*ast.Node {
     var did_parse = false;
     var children = NodeList.init(alloc, scratch, createTextNode);
@@ -625,6 +666,11 @@ fn parseUnderscoreStrong(
         }
 
         if (try self.parseAnyLink(alloc, scratch)) |link| {
+            if (!opts.is_link_allowed) {
+                link.deinit(alloc);
+                return null;
+            }
+
             try children.append(link);
             continue;
         }
@@ -638,7 +684,10 @@ fn parseUnderscoreStrong(
             try self.parseStarEmphasis(
                 alloc,
                 scratch,
-                .{.maybe_underscore_open_token = open_token},
+                .{
+                    .maybe_underscore_open_token = open_token,
+                    .is_link_allowed = opts.is_link_allowed,
+                },
             )
         ) |emph| {
             try children.append(emph);
@@ -652,6 +701,7 @@ fn parseUnderscoreStrong(
                 .{
                     .maybe_star_open_token =
                         opts.maybe_star_open_token,
+                    .is_link_allowed = opts.is_link_allowed,
                 },
             )
         ) |emph| {
@@ -663,7 +713,10 @@ fn parseUnderscoreStrong(
             try self.parseStarStrong(
                 alloc,
                 scratch,
-                .{.maybe_underscore_open_token = open_token},
+                .{
+                    .maybe_underscore_open_token = open_token,
+                    .is_link_allowed = opts.is_link_allowed,
+                },
             )
         ) |strong| {
             try children.append(strong);
@@ -677,6 +730,7 @@ fn parseUnderscoreStrong(
                 .{
                     .maybe_star_open_token =
                         opts.maybe_star_open_token,
+                    .is_link_allowed = opts.is_link_allowed,
                 },
             )
         ) |strong| {
@@ -783,7 +837,10 @@ fn parseUnderscoreEmphasis(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
-    opts: struct { maybe_star_open_token: ?InlineToken = null },
+    opts: struct {
+        maybe_star_open_token: ?InlineToken = null,
+        is_link_allowed: bool = true,
+    },
 ) Error!?*ast.Node {
     var did_parse = false;
     var children = NodeList.init(alloc, scratch, createTextNode);
@@ -824,7 +881,10 @@ fn parseUnderscoreEmphasis(
         const maybe_leading_emph = try self.parseUnderscoreEmphasis(
             alloc,
             scratch,
-            .{.maybe_star_open_token = opts.maybe_star_open_token},
+            .{
+                .maybe_star_open_token = opts.maybe_star_open_token,
+                .is_link_allowed = opts.is_link_allowed,
+            },
         );
         defer if (!did_parse_this_loop) {
             if (maybe_leading_emph) |emph| {
@@ -847,6 +907,11 @@ fn parseUnderscoreEmphasis(
             }
 
             if (try self.parseAnyLink(alloc, scratch)) |link| {
+                if (!opts.is_link_allowed) {
+                    link.deinit(alloc);
+                    return null;
+                }
+
                 break :blk link;
             }
 
@@ -857,7 +922,10 @@ fn parseUnderscoreEmphasis(
             if (try self.parseStarEmphasis(
                     alloc,
                     scratch,
-                    .{.maybe_underscore_open_token = open_token},
+                    .{
+                        .maybe_underscore_open_token = open_token,
+                        .is_link_allowed = opts.is_link_allowed,
+                    },
                 )
             ) |emph| {
                 break :blk emph;
@@ -867,7 +935,10 @@ fn parseUnderscoreEmphasis(
                 try self.parseStarStrong(
                     alloc,
                     scratch,
-                    .{.maybe_underscore_open_token = open_token},
+                    .{
+                        .maybe_underscore_open_token = open_token,
+                        .is_link_allowed = opts.is_link_allowed,
+                    },
                 )
             ) |strong| {
                 try children.append(strong);
@@ -881,6 +952,7 @@ fn parseUnderscoreEmphasis(
                     .{
                         .maybe_star_open_token =
                             opts.maybe_star_open_token,
+                        .is_link_allowed = opts.is_link_allowed,
                     },
                 )
             ) |strong| {
@@ -900,7 +972,10 @@ fn parseUnderscoreEmphasis(
                 try self.parseUnderscoreEmphasis(
                     alloc,
                     scratch,
-                    .{.maybe_star_open_token = opts.maybe_star_open_token},
+                    .{
+                        .maybe_star_open_token = opts.maybe_star_open_token,
+                        .is_link_allowed = opts.is_link_allowed,
+                    },
                 )
             ) |emph| {
                 try children.append(emph);
@@ -958,7 +1033,10 @@ fn parseUnderscoreEmphasis(
                 try self.parseUnderscoreEmphasis(
                     alloc,
                     scratch,
-                    .{.maybe_star_open_token = opts.maybe_star_open_token},
+                    .{
+                        .maybe_star_open_token = opts.maybe_star_open_token,
+                        .is_link_allowed = opts.is_link_allowed,
+                    },
                 )
             ) |emph| {
                 try children.append(emph);
@@ -1070,12 +1148,23 @@ fn parseAnyEmphasis(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
+    opts: struct { is_link_allowed: bool = true },
 ) Error!?*ast.Node {
-    if (try self.parseStarEmphasis(alloc, scratch, .{})) |emph| {
+    if (try self.parseStarEmphasis(
+            alloc,
+            scratch,
+            .{.is_link_allowed = opts.is_link_allowed},
+        )
+    ) |emph| {
         return emph;
     }
 
-    if (try self.parseUnderscoreEmphasis(alloc, scratch, .{})) |emph| {
+    if (try self.parseUnderscoreEmphasis(
+            alloc,
+            scratch,
+            .{.is_link_allowed = opts.is_link_allowed},
+        )
+    ) |emph| {
         return emph;
     }
 
@@ -1089,12 +1178,23 @@ fn parseAnyStrong(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
+    opts: struct { is_link_allowed: bool = true },
 ) Error!?*ast.Node {
-    if (try self.parseStarStrong(alloc, scratch, .{})) |strong| {
+    if (try self.parseStarStrong(
+            alloc,
+            scratch,
+            .{.is_link_allowed = opts.is_link_allowed},
+        )
+    ) |strong| {
         return strong;
     }
 
-    if (try self.parseUnderscoreStrong(alloc, scratch, .{})) |strong| {
+    if (try self.parseUnderscoreStrong(
+            alloc,
+            scratch,
+            .{.is_link_allowed = opts.is_link_allowed},
+        )
+    ) |strong| {
         return strong;
     }
 
@@ -1349,12 +1449,12 @@ fn parseImageDescription(
             continue;
         }
 
-        if (try self.parseAnyEmphasis(alloc, scratch)) |emph| {
+        if (try self.parseAnyEmphasis(alloc, scratch, .{})) |emph| {
             try nodes.append(emph);
             continue;
         }
 
-        if (try self.parseAnyStrong(alloc, scratch)) |strong| {
+        if (try self.parseAnyStrong(alloc, scratch, .{})) |strong| {
             try nodes.append(strong);
             continue;
         }
@@ -1759,12 +1859,22 @@ fn parseLinkText(
             continue;
         }
 
-        if (try self.parseAnyEmphasis(alloc, scratch)) |emph| {
+        if (try self.parseAnyEmphasis(
+                alloc,
+                scratch,
+                .{.is_link_allowed = false},
+            )
+        ) |emph| {
             try nodes.append(emph);
             continue;
         }
 
-        if (try self.parseAnyStrong(alloc, scratch)) |strong| {
+        if (try self.parseAnyStrong(
+                alloc,
+                scratch,
+                .{.is_link_allowed = false},
+            )
+        ) |strong| {
             try nodes.append(strong);
             continue;
         }
@@ -2232,12 +2342,12 @@ fn parseLinkLabel(
             continue;
         }
 
-        if (try self.parseAnyEmphasis(alloc, scratch)) |emph| {
+        if (try self.parseAnyEmphasis(alloc, scratch, .{})) |emph| {
             try nodes.append(emph);
             continue;
         }
 
-        if (try self.parseAnyStrong(alloc, scratch)) |strong| {
+        if (try self.parseAnyStrong(alloc, scratch, .{})) |strong| {
             try nodes.append(strong);
             continue;
         }
