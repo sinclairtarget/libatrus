@@ -83,12 +83,7 @@ pub fn parse(
             continue;
         }
 
-        if (try self.parseURIAutolink(alloc, scratch)) |link| {
-            try nodes.append(link);
-            continue;
-        }
-
-        if (try self.parseEmailAutolink(alloc, scratch)) |link| {
+        if (try self.parseAnyLink(alloc, scratch)) |link| {
             try nodes.append(link);
             continue;
         }
@@ -121,30 +116,6 @@ pub fn parse(
             try self.parseShortcutReferenceImage(alloc, scratch)
         ) |image| {
             try nodes.append(image);
-            continue;
-        }
-
-        if (try self.parseInlineLink(alloc, scratch)) |link| {
-            try nodes.append(link);
-            continue;
-        }
-
-        if (try self.parseFullReferenceLink(alloc, scratch)) |link| {
-            try nodes.append(link);
-            continue;
-        }
-
-        if (
-            try self.parseCollapsedReferenceLink(alloc, scratch)
-        ) |link| {
-            try nodes.append(link);
-            continue;
-        }
-
-        if (
-            try self.parseShortcutReferenceLink(alloc, scratch)
-        ) |link| {
-            try nodes.append(link);
             continue;
         }
 
@@ -220,16 +191,6 @@ fn parseStarStrong(
             continue;
         }
 
-        if (try self.parseURIAutolink(alloc, scratch)) |link| {
-            try children.append(link);
-            continue;
-        }
-
-        if (try self.parseEmailAutolink(alloc, scratch)) |link| {
-            try children.append(link);
-            continue;
-        }
-
         if (try self.parseHTMLTag(alloc, scratch)) |html| {
             try children.append(html);
             continue;
@@ -240,7 +201,7 @@ fn parseStarStrong(
             continue;
         }
 
-        if (try self.parseInlineLink(alloc, scratch)) |link| {
+        if (try self.parseAnyLink(alloc, scratch)) |link| {
             try children.append(link);
             continue;
         }
@@ -434,14 +395,6 @@ fn parseStarEmphasis(
                 break :blk code;
             }
 
-            if (try self.parseURIAutolink(alloc, scratch)) |link| {
-                break :blk link;
-            }
-
-            if (try self.parseEmailAutolink(alloc, scratch)) |link| {
-                break :blk link;
-            }
-
             if (try self.parseHTMLTag(alloc, scratch)) |html| {
                 break :blk html;
             }
@@ -450,7 +403,7 @@ fn parseStarEmphasis(
                 break :blk image;
             }
 
-            if (try self.parseInlineLink(alloc, scratch)) |link| {
+            if (try self.parseAnyLink(alloc, scratch)) |link| {
                 break :blk link;
             }
 
@@ -661,16 +614,6 @@ fn parseUnderscoreStrong(
             continue;
         }
 
-        if (try self.parseURIAutolink(alloc, scratch)) |link| {
-            try children.append(link);
-            continue;
-        }
-
-        if (try self.parseEmailAutolink(alloc, scratch)) |link| {
-            try children.append(link);
-            continue;
-        }
-
         if (try self.parseHTMLTag(alloc, scratch)) |html| {
             try children.append(html);
             continue;
@@ -681,7 +624,7 @@ fn parseUnderscoreStrong(
             continue;
         }
 
-        if (try self.parseInlineLink(alloc, scratch)) |link| {
+        if (try self.parseAnyLink(alloc, scratch)) |link| {
             try children.append(link);
             continue;
         }
@@ -895,14 +838,6 @@ fn parseUnderscoreEmphasis(
                 break :blk code;
             }
 
-            if (try self.parseURIAutolink(alloc, scratch)) |link| {
-                break :blk link;
-            }
-
-            if (try self.parseEmailAutolink(alloc, scratch)) |link| {
-                break :blk link;
-            }
-
             if (try self.parseHTMLTag(alloc, scratch)) |html| {
                 break :blk html;
             }
@@ -911,7 +846,7 @@ fn parseUnderscoreEmphasis(
                 break :blk image;
             }
 
-            if (try self.parseInlineLink(alloc, scratch)) |link| {
+            if (try self.parseAnyLink(alloc, scratch)) |link| {
                 break :blk link;
             }
 
@@ -1372,7 +1307,7 @@ fn parseImageDescription(
             continue;
         }
 
-        if (try self.parseInlineLink(alloc, scratch)) |link| {
+        if (try self.parseAnyLink(alloc, scratch)) |link| {
             try nodes.append(link);
             continue;
         }
@@ -1777,7 +1712,7 @@ fn parseLinkText(
             continue;
         }
 
-        if (try self.parseInlineLink(alloc, scratch)) |link| {
+        if (try self.parseAnyLink(alloc, scratch)) |link| {
             try nodes.append(link); // ensure it gets cleaned up
             return null; // nested links are not allowed!
         }
@@ -2640,6 +2575,38 @@ fn isValidEmailAddress(content: []const u8) bool {
     }
 
     return true;
+}
+
+fn parseAnyLink(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) Error!?*ast.Node {
+    if (try self.parseURIAutolink(alloc, scratch)) |link| {
+        return link;
+    }
+
+    if (try self.parseEmailAutolink(alloc, scratch)) |link| {
+        return link;
+    }
+
+    if (try self.parseInlineLink(alloc, scratch)) |link| {
+        return link;
+    }
+
+    if (try self.parseFullReferenceLink(alloc, scratch)) |link| {
+        return link;
+    }
+
+    if (try self.parseCollapsedReferenceLink(alloc, scratch)) |link| {
+        return link;
+    }
+
+    if (try self.parseShortcutReferenceLink(alloc, scratch)) |link| {
+        return link;
+    }
+
+    return null;
 }
 
 /// https://spec.commonmark.org/0.30/#hard-line-breaks
