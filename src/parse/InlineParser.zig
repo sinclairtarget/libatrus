@@ -1455,402 +1455,6 @@ fn parseInlineCode(
     return inline_code_node;
 }
 
-/// Parses an inline image link like `![my alt text](bar.com/url)`.
-fn parseInlineImage(
-    self: *Self,
-    alloc: Allocator,
-    scratch: Allocator,
-) Error!?*ast.Node {
-    var did_parse = false;
-    const checkpoint_index = self.checkpoint();
-    defer if (!did_parse) {
-        self.backtrack(checkpoint_index);
-    };
-
-    // @ => ! link_description l_paren (link_dest link_title?)? r_paren
-    _ = try self.consume(scratch, &.{.exclamation_mark}) orelse return null;
-
-    const img_desc_nodes = (
-        try self.parseImageDescription(alloc, scratch) orelse return null
-    );
-    defer {
-        // We only need these nodes to produce the alt text. They won't end
-        // up in the final AST.
-        for (img_desc_nodes) |node| {
-            node.deinit(alloc);
-        }
-        alloc.free(img_desc_nodes);
-    }
-
-    _ = try self.consume(scratch, &.{.l_paren}) orelse return null;
-    _ = try self.scanSeparatingWhitespace(scratch) orelse return null;
-
-    // link destination
-    const raw_url = try self.scanLinkDestination(scratch) orelse "";
-    const url = try cmark.uri.normalize(scratch, scratch, raw_url);
-
-    const whitespace = (
-        try self.scanSeparatingWhitespace(scratch) orelse return null
-    );
-    const title = blk: {
-        // link title, if present, must be separated from destination by
-        // whitespace
-        if (whitespace.len == 0) {
-            break :blk "";
-        }
-
-        const t = try self.scanLinkTitle(scratch) orelse "";
-        _ = try self.scanSeparatingWhitespace(scratch) orelse return null;
-        break :blk t;
-    };
-
-    _ = try self.consume(scratch, &.{.r_paren}) orelse return null;
-
-    // render "plain text" alt text
-    var running_text = Io.Writer.Allocating.init(alloc);
-    errdefer running_text.deinit();
-    for (img_desc_nodes) |node| {
-        try alttext.write(&running_text.writer, node);
-    }
-
-    const ownedUrl = try alloc.dupeZ(u8, url);
-    errdefer alloc.free(ownedUrl);
-    const ownedTitle = try alloc.dupeZ(u8, title);
-    errdefer alloc.free(ownedTitle);
-    const ownedAlt = try running_text.toOwnedSliceSentinel(0);
-    errdefer alloc.free(ownedAlt);
-    const image = try alloc.create(ast.Node);
-    image.* = .{
-        .tag = .image,
-        .payload = .{
-            .image = .{
-                .url = ownedUrl,
-                .title = ownedTitle,
-                .alt = ownedAlt,
-            },
-        },
-    };
-    did_parse = true;
-    return image;
-}
-
-/// Parses the image description component of an inline image. Returns a slice
-/// of inline AST nodes.
-fn parseImageDescription(
-    self: *Self,
-    alloc: Allocator,
-    scratch: Allocator,
-) Error!?[]*ast.Node {
-    var did_parse = false;
-    var nodes = NodeList.init(alloc, scratch, createTextNode);
-    const checkpoint_index = self.checkpoint();
-    defer if (!did_parse) {
-        self.backtrack(checkpoint_index);
-        for (nodes.items()) |node| {
-            node.deinit(alloc);
-        }
-        nodes.deinit();
-    };
-
-    _ = try self.consume(scratch, &.{.l_square_bracket}) orelse return null;
-
-    var bracket_depth: u32 = 0;
-    loop: for (0..util.safety.loop_bound) |_| {
-        if (try self.parseInlineImage(alloc, scratch)) |image| {
-            try nodes.append(image);
-            continue;
-        }
-
-        if (try self.parseAnyLink(alloc, scratch)) |link| {
-            try nodes.append(link);
-            continue;
-        }
-
-        if (try self.parseInlineCode(alloc, scratch)) |code| {
-            try nodes.append(code);
-            continue;
-        }
-
-        // Handle square brackets, which are only allowed if they are balanced
-        const allowed_bracket: []const u8 = blk: {
-            const token = try self.peek(scratch) orelse return null;
-            switch (token.token_type) {
-                .l_square_bracket => {
-                    bracket_depth += 1;
-                },
-                .r_square_bracket => {
-                    if (bracket_depth == 0) {
-                        // end of link text
-                        break :loop;
-                    }
-
-                    bracket_depth -= 1;
-                },
-                else => break :blk "",
-            }
-
-            _ = try self.consume(scratch, &.{token.token_type});
-            const value = try emitInlineText(scratch, token);
-            break :blk value;
-        };
-        if (allowed_bracket.len > 0) {
-            try nodes.appendText(allowed_bracket);
-            continue;
-        }
-
-        if (try self.parseHardLineBreak(alloc, scratch)) |brk| {
-            try nodes.append(brk);
-            continue;
-        }
-
-        if (try self.parseAnyEmphasis(alloc, scratch, .{})) |emph| {
-            try nodes.append(emph);
-            continue;
-        }
-
-        if (try self.parseAnyStrong(alloc, scratch, .{})) |strong| {
-            try nodes.append(strong);
-            continue;
-        }
-
-        const text_value = try self.scanText(scratch);
-        if (text_value.len > 0) {
-            try nodes.appendText(text_value);
-            continue;
-        }
-
-        const text_fallback_value = try self.scanTextFallback(scratch);
-        if (text_fallback_value.len > 0) {
-            try nodes.appendText(text_fallback_value);
-            continue;
-        }
-
-        break;
-    } else @panic(util.safety.loop_bound_panic_msg);
-
-    _ = try self.consume(scratch, &.{.r_square_bracket}) orelse return null;
-
-    if (bracket_depth > 0) {
-        return null; // contained unbalanced brackets
-    }
-
-    did_parse = true;
-    return try nodes.toOwnedSlice();
-}
-
-/// Parses an image like `![my alt text][ref]`.
-fn parseFullReferenceImage(
-    self: *Self,
-    alloc: Allocator,
-    scratch: Allocator,
-) Error!?*ast.Node {
-    var did_parse = false;
-    const checkpoint_index = self.checkpoint();
-    defer if (!did_parse) {
-        self.backtrack(checkpoint_index);
-    };
-
-    _ = try self.consume(scratch, &.{.exclamation_mark}) orelse return null;
-
-    const img_desc_nodes = (
-        try self.parseImageDescription(alloc, scratch) orelse return null
-    );
-    defer {
-        // We only need these nodes to produce the alt text. They won't end
-        // up in the final AST.
-        for (img_desc_nodes) |node| {
-            node.deinit(alloc);
-        }
-        alloc.free(img_desc_nodes);
-    }
-
-    // handle link label
-    const scanned_link_label = (
-        try self.scanLinkLabel(scratch) orelse return null
-    );
-
-    // lookup link def
-    const link_def = try self.link_defs.get(
-        scratch,
-        scanned_link_label,
-    ) orelse return null; // no matching def means parse failure
-
-    // render "plain text" alt text
-    var running_text = Io.Writer.Allocating.init(alloc);
-    errdefer running_text.deinit();
-    for (img_desc_nodes) |node| {
-        try alttext.write(&running_text.writer, node);
-    }
-
-    const url = try alloc.dupeZ(u8, std.mem.span(link_def.url));
-    errdefer alloc.free(url);
-    const title = try alloc.dupeZ(u8, std.mem.span(link_def.title));
-    errdefer alloc.free(title);
-    const alt = try running_text.toOwnedSliceSentinel(0);
-    errdefer alloc.free(alt);
-
-    const img_node = try alloc.create(ast.Node);
-    img_node.* = .{
-        .tag = .image,
-        .payload = .{
-            .image = .{
-                .url = url,
-                .title = title,
-                .alt = alt,
-            },
-        },
-    };
-    did_parse = true;
-    return img_node;
-}
-
-/// Parses an image like `![ref][]`.
-fn parseCollapsedReferenceImage(
-    self: *Self,
-    alloc: Allocator,
-    scratch: Allocator,
-) Error!?*ast.Node {
-    var did_parse = false;
-    const checkpoint_index = self.checkpoint();
-    defer if (!did_parse) {
-        self.backtrack(checkpoint_index);
-    };
-
-    _ = try self.consume(scratch, &.{.exclamation_mark}) orelse return null;
-
-    const label_begin_index = self.checkpoint();
-
-    // handle link label
-    const scanned_link_label = (
-        try self.scanLinkLabel(scratch) orelse return null
-    );
-
-    _ = try self.consume(scratch, &.{.l_square_bracket}) orelse return null;
-    _ = try self.consume(scratch, &.{.r_square_bracket}) orelse return null;
-
-    // lookup link def
-    const link_def = try self.link_defs.get(
-        scratch,
-        scanned_link_label,
-    ) orelse return null; // no matching def means parse failure
-
-    // !! re-parse label as inline content !!
-    self.backtrack(label_begin_index);
-    const inline_nodes = (
-        try self.parseLinkLabel(alloc, scratch) orelse return null
-    );
-    defer {
-        // We only need these nodes to produce the alt text. They won't end
-        // up in the final AST.
-        for (inline_nodes) |node| {
-            node.deinit(alloc);
-        }
-        alloc.free(inline_nodes);
-    }
-
-    // re-consume trailing "[]"
-    _ = try self.consume(scratch, &.{.l_square_bracket}) orelse unreachable;
-    _ = try self.consume(scratch, &.{.r_square_bracket}) orelse unreachable;
-
-    // render "plain text" alt text
-    var running_text = Io.Writer.Allocating.init(alloc);
-    errdefer running_text.deinit();
-    for (inline_nodes) |node| {
-        try alttext.write(&running_text.writer, node);
-    }
-
-    const url = try alloc.dupeZ(u8, std.mem.span(link_def.url));
-    errdefer alloc.free(url);
-    const title = try alloc.dupeZ(u8, std.mem.span(link_def.title));
-    errdefer alloc.free(title);
-    const alt = try running_text.toOwnedSliceSentinel(0);
-    errdefer alloc.free(alt);
-
-    const img_node = try alloc.create(ast.Node);
-    img_node.* = .{
-        .tag = .image,
-        .payload = .{
-            .image = .{
-                .url = url,
-                .title = title,
-                .alt = alt,
-            },
-        },
-    };
-    did_parse = true;
-    return img_node;
-}
-
-/// Parses an image like `![ref]`.
-fn parseShortcutReferenceImage(
-    self: *Self,
-    alloc: Allocator,
-    scratch: Allocator,
-) Error!?*ast.Node {
-    var did_parse = false;
-    const checkpoint_index = self.checkpoint();
-    defer if (!did_parse) {
-        self.backtrack(checkpoint_index);
-    };
-
-    _ = try self.consume(scratch, &.{.exclamation_mark}) orelse return null;
-
-    const label_begin_index = self.checkpoint();
-
-    // handle link label
-    const scanned_link_label = (
-        try self.scanLinkLabel(scratch) orelse return null
-    );
-
-    // lookup link def
-    const link_def = try self.link_defs.get(
-        scratch,
-        scanned_link_label,
-    ) orelse return null; // no matching def means parse failure
-
-    // !! re-parse label as inline content !!
-    self.backtrack(label_begin_index);
-    const inline_nodes = (
-        try self.parseLinkLabel(alloc, scratch) orelse return null
-    );
-    defer {
-        // We only need these nodes to produce the alt text. They won't end
-        // up in the final AST.
-        for (inline_nodes) |node| {
-            node.deinit(alloc);
-        }
-        alloc.free(inline_nodes);
-    }
-
-    // render "plain text" alt text
-    var running_text = Io.Writer.Allocating.init(alloc);
-    errdefer running_text.deinit();
-    for (inline_nodes) |node| {
-        try alttext.write(&running_text.writer, node);
-    }
-
-    const url = try alloc.dupeZ(u8, std.mem.span(link_def.url));
-    errdefer alloc.free(url);
-    const title = try alloc.dupeZ(u8, std.mem.span(link_def.title));
-    errdefer alloc.free(title);
-    const alt = try running_text.toOwnedSliceSentinel(0);
-    errdefer alloc.free(alt);
-
-    const img_node = try alloc.create(ast.Node);
-    img_node.* = .{
-        .tag = .image,
-        .payload = .{
-            .image = .{
-                .url = url,
-                .title = title,
-                .alt = alt,
-            },
-        },
-    };
-    did_parse = true;
-    return img_node;
-}
-
 /// Parses an inline link looking like `[foo](bar.com/url)`.
 fn parseInlineLink(
     self: *Self,
@@ -2531,6 +2135,402 @@ fn parseLinkLabel(
 
     did_parse = true;
     return try nodes.toOwnedSlice();
+}
+
+/// Parses an inline image link like `![my alt text](bar.com/url)`.
+fn parseInlineImage(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) Error!?*ast.Node {
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+    };
+
+    // @ => ! link_description l_paren (link_dest link_title?)? r_paren
+    _ = try self.consume(scratch, &.{.exclamation_mark}) orelse return null;
+
+    const img_desc_nodes = (
+        try self.parseImageDescription(alloc, scratch) orelse return null
+    );
+    defer {
+        // We only need these nodes to produce the alt text. They won't end
+        // up in the final AST.
+        for (img_desc_nodes) |node| {
+            node.deinit(alloc);
+        }
+        alloc.free(img_desc_nodes);
+    }
+
+    _ = try self.consume(scratch, &.{.l_paren}) orelse return null;
+    _ = try self.scanSeparatingWhitespace(scratch) orelse return null;
+
+    // link destination
+    const raw_url = try self.scanLinkDestination(scratch) orelse "";
+    const url = try cmark.uri.normalize(scratch, scratch, raw_url);
+
+    const whitespace = (
+        try self.scanSeparatingWhitespace(scratch) orelse return null
+    );
+    const title = blk: {
+        // link title, if present, must be separated from destination by
+        // whitespace
+        if (whitespace.len == 0) {
+            break :blk "";
+        }
+
+        const t = try self.scanLinkTitle(scratch) orelse "";
+        _ = try self.scanSeparatingWhitespace(scratch) orelse return null;
+        break :blk t;
+    };
+
+    _ = try self.consume(scratch, &.{.r_paren}) orelse return null;
+
+    // render "plain text" alt text
+    var running_text = Io.Writer.Allocating.init(alloc);
+    errdefer running_text.deinit();
+    for (img_desc_nodes) |node| {
+        try alttext.write(&running_text.writer, node);
+    }
+
+    const ownedUrl = try alloc.dupeZ(u8, url);
+    errdefer alloc.free(ownedUrl);
+    const ownedTitle = try alloc.dupeZ(u8, title);
+    errdefer alloc.free(ownedTitle);
+    const ownedAlt = try running_text.toOwnedSliceSentinel(0);
+    errdefer alloc.free(ownedAlt);
+    const image = try alloc.create(ast.Node);
+    image.* = .{
+        .tag = .image,
+        .payload = .{
+            .image = .{
+                .url = ownedUrl,
+                .title = ownedTitle,
+                .alt = ownedAlt,
+            },
+        },
+    };
+    did_parse = true;
+    return image;
+}
+
+/// Parses the image description component of an inline image. Returns a slice
+/// of inline AST nodes.
+fn parseImageDescription(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) Error!?[]*ast.Node {
+    var did_parse = false;
+    var nodes = NodeList.init(alloc, scratch, createTextNode);
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+        for (nodes.items()) |node| {
+            node.deinit(alloc);
+        }
+        nodes.deinit();
+    };
+
+    _ = try self.consume(scratch, &.{.l_square_bracket}) orelse return null;
+
+    var bracket_depth: u32 = 0;
+    loop: for (0..util.safety.loop_bound) |_| {
+        if (try self.parseInlineImage(alloc, scratch)) |image| {
+            try nodes.append(image);
+            continue;
+        }
+
+        if (try self.parseAnyLink(alloc, scratch)) |link| {
+            try nodes.append(link);
+            continue;
+        }
+
+        if (try self.parseInlineCode(alloc, scratch)) |code| {
+            try nodes.append(code);
+            continue;
+        }
+
+        // Handle square brackets, which are only allowed if they are balanced
+        const allowed_bracket: []const u8 = blk: {
+            const token = try self.peek(scratch) orelse return null;
+            switch (token.token_type) {
+                .l_square_bracket => {
+                    bracket_depth += 1;
+                },
+                .r_square_bracket => {
+                    if (bracket_depth == 0) {
+                        // end of link text
+                        break :loop;
+                    }
+
+                    bracket_depth -= 1;
+                },
+                else => break :blk "",
+            }
+
+            _ = try self.consume(scratch, &.{token.token_type});
+            const value = try emitInlineText(scratch, token);
+            break :blk value;
+        };
+        if (allowed_bracket.len > 0) {
+            try nodes.appendText(allowed_bracket);
+            continue;
+        }
+
+        if (try self.parseHardLineBreak(alloc, scratch)) |brk| {
+            try nodes.append(brk);
+            continue;
+        }
+
+        if (try self.parseAnyEmphasis(alloc, scratch, .{})) |emph| {
+            try nodes.append(emph);
+            continue;
+        }
+
+        if (try self.parseAnyStrong(alloc, scratch, .{})) |strong| {
+            try nodes.append(strong);
+            continue;
+        }
+
+        const text_value = try self.scanText(scratch);
+        if (text_value.len > 0) {
+            try nodes.appendText(text_value);
+            continue;
+        }
+
+        const text_fallback_value = try self.scanTextFallback(scratch);
+        if (text_fallback_value.len > 0) {
+            try nodes.appendText(text_fallback_value);
+            continue;
+        }
+
+        break;
+    } else @panic(util.safety.loop_bound_panic_msg);
+
+    _ = try self.consume(scratch, &.{.r_square_bracket}) orelse return null;
+
+    if (bracket_depth > 0) {
+        return null; // contained unbalanced brackets
+    }
+
+    did_parse = true;
+    return try nodes.toOwnedSlice();
+}
+
+/// Parses an image like `![my alt text][ref]`.
+fn parseFullReferenceImage(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) Error!?*ast.Node {
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+    };
+
+    _ = try self.consume(scratch, &.{.exclamation_mark}) orelse return null;
+
+    const img_desc_nodes = (
+        try self.parseImageDescription(alloc, scratch) orelse return null
+    );
+    defer {
+        // We only need these nodes to produce the alt text. They won't end
+        // up in the final AST.
+        for (img_desc_nodes) |node| {
+            node.deinit(alloc);
+        }
+        alloc.free(img_desc_nodes);
+    }
+
+    // handle link label
+    const scanned_link_label = (
+        try self.scanLinkLabel(scratch) orelse return null
+    );
+
+    // lookup link def
+    const link_def = try self.link_defs.get(
+        scratch,
+        scanned_link_label,
+    ) orelse return null; // no matching def means parse failure
+
+    // render "plain text" alt text
+    var running_text = Io.Writer.Allocating.init(alloc);
+    errdefer running_text.deinit();
+    for (img_desc_nodes) |node| {
+        try alttext.write(&running_text.writer, node);
+    }
+
+    const url = try alloc.dupeZ(u8, std.mem.span(link_def.url));
+    errdefer alloc.free(url);
+    const title = try alloc.dupeZ(u8, std.mem.span(link_def.title));
+    errdefer alloc.free(title);
+    const alt = try running_text.toOwnedSliceSentinel(0);
+    errdefer alloc.free(alt);
+
+    const img_node = try alloc.create(ast.Node);
+    img_node.* = .{
+        .tag = .image,
+        .payload = .{
+            .image = .{
+                .url = url,
+                .title = title,
+                .alt = alt,
+            },
+        },
+    };
+    did_parse = true;
+    return img_node;
+}
+
+/// Parses an image like `![ref][]`.
+fn parseCollapsedReferenceImage(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) Error!?*ast.Node {
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+    };
+
+    _ = try self.consume(scratch, &.{.exclamation_mark}) orelse return null;
+
+    const label_begin_index = self.checkpoint();
+
+    // handle link label
+    const scanned_link_label = (
+        try self.scanLinkLabel(scratch) orelse return null
+    );
+
+    _ = try self.consume(scratch, &.{.l_square_bracket}) orelse return null;
+    _ = try self.consume(scratch, &.{.r_square_bracket}) orelse return null;
+
+    // lookup link def
+    const link_def = try self.link_defs.get(
+        scratch,
+        scanned_link_label,
+    ) orelse return null; // no matching def means parse failure
+
+    // !! re-parse label as inline content !!
+    self.backtrack(label_begin_index);
+    const inline_nodes = (
+        try self.parseLinkLabel(alloc, scratch) orelse return null
+    );
+    defer {
+        // We only need these nodes to produce the alt text. They won't end
+        // up in the final AST.
+        for (inline_nodes) |node| {
+            node.deinit(alloc);
+        }
+        alloc.free(inline_nodes);
+    }
+
+    // re-consume trailing "[]"
+    _ = try self.consume(scratch, &.{.l_square_bracket}) orelse unreachable;
+    _ = try self.consume(scratch, &.{.r_square_bracket}) orelse unreachable;
+
+    // render "plain text" alt text
+    var running_text = Io.Writer.Allocating.init(alloc);
+    errdefer running_text.deinit();
+    for (inline_nodes) |node| {
+        try alttext.write(&running_text.writer, node);
+    }
+
+    const url = try alloc.dupeZ(u8, std.mem.span(link_def.url));
+    errdefer alloc.free(url);
+    const title = try alloc.dupeZ(u8, std.mem.span(link_def.title));
+    errdefer alloc.free(title);
+    const alt = try running_text.toOwnedSliceSentinel(0);
+    errdefer alloc.free(alt);
+
+    const img_node = try alloc.create(ast.Node);
+    img_node.* = .{
+        .tag = .image,
+        .payload = .{
+            .image = .{
+                .url = url,
+                .title = title,
+                .alt = alt,
+            },
+        },
+    };
+    did_parse = true;
+    return img_node;
+}
+
+/// Parses an image like `![ref]`.
+fn parseShortcutReferenceImage(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) Error!?*ast.Node {
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+    };
+
+    _ = try self.consume(scratch, &.{.exclamation_mark}) orelse return null;
+
+    const label_begin_index = self.checkpoint();
+
+    // handle link label
+    const scanned_link_label = (
+        try self.scanLinkLabel(scratch) orelse return null
+    );
+
+    // lookup link def
+    const link_def = try self.link_defs.get(
+        scratch,
+        scanned_link_label,
+    ) orelse return null; // no matching def means parse failure
+
+    // !! re-parse label as inline content !!
+    self.backtrack(label_begin_index);
+    const inline_nodes = (
+        try self.parseLinkLabel(alloc, scratch) orelse return null
+    );
+    defer {
+        // We only need these nodes to produce the alt text. They won't end
+        // up in the final AST.
+        for (inline_nodes) |node| {
+            node.deinit(alloc);
+        }
+        alloc.free(inline_nodes);
+    }
+
+    // render "plain text" alt text
+    var running_text = Io.Writer.Allocating.init(alloc);
+    errdefer running_text.deinit();
+    for (inline_nodes) |node| {
+        try alttext.write(&running_text.writer, node);
+    }
+
+    const url = try alloc.dupeZ(u8, std.mem.span(link_def.url));
+    errdefer alloc.free(url);
+    const title = try alloc.dupeZ(u8, std.mem.span(link_def.title));
+    errdefer alloc.free(title);
+    const alt = try running_text.toOwnedSliceSentinel(0);
+    errdefer alloc.free(alt);
+
+    const img_node = try alloc.create(ast.Node);
+    img_node.* = .{
+        .tag = .image,
+        .payload = .{
+            .image = .{
+                .url = url,
+                .title = title,
+                .alt = alt,
+            },
+        },
+    };
+    did_parse = true;
+    return img_node;
 }
 
 fn parseURIAutolink(
