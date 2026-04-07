@@ -185,7 +185,9 @@ fn parseStarStrong(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
-    options: struct { maybe_underscore_open_token: ?InlineToken = null },
+    opts: struct {
+        maybe_underscore_open_token: ?InlineToken = null,
+    },
 ) Error!?*ast.Node {
     var did_parse = false;
     var children = NodeList.init(alloc, scratch, createTextNode);
@@ -253,7 +255,7 @@ fn parseStarStrong(
                 scratch,
                 .{
                     .maybe_underscore_open_token =
-                        options.maybe_underscore_open_token,
+                        opts.maybe_underscore_open_token,
                 },
             )
         ) |emph| {
@@ -278,7 +280,7 @@ fn parseStarStrong(
                 scratch,
                 .{
                     .maybe_underscore_open_token =
-                        options.maybe_underscore_open_token,
+                        opts.maybe_underscore_open_token,
                 },
             )
         ) |strong| {
@@ -311,7 +313,7 @@ fn parseStarStrong(
                 .r_delim_underscore, .lr_delim_underscore => {
                     // Handle interleaved emphasis.
                     const underscore_open_token = (
-                        options.maybe_underscore_open_token
+                        opts.maybe_underscore_open_token
                         orelse break :blk false
                     );
                     if (isValidBySumOfLengthsRule(underscore_open_token, token)) {
@@ -387,7 +389,7 @@ fn parseStarEmphasis(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
-    options: struct { maybe_underscore_open_token: ?InlineToken = null },
+    opts: struct { maybe_underscore_open_token: ?InlineToken = null },
 ) Error!?*ast.Node {
     var did_parse = false;
     var children = NodeList.init(alloc, scratch, createTextNode);
@@ -417,7 +419,7 @@ fn parseStarEmphasis(
         const maybe_leading_emph = try self.parseStarEmphasis(
             alloc,
             scratch,
-            .{.maybe_underscore_open_token = options.maybe_underscore_open_token},
+            .{.maybe_underscore_open_token = opts.maybe_underscore_open_token},
         );
         defer if (!did_parse_this_loop) {
             if (maybe_leading_emph) |emph| {
@@ -471,7 +473,7 @@ fn parseStarEmphasis(
                     scratch,
                     .{
                         .maybe_underscore_open_token =
-                            options.maybe_underscore_open_token,
+                            opts.maybe_underscore_open_token,
                     },
                 )
             ) |strong| {
@@ -502,7 +504,7 @@ fn parseStarEmphasis(
                 try self.parseStarEmphasis(
                     alloc,
                     scratch,
-                    .{.maybe_underscore_open_token = options.maybe_underscore_open_token},
+                    .{.maybe_underscore_open_token = opts.maybe_underscore_open_token},
                 )
             ) |emph| {
                 try children.append(emph);
@@ -533,7 +535,7 @@ fn parseStarEmphasis(
                         // another emphasis, check if this could be the close
                         // token.
                         const underscore_open_token = (
-                            options.maybe_underscore_open_token
+                            opts.maybe_underscore_open_token
                             orelse break :swtch
                         );
                         if (isValidBySumOfLengthsRule(underscore_open_token, token)) {
@@ -562,7 +564,7 @@ fn parseStarEmphasis(
                 try self.parseStarEmphasis(
                     alloc,
                     scratch,
-                    .{.maybe_underscore_open_token = options.maybe_underscore_open_token},
+                    .{.maybe_underscore_open_token = opts.maybe_underscore_open_token},
                 )
             ) |emph| {
                 try children.append(emph);
@@ -617,7 +619,7 @@ fn parseUnderscoreStrong(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
-    options: struct { maybe_star_open_token: ?InlineToken = null },
+    opts: struct { maybe_star_open_token: ?InlineToken = null },
 ) Error!?*ast.Node {
     var did_parse = false;
     var children = NodeList.init(alloc, scratch, createTextNode);
@@ -705,7 +707,7 @@ fn parseUnderscoreStrong(
                 scratch,
                 .{
                     .maybe_star_open_token =
-                        options.maybe_star_open_token,
+                        opts.maybe_star_open_token,
                 },
             )
         ) |emph| {
@@ -730,7 +732,7 @@ fn parseUnderscoreStrong(
                 scratch,
                 .{
                     .maybe_star_open_token =
-                        options.maybe_star_open_token,
+                        opts.maybe_star_open_token,
                 },
             )
         ) |strong| {
@@ -752,7 +754,7 @@ fn parseUnderscoreStrong(
                 .r_delim_star, .lr_delim_star => {
                     // Handle interleaved emphasis.
                     const star_open_token = (
-                        options.maybe_star_open_token
+                        opts.maybe_star_open_token
                         orelse break :blk false
                     );
                     if (isValidBySumOfLengthsRule(star_open_token, token)) {
@@ -837,7 +839,7 @@ fn parseUnderscoreEmphasis(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
-    options: struct { maybe_star_open_token: ?InlineToken = null },
+    opts: struct { maybe_star_open_token: ?InlineToken = null },
 ) Error!?*ast.Node {
     var did_parse = false;
     var children = NodeList.init(alloc, scratch, createTextNode);
@@ -878,7 +880,7 @@ fn parseUnderscoreEmphasis(
         const maybe_leading_emph = try self.parseUnderscoreEmphasis(
             alloc,
             scratch,
-            .{.maybe_star_open_token = options.maybe_star_open_token},
+            .{.maybe_star_open_token = opts.maybe_star_open_token},
         );
         defer if (!did_parse_this_loop) {
             if (maybe_leading_emph) |emph| {
@@ -942,7 +944,7 @@ fn parseUnderscoreEmphasis(
                     scratch,
                     .{
                         .maybe_star_open_token =
-                            options.maybe_star_open_token,
+                            opts.maybe_star_open_token,
                     },
                 )
             ) |strong| {
@@ -962,7 +964,7 @@ fn parseUnderscoreEmphasis(
                 try self.parseUnderscoreEmphasis(
                     alloc,
                     scratch,
-                    .{.maybe_star_open_token = options.maybe_star_open_token},
+                    .{.maybe_star_open_token = opts.maybe_star_open_token},
                 )
             ) |emph| {
                 try children.append(emph);
@@ -993,7 +995,7 @@ fn parseUnderscoreEmphasis(
                     // another emphasis, check if this could be the close
                     // token.
                     const star_open_token = (
-                        options.maybe_star_open_token orelse break :swtch
+                        opts.maybe_star_open_token orelse break :swtch
                     );
                     if (isValidBySumOfLengthsRule(star_open_token, token)) {
                         // Ancestor closes before this emphasis can close.
@@ -1020,7 +1022,7 @@ fn parseUnderscoreEmphasis(
                 try self.parseUnderscoreEmphasis(
                     alloc,
                     scratch,
-                    .{.maybe_star_open_token = options.maybe_star_open_token},
+                    .{.maybe_star_open_token = opts.maybe_star_open_token},
                 )
             ) |emph| {
                 try children.append(emph);
