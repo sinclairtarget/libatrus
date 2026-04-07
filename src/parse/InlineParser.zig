@@ -1955,6 +1955,8 @@ fn parseCollapsedReferenceLink(
 
 /// Parse link looking like `[ref]`.
 ///
+/// CANNOT be followed by `[]` or a link label like `[blah]`.
+///
 /// https://spec.commonmark.org/0.30/#shortcut-reference-link
 fn parseShortcutReferenceLink(
     self: *Self,
@@ -1989,6 +1991,23 @@ fn parseShortcutReferenceLink(
         }
         alloc.free(inline_nodes);
     };
+
+    // Make sure we aren't followed by `[]` or a link label
+    if (try self.peek(scratch)) |next| {
+        if (next.token_type == .l_square_bracket) {
+            if (try self.peekAhead(scratch, 2)) |following| {
+                if (following.token_type == .r_square_bracket) {
+                    // Cannot be followed by `[]`
+                    return null;
+                }
+            }
+        }
+
+        if (try self.scanLinkLabel(scratch)) |_| {
+            // Cannot be followed by link label
+            return null;
+        }
+    }
 
     const url = try alloc.dupeZ(u8, std.mem.span(link_def.url));
     errdefer alloc.free(url);
@@ -2480,6 +2499,8 @@ fn parseCollapsedReferenceImage(
 }
 
 /// Parses an image like `![ref]`.
+///
+/// CANNOT be followed by `[]` or a link label like `[blah]`.
 fn parseShortcutReferenceImage(
     self: *Self,
     alloc: Allocator,
@@ -2518,6 +2539,23 @@ fn parseShortcutReferenceImage(
             node.deinit(alloc);
         }
         alloc.free(inline_nodes);
+    }
+
+    // Make sure we aren't followed by `[]` or a link label
+    if (try self.peek(scratch)) |next| {
+        if (next.token_type == .l_square_bracket) {
+            if (try self.peekAhead(scratch, 2)) |following| {
+                if (following.token_type == .r_square_bracket) {
+                    // Cannot be followed by `[]`
+                    return null;
+                }
+            }
+        }
+
+        if (try self.scanLinkLabel(scratch)) |_| {
+            // Cannot be followed by link label
+            return null;
+        }
     }
 
     // render "plain text" alt text
@@ -5407,6 +5445,45 @@ test "shortcut reference image" {
     try testing.expectEqualStrings(
         "foo",
         std.mem.span(img_node.payload.image.alt),
+    );
+}
+
+test "reference image precedence" {
+    // This is CommonMark spec example 570 but for images
+    const value = "![foo][bar][baz]";
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    var def1: ast.LinkDefinition = .{
+        .url = "/url1",
+        .label = "baz",
+        .title = "",
+    };
+    try link_defs.add(testing.allocator, &def1);
+
+    var def2: ast.LinkDefinition = .{
+        .url = "/url2",
+        .label = "foo",
+        .title = "",
+    };
+    try link_defs.add(testing.allocator, &def2);
+
+    const nodes = try parseIntoNodes(value, link_defs);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(2, nodes.len);
+
+    try testing.expectEqual(ast.NodeType.text, nodes[0].tag);
+    try testing.expectEqualStrings(
+        "![foo]",
+        std.mem.span(nodes[0].payload.text.value),
+    );
+
+    try testing.expectEqual(ast.NodeType.link, nodes[1].tag);
+    try testing.expectEqualStrings(
+        "/url1",
+        std.mem.span(nodes[1].payload.link.url),
     );
 }
 
