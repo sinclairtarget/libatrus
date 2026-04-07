@@ -46,14 +46,16 @@ pub const Error = (
 tokenizer: *InlineTokenizer,
 line: ArrayList(InlineToken),
 token_index: usize,
+link_defs: LinkDefMap,
 
 const Self = @This();
 
-pub fn init(tokenizer: *InlineTokenizer) Self {
+pub fn init(tokenizer: *InlineTokenizer, link_defs: LinkDefMap) Self {
     return .{
         .tokenizer = tokenizer,
         .line = .empty,
         .token_index = 0,
+        .link_defs = link_defs,
     };
 }
 
@@ -64,7 +66,6 @@ pub fn parse(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
-    link_defs: LinkDefMap,
 ) Error![]*ast.Node {
     var nodes = NodeList.init(alloc, scratch, createTextNode);
     errdefer {
@@ -103,21 +104,21 @@ pub fn parse(
         }
 
         if (
-            try self.parseFullReferenceImage(alloc, scratch, link_defs)
+            try self.parseFullReferenceImage(alloc, scratch)
         ) |image| {
             try nodes.append(image);
             continue;
         }
 
         if (
-            try self.parseCollapsedReferenceImage(alloc, scratch, link_defs)
+            try self.parseCollapsedReferenceImage(alloc, scratch)
         ) |image| {
             try nodes.append(image);
             continue;
         }
 
         if (
-            try self.parseShortcutReferenceImage(alloc, scratch, link_defs)
+            try self.parseShortcutReferenceImage(alloc, scratch)
         ) |image| {
             try nodes.append(image);
             continue;
@@ -128,20 +129,20 @@ pub fn parse(
             continue;
         }
 
-        if (try self.parseFullReferenceLink(alloc, scratch, link_defs)) |link| {
+        if (try self.parseFullReferenceLink(alloc, scratch)) |link| {
             try nodes.append(link);
             continue;
         }
 
         if (
-            try self.parseCollapsedReferenceLink(alloc, scratch, link_defs)
+            try self.parseCollapsedReferenceLink(alloc, scratch)
         ) |link| {
             try nodes.append(link);
             continue;
         }
 
         if (
-            try self.parseShortcutReferenceLink(alloc, scratch, link_defs)
+            try self.parseShortcutReferenceLink(alloc, scratch)
         ) |link| {
             try nodes.append(link);
             continue;
@@ -1453,7 +1454,6 @@ fn parseFullReferenceImage(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
-    link_defs: LinkDefMap,
 ) Error!?*ast.Node {
     var did_parse = false;
     const checkpoint_index = self.checkpoint();
@@ -1481,7 +1481,7 @@ fn parseFullReferenceImage(
     );
 
     // lookup link def
-    const link_def = try link_defs.get(
+    const link_def = try self.link_defs.get(
         scratch,
         scanned_link_label,
     ) orelse return null; // no matching def means parse failure
@@ -1520,7 +1520,6 @@ fn parseCollapsedReferenceImage(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
-    link_defs: LinkDefMap,
 ) Error!?*ast.Node {
     var did_parse = false;
     const checkpoint_index = self.checkpoint();
@@ -1541,7 +1540,7 @@ fn parseCollapsedReferenceImage(
     _ = try self.consume(scratch, &.{.r_square_bracket}) orelse return null;
 
     // lookup link def
-    const link_def = try link_defs.get(
+    const link_def = try self.link_defs.get(
         scratch,
         scanned_link_label,
     ) orelse return null; // no matching def means parse failure
@@ -1598,7 +1597,6 @@ fn parseShortcutReferenceImage(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
-    link_defs: LinkDefMap,
 ) Error!?*ast.Node {
     var did_parse = false;
     const checkpoint_index = self.checkpoint();
@@ -1616,7 +1614,7 @@ fn parseShortcutReferenceImage(
     );
 
     // lookup link def
-    const link_def = try link_defs.get(
+    const link_def = try self.link_defs.get(
         scratch,
         scanned_link_label,
     ) orelse return null; // no matching def means parse failure
@@ -2028,7 +2026,6 @@ fn parseFullReferenceLink(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
-    link_defs: LinkDefMap,
 ) Error!?*ast.Node {
     var did_parse = false;
     const checkpoint_index = self.checkpoint();
@@ -2053,7 +2050,7 @@ fn parseFullReferenceLink(
     );
 
     // lookup link def
-    const link_def = try link_defs.get(
+    const link_def = try self.link_defs.get(
         scratch,
         scanned_link_label,
     ) orelse return null; // no matching def means parse failure
@@ -2089,7 +2086,6 @@ fn parseCollapsedReferenceLink(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
-    link_defs: LinkDefMap,
 ) Error!?*ast.Node {
     var did_parse = false;
     const checkpoint_index = self.checkpoint();
@@ -2106,7 +2102,7 @@ fn parseCollapsedReferenceLink(
     _ = try self.consume(scratch, &.{.r_square_bracket}) orelse return null;
 
     // lookup link def
-    const link_def = try link_defs.get(
+    const link_def = try self.link_defs.get(
         scratch,
         scanned_link_label,
     ) orelse return null; // no matching def means parse failure
@@ -2155,7 +2151,6 @@ fn parseShortcutReferenceLink(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
-    link_defs: LinkDefMap,
 ) Error!?*ast.Node {
     var did_parse = false;
     const checkpoint_index = self.checkpoint();
@@ -2169,7 +2164,7 @@ fn parseShortcutReferenceLink(
     );
 
     // lookup link def
-    const link_def = try link_defs.get(
+    const link_def = try self.link_defs.get(
         scratch,
         scanned_link_label,
     ) orelse return null; // no matching def means parse failure
@@ -3614,8 +3609,8 @@ fn parseIntoNodes(value: []const u8, link_defs: LinkDefMap) ![]*ast.Node {
     const scratch = arena.allocator();
 
     var tokenizer = InlineTokenizer.init(value);
-    var parser = Self.init(&tokenizer);
-    return try parser.parse(testing.allocator, scratch, link_defs);
+    var parser = Self.init(&tokenizer, link_defs);
+    return try parser.parse(testing.allocator, scratch);
 }
 
 fn freeNodes(nodes: []*ast.Node) void {

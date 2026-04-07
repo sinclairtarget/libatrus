@@ -131,11 +131,10 @@ fn parseInline(
             .text => {
                 const n = node.payload.text;
                 var tokenizer = InlineTokenizer.init(std.mem.span(n.value));
-                var parser = InlineParser.init(&tokenizer);
+                var parser = InlineParser.init(&tokenizer, link_defs);
                 const replacement_nodes = try parser.parse(
                     alloc,
                     scratch_arena.allocator(),
-                    link_defs,
                 );
                 errdefer alloc.free(replacement_nodes);
 
