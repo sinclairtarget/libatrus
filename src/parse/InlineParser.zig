@@ -10,13 +10,26 @@
 //! backtracking to ensure that the parser is only advanced after successfully
 //! parsing something.
 //!
-//! One of the most complicated parts of the inline parser is parsing emphasis
-//! and strong emphasis. In particular, making sure that interleaved
-//! star- and underscore-delimited emphasis is parsed correctly requires us to
-//! pass down the last opening token (of the other delimiter type) through the
-//! recursive descent parser. This gives us enough information to make sure
-//! that the emphasis opening sooner always takes precedence. (This is emphasis
-//! parsing rule 15 in the CommonMark specification.)
+//! One of the most complicated parts of the inline parser is parsing
+//! interleaved constructs with the correct precedence. We have to be able to
+//! abort parsing some construct if we see a token that closes an already open
+//! construct with higher precedence.
+//!
+//! Making sure that interleaved star- and underscore-delimited emphasis is
+//! parsed correctly requires us to pass down the last opening token (of the
+//! other delimiter type) through the recursive descent parser. This gives us
+//! enough information to evaluate whether a closing token matches the opening
+//! token and so ensure that the emphasis opening first takes precedence. (This
+//! is emphasis parsing rule 15 in the CommonMark specification.)
+//!
+//! When inline link text is interleaved with emphasis, we must also make sure
+//! that the inline link takes precedence. This is made especially challenging
+//! by the fact that square brackets are allowed within link text as long as
+//! they are balanced. We handle this by tracking the bracket depth through all
+//! nested emphasis. A right square bracket closes link text (and aborts any
+//! emphasis parsing) only when the bracket depth is 0. Brackets appearing in
+//! other constructs like code spans or inline HTML aren't relevant because
+//! those constructs have higher precedence than inline links.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -160,13 +173,25 @@ fn parseStarStrong(
     opts: struct {
         maybe_underscore_open_token: ?InlineToken = null,
         is_link_allowed: bool = true,
+        bracket_depth: ?*u32 = null,
     },
 ) Error!?*ast.Node {
     var did_parse = false;
     var children = NodeList.init(alloc, scratch, createTextNode);
     const checkpoint_index = self.checkpoint();
+
+    // Track bracket depth so we know if we need to exit early because a parent
+    // link text has closed (happens when we see ']' and depth is zero).
+    // If we weren't given a bracket depth, just use a giant number so we
+    // effectively ignore it.
+    var noop_bracket_depth: u32 = std.math.maxInt(u32);
+    const bracket_depth: *u32 = opts.bracket_depth orelse &noop_bracket_depth;
+    const start_bracket_depth = bracket_depth.*;
+
     defer if (!did_parse) {
         self.backtrack(checkpoint_index);
+        bracket_depth.* = start_bracket_depth;
+
         for (children.items()) |child| {
             child.deinit(alloc);
         }
@@ -225,6 +250,7 @@ fn parseStarStrong(
                     .maybe_underscore_open_token =
                         opts.maybe_underscore_open_token,
                     .is_link_allowed = opts.is_link_allowed,
+                    .bracket_depth = bracket_depth,
                 },
             )
         ) |emph| {
@@ -239,6 +265,7 @@ fn parseStarStrong(
                 .{
                     .maybe_star_open_token = open_token,
                     .is_link_allowed = opts.is_link_allowed,
+                    .bracket_depth = bracket_depth,
                 },
             )
         ) |emph| {
@@ -254,6 +281,7 @@ fn parseStarStrong(
                     .maybe_underscore_open_token =
                         opts.maybe_underscore_open_token,
                     .is_link_allowed = opts.is_link_allowed,
+                    .bracket_depth = bracket_depth,
                 },
             )
         ) |strong| {
@@ -268,6 +296,7 @@ fn parseStarStrong(
                 .{
                     .maybe_star_open_token = open_token,
                     .is_link_allowed = opts.is_link_allowed,
+                    .bracket_depth = bracket_depth,
                 },
             )
         ) |strong| {
@@ -298,6 +327,21 @@ fn parseStarStrong(
                         return null;
                     }
 
+                    break :blk false;
+                },
+                .l_square_bracket => {
+                    // saturating addition
+                    bracket_depth.* +|= 1;
+                    break :blk false;
+                },
+                .r_square_bracket => {
+                    if (bracket_depth.* == 0) {
+                        // Ancestor link text closes before this emphasis can.
+                        // Give up.
+                        return null;
+                    }
+
+                    bracket_depth.* -= 1;
                     break :blk false;
                 },
                 else => break :blk false,
@@ -368,13 +412,25 @@ fn parseStarEmphasis(
     opts: struct {
         maybe_underscore_open_token: ?InlineToken = null,
         is_link_allowed: bool = true,
+        bracket_depth: ?*u32 = null,
     },
 ) Error!?*ast.Node {
     var did_parse = false;
     var children = NodeList.init(alloc, scratch, createTextNode);
     const checkpoint_index = self.checkpoint();
+
+    // Track bracket depth so we know if we need to exit early because a parent
+    // link text has closed (happens when we see ']' and depth is zero).
+    // If we weren't given a bracket depth, just use a giant number so we
+    // effectively ignore it.
+    var noop_bracket_depth: u32 = std.math.maxInt(u32);
+    const bracket_depth: *u32 = opts.bracket_depth orelse &noop_bracket_depth;
+    const start_bracket_depth = bracket_depth.*;
+
     defer if (!did_parse) {
         self.backtrack(checkpoint_index);
+        bracket_depth.* = start_bracket_depth;
+
         for (children.items()) |child| {
             child.deinit(alloc);
         }
@@ -401,6 +457,7 @@ fn parseStarEmphasis(
             .{
                 .maybe_underscore_open_token = opts.maybe_underscore_open_token,
                 .is_link_allowed = opts.is_link_allowed,
+                .bracket_depth = bracket_depth,
             },
         );
         defer if (!did_parse_this_loop) {
@@ -443,6 +500,7 @@ fn parseStarEmphasis(
                     .{
                         .maybe_star_open_token = open_token,
                         .is_link_allowed = opts.is_link_allowed,
+                        .bracket_depth = bracket_depth,
                     },
                 )
             ) |emph| {
@@ -457,6 +515,7 @@ fn parseStarEmphasis(
                         .maybe_underscore_open_token =
                             opts.maybe_underscore_open_token,
                         .is_link_allowed = opts.is_link_allowed,
+                        .bracket_depth = bracket_depth,
                     },
                 )
             ) |strong| {
@@ -471,6 +530,7 @@ fn parseStarEmphasis(
                     .{
                         .maybe_star_open_token = open_token,
                         .is_link_allowed = opts.is_link_allowed,
+                        .bracket_depth = bracket_depth,
                     },
                 )
             ) |strong| {
@@ -493,6 +553,7 @@ fn parseStarEmphasis(
                     .{
                         .maybe_underscore_open_token = opts.maybe_underscore_open_token,
                         .is_link_allowed = opts.is_link_allowed,
+                        .bracket_depth = bracket_depth,
                     },
                 )
             ) |emph| {
@@ -503,8 +564,8 @@ fn parseStarEmphasis(
             continue;
         }
 
-        // Handle text node. Here we need to make sure not to consume the
-        // closing delimiter.
+        // Handle text node. Here we need to make sure not to consume a closing
+        // delimiter.
         const text_content = blk: {
             const text_value = try self.scanText(scratch);
             if (text_value.len > 0) {
@@ -512,29 +573,41 @@ fn parseStarEmphasis(
             }
 
             // Check for closing condition
-            if (try self.peek(scratch)) |token| {
-                swtch: switch (token.token_type) {
-                    .r_delim_star, .lr_delim_star => {
-                        if (isValidBySumOfLengthsRule(open_token, token)) {
-                            break :blk "";
-                        }
-                    },
-                    .r_delim_underscore, .lr_delim_underscore => {
-                        // Handle interleaved emphasis. If we are nested within
-                        // another emphasis, check if this could be the close
-                        // token.
-                        const underscore_open_token = (
-                            opts.maybe_underscore_open_token
-                            orelse break :swtch
-                        );
-                        if (isValidBySumOfLengthsRule(underscore_open_token, token)) {
-                            // Ancestor closes before this emphasis can close.
-                            // Give up.
-                            return null;
-                        }
-                    },
-                    else => {},
-                }
+            const token = try self.peek(scratch) orelse break :blk "";
+            swtch: switch (token.token_type) {
+                .r_delim_star, .lr_delim_star => {
+                    if (isValidBySumOfLengthsRule(open_token, token)) {
+                        break :blk "";
+                    }
+                },
+                .r_delim_underscore, .lr_delim_underscore => {
+                    // Handle interleaved emphasis. If we are nested within
+                    // another emphasis, check if this could be the close
+                    // token.
+                    const underscore_open_token = (
+                        opts.maybe_underscore_open_token
+                        orelse break :swtch
+                    );
+                    if (isValidBySumOfLengthsRule(underscore_open_token, token)) {
+                        // Ancestor closes before this emphasis can close.
+                        // Give up.
+                        return null;
+                    }
+                },
+                .l_square_bracket => {
+                    // saturating addition
+                    bracket_depth.* +|= 1;
+                },
+                .r_square_bracket => {
+                    if (bracket_depth.* == 0) {
+                        // Link text closes before this emphasis can close.
+                        // Give up.
+                        return null;
+                    }
+
+                    bracket_depth.* -= 1;
+                },
+                else => {},
             }
 
             // Okay, if we don't have a closing condition, allow basically
@@ -556,6 +629,7 @@ fn parseStarEmphasis(
                     .{
                         .maybe_underscore_open_token = opts.maybe_underscore_open_token,
                         .is_link_allowed = opts.is_link_allowed,
+                        .bracket_depth = bracket_depth,
                     },
                 )
             ) |emph| {
@@ -614,13 +688,25 @@ fn parseUnderscoreStrong(
     opts: struct {
         maybe_star_open_token: ?InlineToken = null,
         is_link_allowed: bool = true,
+        bracket_depth: ?*u32 = null,
     },
 ) Error!?*ast.Node {
     var did_parse = false;
     var children = NodeList.init(alloc, scratch, createTextNode);
     const checkpoint_index = self.checkpoint();
+
+    // Track bracket depth so we know if we need to exit early because a parent
+    // link text has closed (happens when we see ']' and depth is zero).
+    // If we weren't given a bracket depth, just use a giant number so we
+    // effectively ignore it.
+    var noop_bracket_depth: u32 = std.math.maxInt(u32);
+    const bracket_depth: *u32 = opts.bracket_depth orelse &noop_bracket_depth;
+    const start_bracket_depth = bracket_depth.*;
+
     defer if (!did_parse) {
         self.backtrack(checkpoint_index);
+        bracket_depth.* = start_bracket_depth;
+
         for (children.items()) |child| {
             child.deinit(alloc);
         }
@@ -687,6 +773,7 @@ fn parseUnderscoreStrong(
                 .{
                     .maybe_underscore_open_token = open_token,
                     .is_link_allowed = opts.is_link_allowed,
+                    .bracket_depth = bracket_depth,
                 },
             )
         ) |emph| {
@@ -702,6 +789,7 @@ fn parseUnderscoreStrong(
                     .maybe_star_open_token =
                         opts.maybe_star_open_token,
                     .is_link_allowed = opts.is_link_allowed,
+                    .bracket_depth = bracket_depth,
                 },
             )
         ) |emph| {
@@ -716,6 +804,7 @@ fn parseUnderscoreStrong(
                 .{
                     .maybe_underscore_open_token = open_token,
                     .is_link_allowed = opts.is_link_allowed,
+                    .bracket_depth = bracket_depth,
                 },
             )
         ) |strong| {
@@ -731,6 +820,7 @@ fn parseUnderscoreStrong(
                     .maybe_star_open_token =
                         opts.maybe_star_open_token,
                     .is_link_allowed = opts.is_link_allowed,
+                    .bracket_depth = bracket_depth,
                 },
             )
         ) |strong| {
@@ -761,6 +851,21 @@ fn parseUnderscoreStrong(
                         return null;
                     }
 
+                    break :blk false;
+                },
+                .l_square_bracket => {
+                    // saturating addition
+                    bracket_depth.* +|= 1;
+                    break :blk false;
+                },
+                .r_square_bracket => {
+                    if (bracket_depth.* == 0) {
+                        // Ancestor link text closes before this emphasis can.
+                        // Give up.
+                        return null;
+                    }
+
+                    bracket_depth.* -= 1;
                     break :blk false;
                 },
                 else => break :blk false,
@@ -840,13 +945,25 @@ fn parseUnderscoreEmphasis(
     opts: struct {
         maybe_star_open_token: ?InlineToken = null,
         is_link_allowed: bool = true,
+        bracket_depth: ?*u32 = null,
     },
 ) Error!?*ast.Node {
     var did_parse = false;
     var children = NodeList.init(alloc, scratch, createTextNode);
     const checkpoint_index = self.checkpoint();
+
+    // Track bracket depth so we know if we need to exit early because a parent
+    // link text has closed (happens when we see ']' and depth is zero).
+    // If we weren't given a bracket depth, just use a giant number so we
+    // effectively ignore it.
+    var noop_bracket_depth: u32 = std.math.maxInt(u32);
+    const bracket_depth: *u32 = opts.bracket_depth orelse &noop_bracket_depth;
+    const start_bracket_depth = bracket_depth.*;
+
     defer if (!did_parse) {
         self.backtrack(checkpoint_index);
+        bracket_depth.* = start_bracket_depth;
+
         for (children.items()) |child| {
             child.deinit(alloc);
         }
@@ -884,6 +1001,7 @@ fn parseUnderscoreEmphasis(
             .{
                 .maybe_star_open_token = opts.maybe_star_open_token,
                 .is_link_allowed = opts.is_link_allowed,
+                .bracket_depth = bracket_depth,
             },
         );
         defer if (!did_parse_this_loop) {
@@ -925,6 +1043,7 @@ fn parseUnderscoreEmphasis(
                     .{
                         .maybe_underscore_open_token = open_token,
                         .is_link_allowed = opts.is_link_allowed,
+                        .bracket_depth = bracket_depth,
                     },
                 )
             ) |emph| {
@@ -938,6 +1057,7 @@ fn parseUnderscoreEmphasis(
                     .{
                         .maybe_underscore_open_token = open_token,
                         .is_link_allowed = opts.is_link_allowed,
+                        .bracket_depth = bracket_depth,
                     },
                 )
             ) |strong| {
@@ -953,6 +1073,7 @@ fn parseUnderscoreEmphasis(
                         .maybe_star_open_token =
                             opts.maybe_star_open_token,
                         .is_link_allowed = opts.is_link_allowed,
+                        .bracket_depth = bracket_depth,
                     },
                 )
             ) |strong| {
@@ -975,6 +1096,7 @@ fn parseUnderscoreEmphasis(
                     .{
                         .maybe_star_open_token = opts.maybe_star_open_token,
                         .is_link_allowed = opts.is_link_allowed,
+                        .bracket_depth = bracket_depth,
                     },
                 )
             ) |emph| {
@@ -1014,6 +1136,19 @@ fn parseUnderscoreEmphasis(
                         return null;
                     }
                 },
+                .l_square_bracket => {
+                    // saturating addition
+                    bracket_depth.* +|= 1;
+                },
+                .r_square_bracket => {
+                    if (bracket_depth.* == 0) {
+                        // Link text closes before this emphasis can close.
+                        // Give up.
+                        return null;
+                    }
+
+                    bracket_depth.* -= 1;
+                },
                 else => {},
             }
 
@@ -1036,6 +1171,7 @@ fn parseUnderscoreEmphasis(
                     .{
                         .maybe_star_open_token = opts.maybe_star_open_token,
                         .is_link_allowed = opts.is_link_allowed,
+                        .bracket_depth = bracket_depth,
                     },
                 )
             ) |emph| {
@@ -1148,12 +1284,18 @@ fn parseAnyEmphasis(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
-    opts: struct { is_link_allowed: bool = true },
+    opts: struct {
+        is_link_allowed: bool = true,
+        bracket_depth: ?*u32 = null,
+    },
 ) Error!?*ast.Node {
     if (try self.parseStarEmphasis(
             alloc,
             scratch,
-            .{.is_link_allowed = opts.is_link_allowed},
+            .{
+                .is_link_allowed = opts.is_link_allowed,
+                .bracket_depth = opts.bracket_depth,
+            },
         )
     ) |emph| {
         return emph;
@@ -1162,7 +1304,10 @@ fn parseAnyEmphasis(
     if (try self.parseUnderscoreEmphasis(
             alloc,
             scratch,
-            .{.is_link_allowed = opts.is_link_allowed},
+            .{
+                .is_link_allowed = opts.is_link_allowed,
+                .bracket_depth = opts.bracket_depth,
+            },
         )
     ) |emph| {
         return emph;
@@ -1178,12 +1323,18 @@ fn parseAnyStrong(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
-    opts: struct { is_link_allowed: bool = true },
+    opts: struct {
+        is_link_allowed: bool = true,
+        bracket_depth: ?*u32 = null,
+    },
 ) Error!?*ast.Node {
     if (try self.parseStarStrong(
             alloc,
             scratch,
-            .{.is_link_allowed = opts.is_link_allowed},
+            .{
+                .is_link_allowed = opts.is_link_allowed,
+                .bracket_depth = opts.bracket_depth,
+            },
         )
     ) |strong| {
         return strong;
@@ -1192,7 +1343,10 @@ fn parseAnyStrong(
     if (try self.parseUnderscoreStrong(
             alloc,
             scratch,
-            .{.is_link_allowed = opts.is_link_allowed},
+            .{
+                .is_link_allowed = opts.is_link_allowed,
+                .bracket_depth = opts.bracket_depth,
+            },
         )
     ) |strong| {
         return strong;
@@ -1862,7 +2016,10 @@ fn parseLinkText(
         if (try self.parseAnyEmphasis(
                 alloc,
                 scratch,
-                .{.is_link_allowed = false},
+                .{
+                    .is_link_allowed = false,
+                    .bracket_depth = &bracket_depth,
+                },
             )
         ) |emph| {
             try nodes.append(emph);
@@ -1872,7 +2029,10 @@ fn parseLinkText(
         if (try self.parseAnyStrong(
                 alloc,
                 scratch,
-                .{.is_link_allowed = false},
+                .{
+                    .is_link_allowed = false,
+                    .bracket_depth = &bracket_depth,
+                },
             )
         ) |strong| {
             try nodes.append(strong);
@@ -4505,6 +4665,31 @@ test "nesting feast of insanity" {
     }
 }
 
+test "emphasis with nonsignificant brackets" {
+    const value = "[foo _bar] baz_";
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(2, nodes.len);
+
+    try testing.expectEqual(ast.NodeType.text, nodes[0].tag);
+    try testing.expectEqualStrings(
+        "[foo ",
+        std.mem.span(nodes[0].payload.text.value),
+    );
+
+    try testing.expectEqual(ast.NodeType.emphasis, nodes[1].tag);
+    try testing.expectEqual(1, nodes[1].payload.emphasis.n_children);
+    try testing.expectEqual(
+        ast.NodeType.text,
+        nodes[1].payload.emphasis.children[0].tag,
+    );
+    try testing.expectEqualStrings(
+        "bar] baz",
+        std.mem.span(nodes[1].payload.emphasis.children[0].payload.text.value),
+    );
+}
+
 test "codespan and underscore emphasis" {
     const value = "`foo`_bim_`bar`";
     const nodes = try parseIntoNodes(value, .empty);
@@ -4751,6 +4936,79 @@ test "inline link with exclamation mark" {
         text.tag,
     );
     try testing.expectEqualStrings("foo!", std.mem.span(text.payload.text.value));
+}
+
+test "inline link nested emphasis with nonsignificant brackets" {
+    // Makes sure we can handle square brackets that DON'T end the link text
+    // within nested emphasis.
+    const value = "[_[_[*foo[]]]*](/bar)";
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.link, nodes[0].tag);
+
+    const link_node = nodes[0];
+    try testing.expectEqualStrings(
+        "/bar",
+        std.mem.span(link_node.payload.link.url),
+    );
+    try testing.expectEqualStrings(
+        "",
+        std.mem.span(link_node.payload.link.title),
+    );
+
+    try testing.expectEqual(3, link_node.payload.link.n_children);
+
+    // first emphasis node
+    try testing.expectEqual(
+        ast.NodeType.emphasis,
+        link_node.payload.link.children[0].tag,
+    );
+    {
+        const emphasis_node = link_node.payload.link.children[0];
+        try testing.expectEqual(1, emphasis_node.payload.emphasis.n_children);
+        try testing.expectEqual(
+            ast.NodeType.text,
+            emphasis_node.payload.emphasis.children[0].tag,
+        );
+        try testing.expectEqualStrings(
+            "[",
+            std.mem.span(
+                emphasis_node.payload.emphasis.children[0].payload.text.value
+            ),
+        );
+    }
+
+    // text node
+    try testing.expectEqual(
+        ast.NodeType.text,
+        link_node.payload.link.children[1].tag,
+    );
+    try testing.expectEqualStrings(
+        "[",
+        std.mem.span(link_node.payload.link.children[1].payload.text.value),
+    );
+
+    // second emphasis node
+    try testing.expectEqual(
+        ast.NodeType.emphasis,
+        link_node.payload.link.children[2].tag,
+    );
+    {
+        const emphasis_node = link_node.payload.link.children[2];
+        try testing.expectEqual(1, emphasis_node.payload.emphasis.n_children);
+        try testing.expectEqual(
+            ast.NodeType.text,
+            emphasis_node.payload.emphasis.children[0].tag,
+        );
+        try testing.expectEqualStrings(
+            "foo[]]]",
+            std.mem.span(
+                emphasis_node.payload.emphasis.children[0].payload.text.value
+            ),
+        );
+    }
 }
 
 test "URI autolink" {
