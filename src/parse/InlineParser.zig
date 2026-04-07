@@ -2285,12 +2285,22 @@ fn parseImageDescription(
             continue;
         }
 
-        if (try self.parseAnyEmphasis(alloc, scratch, .{})) |emph| {
+        if (try self.parseAnyEmphasis(
+                alloc,
+                scratch,
+                .{.bracket_depth = &bracket_depth},
+            )
+        ) |emph| {
             try nodes.append(emph);
             continue;
         }
 
-        if (try self.parseAnyStrong(alloc, scratch, .{})) |strong| {
+        if (try self.parseAnyStrong(
+                alloc,
+                scratch,
+                .{.bracket_depth = &bracket_depth},
+            )
+        ) |strong| {
             try nodes.append(strong);
             continue;
         }
@@ -5111,7 +5121,7 @@ test "image complicated alt text" {
     );
 }
 
-test "image link" {
+test "image inside link" {
     const value = "[![](/foo.jpg)](/bar.com/baz)";
     const nodes = try parseIntoNodes(value, .empty);
     defer freeNodes(nodes);
@@ -5136,6 +5146,29 @@ test "image link" {
     try testing.expectEqualStrings(
         "/foo.jpg",
         std.mem.span(link_node.payload.link.children[0].payload.image.url),
+    );
+}
+
+test "link inside image" {
+    // This parses, but doesn't really work; alt text should be empty
+    const value = "![[](/bar.com/baz)](/foo.jpg)";
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.image, nodes[0].tag);
+
+    try testing.expectEqualStrings(
+        "/foo.jpg",
+        std.mem.span(nodes[0].payload.image.url),
+    );
+    try testing.expectEqualStrings(
+        "",
+        std.mem.span(nodes[0].payload.image.title),
+    );
+    try testing.expectEqualStrings(
+        "",
+        std.mem.span(nodes[0].payload.image.alt),
     );
 }
 
@@ -5368,6 +5401,54 @@ test "shortcut reference image" {
     try testing.expectEqualStrings(
         "foo",
         std.mem.span(img_node.payload.image.alt),
+    );
+}
+
+test "image nested emphasis with nonsignificant brackets" {
+    // Ensures we can handle brackets within the image description
+    const value = "![_[_[*foo[]]]*](/bar)";
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.image, nodes[0].tag);
+
+    const img_node = nodes[0];
+    try testing.expectEqualStrings(
+        "/bar",
+        std.mem.span(img_node.payload.image.url),
+    );
+    try testing.expectEqualStrings(
+        "[[foo[]]]",
+        std.mem.span(img_node.payload.image.alt),
+    );
+    try testing.expectEqualStrings(
+        "",
+        std.mem.span(img_node.payload.image.title),
+    );
+}
+
+test "image emphasis precedence" {
+    // This is CommonMark spec example 521, but for images instead of links
+    const value = "![foo *bar](baz*)";
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.image, nodes[0].tag);
+
+    const img_node = nodes[0];
+    try testing.expectEqualStrings(
+        "baz*",
+        std.mem.span(img_node.payload.image.url),
+    );
+    try testing.expectEqualStrings(
+        "foo *bar",
+        std.mem.span(img_node.payload.image.alt),
+    );
+    try testing.expectEqualStrings(
+        "",
+        std.mem.span(img_node.payload.image.title),
     );
 }
 
