@@ -1907,6 +1907,7 @@ fn parseCollapsedReferenceLink(
         try self.scanLinkLabel(scratch) orelse return null
     );
 
+    // consume trailing "[]", check for early bail condition
     _ = try self.consume(scratch, &.{.l_square_bracket}) orelse return null;
     _ = try self.consume(scratch, &.{.r_square_bracket}) orelse return null;
 
@@ -1974,12 +1975,6 @@ fn parseShortcutReferenceLink(
         try self.scanLinkLabel(scratch) orelse return null
     );
 
-    // lookup link def
-    const link_def = try self.link_defs.get(
-        scratch,
-        scanned_link_label,
-    ) orelse return null; // no matching def means parse failure
-
     // !! re-parse label as inline content !!
     self.backtrack(checkpoint_index);
     const inline_nodes = (
@@ -2008,6 +2003,12 @@ fn parseShortcutReferenceLink(
             return null;
         }
     }
+
+    // lookup link def
+    const link_def = try self.link_defs.get(
+        scratch,
+        scanned_link_label,
+    ) orelse return null; // no matching def means parse failure
 
     const url = try alloc.dupeZ(u8, std.mem.span(link_def.url));
     errdefer alloc.free(url);
@@ -2050,12 +2051,12 @@ fn scanLinkLabel(self: *Self, scratch: Allocator) Error!?[]const u8 {
         switch (token.token_type) {
             .whitespace => {
                 _ = try self.consume(scratch, &.{.whitespace});
-                const value = try emitInlineText(scratch, token);
+                const value = emitInlineLiteral(token);
                 _ = try running_text.writer.write(value);
             },
             .newline => {
                 _ = try self.consume(scratch, &.{.newline});
-                const value = try emitInlineText(scratch, token);
+                const value = emitInlineLiteral(token);
                 _ = try running_text.writer.write(value);
             },
             .l_square_bracket => return null,
@@ -2063,7 +2064,7 @@ fn scanLinkLabel(self: *Self, scratch: Allocator) Error!?[]const u8 {
             else => |t| {
                 saw_non_blank = true;
                 _ = try self.consume(scratch, &.{t});
-                const value = try emitInlineText(scratch, token);
+                const value = emitInlineLiteral(token);
                 _ = try running_text.writer.write(value);
             },
         }

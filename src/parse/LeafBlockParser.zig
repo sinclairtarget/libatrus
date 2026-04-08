@@ -833,21 +833,14 @@ fn scanLinkDefLabel(self: *Self, scratch: Allocator) !?[]const u8 {
             },
             .newline => {
                 _ = try self.it.consume(scratch, &.{.newline});
-                _ = try running_text.writer.write(" ");
+                _ = try running_text.writer.write("\n");
             },
             .l_square_bracket => return null,
             .r_square_bracket => break,
-            .text => {
-                saw_non_blank = true;
-                _ = try self.it.consume(scratch, &.{.text});
-                const value = try resolveText(scratch, token);
-                _ = try running_text.writer.write(value);
-            },
             else => |t| {
                 saw_non_blank = true;
                 _ = try self.it.consume(scratch, &.{t});
-                const value = try resolveText(scratch, token);
-                _ = try running_text.writer.write(value);
+                _ = try running_text.writer.write(token.lexeme);
             },
         }
     }

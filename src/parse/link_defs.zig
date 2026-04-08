@@ -63,7 +63,10 @@ pub const LinkDefMap = struct {
         try self.keys.append(alloc, key);
         result.value_ptr.* = def;
 
-        logger.debug("Added link definition under key \"{s}\".", .{key});
+        logger.debug(
+            "Added link reference definition under key \"{s}\".",
+            .{key},
+        );
     }
 
     pub fn get(
@@ -74,16 +77,15 @@ pub const LinkDefMap = struct {
         const key = try normalize(alloc, label);
         defer alloc.free(key);
 
-        if (builtin.mode == .Debug) {
-            if (!self.backing_map.contains(key)) {
-                logger.debug(
-                    "Link definition lookup failed for key \"{s}\".",
-                    .{key},
-                );
-            }
+        const value = self.backing_map.get(key);
+        if (value == null) {
+            logger.debug(
+                "Link reference definition lookup failed for key \"{s}\".",
+                .{key},
+            );
         }
 
-        return self.backing_map.get(key);
+        return value;
     }
 
     pub fn count(self: Self) u32 {
@@ -93,16 +95,41 @@ pub const LinkDefMap = struct {
 
 /// Normalizes the given link label, returning a new string.
 ///
-/// To normalize a label, strip off the opening and closing brackets,
-/// perform the Unicode case fold, strip leading and trailing spaces, tabs,
-/// and line endings, and collapse consecutive internal spaces, tabs, and
-/// line endings to a single space.
+/// To normalize a label, perform the Unicode case fold, strip leading and
+/// trailing spaces, tabs, and line endings, and collapse consecutive internal
+/// spaces, tabs, and line endings to a single space.
+///
 /// https://spec.commonmark.org/0.30/#matches
 ///
 /// Caller owns the returned string.
 fn normalize(alloc: Allocator, link_label: []const u8) Error![]const u8 {
-    // TODO: Full normalization logic
-    return try std.ascii.allocLowerString(alloc, link_label);
+    const trimmed = std.mem.trim(u8, link_label, " \t\n");
+
+    // collapse interior whitespace
+    const buf = try alloc.alloc(u8, trimmed.len);
+    defer alloc.free(buf);
+
+    var buf_i: usize = 0;
+    var skippping_whitespace = false;
+    for (trimmed) |c| {
+        if (std.ascii.isWhitespace(c)) {
+            if (skippping_whitespace) {
+                continue;
+            }
+
+            buf[buf_i] = ' ';
+            buf_i += 1;
+            skippping_whitespace = true;
+            continue;
+        }
+
+        buf[buf_i] = c;
+        buf_i += 1;
+        skippping_whitespace = false;
+    }
+
+    // TODO: Unicode case fold
+    return try std.ascii.allocLowerString(alloc, buf[0..buf_i]);
 }
 
 // ----------------------------------------------------------------------------
@@ -174,4 +201,42 @@ test "match is case-insensitive" {
     );
     try testing.expectEqualStrings("/foo", std.mem.span(val.url));
     try testing.expectEqualStrings("bar", std.mem.span(val.title));
+}
+
+test "leading and trailing whitespace is stripped from label" {
+    var def: ast.LinkDefinition = .{
+        .url = "/foo",
+        .title = "bar",
+        .label = "bim",
+    };
+
+    var map: LinkDefMap = .empty;
+    defer map.deinit(testing.allocator);
+
+    try map.add(testing.allocator, &def);
+
+    const val = try util.testing.expectNonNull(
+        try map.get(testing.allocator, "  bim  \t"),
+    );
+    try testing.expectEqual("/foo", val.url);
+    try testing.expectEqual("bar", val.title);
+}
+
+test "interior whitespace is collapsed" {
+    var def: ast.LinkDefinition = .{
+        .url = "/foo",
+        .title = "bar",
+        .label = "bim bat",
+    };
+
+    var map: LinkDefMap = .empty;
+    defer map.deinit(testing.allocator);
+
+    try map.add(testing.allocator, &def);
+
+    const val = try util.testing.expectNonNull(
+        try map.get(testing.allocator, "bim  \t bat"),
+    );
+    try testing.expectEqual("/foo", val.url);
+    try testing.expectEqual("bar", val.title);
 }
