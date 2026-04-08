@@ -111,148 +111,67 @@ fn normalize(alloc: Allocator, link_label: []const u8) Error![]const u8 {
 const testing = std.testing;
 const util = @import("../util/util.zig");
 
-/// Returns a hashmap mapping link labels to link definition nodes in the given
-/// AST.
-///
-/// The returned hashmap is valid as long as the link definition nodes are
-/// valid. If the AST is freed or the link definition nodes are removed from
-/// the tree the hashmap will contain dangling pointers.
-///
-/// The caller owns the memory used for the returned hashmap itself.
-fn buildMap(alloc: Allocator, root: *ast.Node) Error!LinkDefMap {
-    var map: LinkDefMap = .empty;
-    try fillLinkDefs(alloc, root, &map);
-    return map;
-}
-
-fn fillLinkDefs(
-    alloc: Allocator,
-    root: *ast.Node,
-    map: *LinkDefMap,
-) Error!void {
-    switch (root.tag) {
-        inline .root, .block, .blockquote => |node_type| {
-            const n = @field(root.payload, @tagName(node_type));
-            const sliced = n.children[0..n.n_children];
-            for (sliced) |node| {
-                try fillLinkDefs(alloc, node, map);
-            }
-        },
-        .definition => {
-            try map.add(alloc, &root.payload.definition);
-        },
-        .paragraph, .heading, .strong, .emphasis, .text, .code, .@"break",
-        .thematic_break, .inline_code, .link, .image, .html => {},
-    }
-}
 test "can map single link def" {
-    var def: ast.Node = .{
-        .tag = .definition,
-        .payload = .{
-            .definition = .{
-                .url = "/foo",
-                .title = "bar",
-                .label = "bim",
-            },
-        },
-    };
-    var children = [_]*ast.Node{&def};
-    var root: ast.Node = .{
-        .tag = .root,
-        .payload = .{
-            .root = .{
-                .children = &children,
-                .n_children = children.len,
-            },
-        },
+    var def: ast.LinkDefinition = .{
+        .url = "/foo",
+        .title = "bar",
+        .label = "bim",
     };
 
-    var map = try buildMap(testing.allocator, &root);
+    var map: LinkDefMap = .empty;
     defer map.deinit(testing.allocator);
+
+    try map.add(testing.allocator, &def);
 
     try testing.expectEqual(1, map.count());
 
     const val = try util.testing.expectNonNull(
         try map.get(testing.allocator, "bim"),
     );
-    try testing.expectEqual("/foo", val.url);
-    try testing.expectEqual("bar", val.title);
+    try testing.expectEqualStrings("/foo", std.mem.span(val.url));
+    try testing.expectEqualStrings("bar", std.mem.span(val.title));
 }
 
 test "first link def takes precedence" {
-    var def1: ast.Node = .{
-        .tag = .definition,
-        .payload = .{
-            .definition = .{
-                .url = "/foo",
-                .title = "bar",
-                .label = "bim",
-            },
-        },
+    var def1: ast.LinkDefinition = .{
+        .url = "/foo",
+        .title = "bar",
+        .label = "bim",
     };
-    var def2: ast.Node = .{
-        .tag = .definition,
-        .payload = .{
-            .definition = .{
-                .url = "/zap",
-                .title = "zim",
-                .label = "bim",
-            },
-        },
-    };
-    var children = [_]*ast.Node{&def1, &def2};
-    var root: ast.Node = .{
-        .tag = .root,
-        .payload = .{
-            .root = .{
-                .children = &children,
-                .n_children = children.len,
-            },
-        },
+    var def2: ast.LinkDefinition = .{
+        .url = "/zap",
+        .title = "zim",
+        .label = "bim",
     };
 
-    var map = try buildMap(testing.allocator, &root);
+    var map: LinkDefMap = .empty;
     defer map.deinit(testing.allocator);
 
-    try testing.expectEqual(1, map.count());
+    try map.add(testing.allocator, &def1);
+    try map.add(testing.allocator, &def2);
 
     const val = try util.testing.expectNonNull(
         try map.get(testing.allocator, "bim"),
     );
-    try testing.expectEqual("/foo", val.url);
-    try testing.expectEqual("bar", val.title);
+    try testing.expectEqualStrings("/foo", std.mem.span(val.url));
+    try testing.expectEqualStrings("bar", std.mem.span(val.title));
 }
 
 test "match is case-insensitive" {
-    var def: ast.Node = .{
-        .tag = .definition,
-        .payload = .{
-            .definition = .{
-                .url = "/foo",
-                .title = "bar",
-                .label = "bim",
-            },
-        },
-    };
-    var children = [_]*ast.Node{&def};
-    var root: ast.Node = .{
-        .tag = .root,
-        .payload = .{
-            .root = .{
-                .children = &children,
-                .n_children = children.len,
-            },
-        },
+    var def: ast.LinkDefinition = .{
+        .url = "/foo",
+        .title = "bar",
+        .label = "bim",
     };
 
-    var map = try buildMap(testing.allocator, &root);
+    var map: LinkDefMap = .empty;
     defer map.deinit(testing.allocator);
 
-    try testing.expectEqual(1, map.count());
+    try map.add(testing.allocator, &def);
 
     const val = try util.testing.expectNonNull(
         try map.get(testing.allocator, "Bim"),
     );
-    try testing.expectEqual("/foo", val.url);
-    try testing.expectEqual("bar", val.title);
+    try testing.expectEqualStrings("/foo", std.mem.span(val.url));
+    try testing.expectEqualStrings("bar", std.mem.span(val.title));
 }
