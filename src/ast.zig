@@ -32,6 +32,7 @@ pub const NodeType = enum(c_uint) {
     html = 15,          // either an HTML block or a single inline HTML tag
     myst_role = 16,
     myst_role_error = 17,
+    subscript = 18,
 };
 
 pub const Node = extern struct {
@@ -54,6 +55,7 @@ pub const Node = extern struct {
         html: Text,
         myst_role: MySTRole,
         myst_role_error: MySTRoleError,
+        subscript: Container,
     },
     tag: NodeType,
 

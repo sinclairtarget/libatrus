@@ -221,7 +221,7 @@ fn parseATXHeading(
         if (trimmed_inner.len == 0) {
             break :blk &.{};
         }
-        const text_node = try createTextNode(alloc, trimmed_inner);
+        const text_node = try util.nodes.createTextNode(alloc, trimmed_inner);
         break :blk try alloc.dupe(*ast.Node, &.{ text_node });
     };
     errdefer alloc.free(children);
@@ -313,7 +313,7 @@ fn parseSetextHeading(
         if (trimmed_inner.len == 0) {
             break :blk &.{};
         }
-        const text_node = try createTextNode(alloc, trimmed_inner);
+        const text_node = try util.nodes.createTextNode(alloc, trimmed_inner);
         break :blk try alloc.dupe(*ast.Node, &.{ text_node });
     };
     errdefer alloc.free(children);
@@ -1104,7 +1104,7 @@ fn createParagraphNode(alloc: Allocator, text_content: []const u8) !*ast.Node {
     // Trim trailing newlines
     const trimmed = std.mem.trimEnd(u8, text_content, "\n");
 
-    const text_node = try createTextNode(alloc, trimmed);
+    const text_node = try util.nodes.createTextNode(alloc, trimmed);
     errdefer text_node.deinit(alloc);
 
     const children = try alloc.dupe(*ast.Node, &.{text_node});
@@ -1121,25 +1121,6 @@ fn createParagraphNode(alloc: Allocator, text_content: []const u8) !*ast.Node {
         },
     };
     return paragraph_node;
-}
-
-/// Creates a text node with the given text value.
-///
-/// The value is copied and owned by the returned node.
-fn createTextNode(alloc: Allocator, value: []const u8) !*ast.Node {
-    const copy = try alloc.dupeZ(u8, value);
-    errdefer alloc.free(copy);
-
-    const node = try alloc.create(ast.Node);
-    node.* = .{
-        .tag = .text,
-        .payload = .{
-            .text = .{
-                .value = copy,
-            },
-        },
-    };
-    return node;
 }
 
 /// Resolve token lexeme into actual string content for a block node.

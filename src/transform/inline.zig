@@ -100,11 +100,7 @@ pub fn transform(
             return node;
         },
         // These nodes are leaf nodes or contain no inline content
-        .text, .code, .@"break", .thematic_break, .emphasis, .strong,
-        .inline_code, .link, .image, .definition, .html, .myst_role,
-        .myst_role_error => {
-            return original_node;
-        },
+        else => return original_node,
     }
 }
 

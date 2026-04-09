@@ -56,7 +56,7 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
 
     switch (node.tag) {
         inline .root, .paragraph, .block, .emphasis, .strong,
-        .blockquote => |node_type| {
+        .blockquote, .subscript => |node_type| {
             const n = @field(node.payload, @tagName(node_type));
             try render_children(stringify, n);
         },
@@ -115,6 +115,10 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
 
             try stringify.objectField("value");
             try stringify.write(std.mem.span(n.value));
+
+            if (n.n_children > 0) {
+                try render_children(stringify, n);
+            }
         },
         .myst_role_error => {
             const n = node.payload.myst_role;

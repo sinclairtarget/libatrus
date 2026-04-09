@@ -49,7 +49,7 @@ const ast = @import("../ast.zig");
 const NodeList = @import("NodeList.zig");
 const alttext = @import("alttext.zig");
 const escape = @import("escape.zig");
-const myst = @import("../myst/myst.zig");
+const myst = @import("myst/myst.zig");
 
 pub const Error = (
     Io.Writer.Error
@@ -81,7 +81,7 @@ pub fn parse(
     alloc: Allocator,
     scratch: Allocator,
 ) Error![]*ast.Node {
-    var nodes = NodeList.init(alloc, scratch, createTextNode);
+    var nodes = NodeList.init(alloc, scratch, util.nodes.createTextNode);
     errdefer {
         for (nodes.items()) |node| {
             node.deinit(alloc);
@@ -183,7 +183,7 @@ fn parseStarStrong(
     },
 ) Error!?*ast.Node {
     var did_parse = false;
-    var children = NodeList.init(alloc, scratch, createTextNode);
+    var children = NodeList.init(alloc, scratch, util.nodes.createTextNode);
     const checkpoint_index = self.checkpoint();
 
     // Track bracket depth so we know if we need to exit early because a parent
@@ -427,7 +427,7 @@ fn parseStarEmphasis(
     },
 ) Error!?*ast.Node {
     var did_parse = false;
-    var children = NodeList.init(alloc, scratch, createTextNode);
+    var children = NodeList.init(alloc, scratch, util.nodes.createTextNode);
     const checkpoint_index = self.checkpoint();
 
     // Track bracket depth so we know if we need to exit early because a parent
@@ -707,7 +707,7 @@ fn parseUnderscoreStrong(
     },
 ) Error!?*ast.Node {
     var did_parse = false;
-    var children = NodeList.init(alloc, scratch, createTextNode);
+    var children = NodeList.init(alloc, scratch, util.nodes.createTextNode);
     const checkpoint_index = self.checkpoint();
 
     // Track bracket depth so we know if we need to exit early because a parent
@@ -969,7 +969,7 @@ fn parseUnderscoreEmphasis(
     },
 ) Error!?*ast.Node {
     var did_parse = false;
-    var children = NodeList.init(alloc, scratch, createTextNode);
+    var children = NodeList.init(alloc, scratch, util.nodes.createTextNode);
     const checkpoint_index = self.checkpoint();
 
     // Track bracket depth so we know if we need to exit early because a parent
@@ -1575,7 +1575,7 @@ fn parseLinkText(
     alloc: Allocator,
     scratch: Allocator,
 ) Error!?[]*ast.Node {
-    var nodes = NodeList.init(alloc, scratch, createTextNode);
+    var nodes = NodeList.init(alloc, scratch, util.nodes.createTextNode);
     var did_parse = false;
     const checkpoint_index = self.checkpoint();
     defer if (!did_parse) {
@@ -2129,7 +2129,7 @@ fn parseLinkLabel(
     alloc: Allocator,
     scratch: Allocator,
 ) Error!?[]*ast.Node {
-    var nodes = NodeList.init(alloc, scratch, createTextNode);
+    var nodes = NodeList.init(alloc, scratch, util.nodes.createTextNode);
     var did_parse = false;
     const checkpoint_index = self.checkpoint();
     defer if (!did_parse) {
@@ -2285,7 +2285,7 @@ fn parseImageDescription(
     scratch: Allocator,
 ) Error!?[]*ast.Node {
     var did_parse = false;
-    var nodes = NodeList.init(alloc, scratch, createTextNode);
+    var nodes = NodeList.init(alloc, scratch, util.nodes.createTextNode);
     const checkpoint_index = self.checkpoint();
     defer if (!did_parse) {
         self.backtrack(checkpoint_index);
@@ -2669,7 +2669,7 @@ fn parseURIAutolink(
     }
 
     const url = try cmark.uri.normalize(scratch, scratch, content);
-    const text = try createTextNode(alloc, content);
+    const text = try util.nodes.createTextNode(alloc, content);
     errdefer text.deinit(alloc);
 
     const children = try alloc.dupe(*ast.Node, &.{text});
@@ -2801,7 +2801,7 @@ fn parseEmailAutolink(
         return null;
     }
 
-    const text = try createTextNode(alloc, content);
+    const text = try util.nodes.createTextNode(alloc, content);
     errdefer text.deinit(alloc);
 
     const url = try fmt.allocPrintSentinel(
@@ -3790,7 +3790,7 @@ fn parseMySTRole(
 
     did_parse = true;
 
-    if (!myst.roles.isValidRoleName(name)) {
+    if (!myst.roles.isValidName(name)) {
         const error_node = try alloc.create(ast.Node);
         error_node.* = .{
             .tag = .myst_role_error,
@@ -3807,6 +3807,8 @@ fn parseMySTRole(
     errdefer alloc.free(owned_name);
 
     const node = try alloc.create(ast.Node);
+    errdefer alloc.destroy(node);
+
     node.* = .{
         .tag = .myst_role,
         .payload = .{
@@ -3818,7 +3820,15 @@ fn parseMySTRole(
             },
         },
     };
-    return node;
+
+    const modified_node = try myst.roles.handleBuiltin(
+        alloc,
+        scratch,
+        node,
+        name,
+        value,
+    );
+    return modified_node;
 }
 
 /// Consumes tokens we know won't be parsed as anything else and emits them as
@@ -4005,26 +4015,6 @@ fn resolveCharacterReference(
         },
         else => unreachable,
     }
-}
-
-/// Create a new AST text node.
-///
-/// The string value passed in gets copied to a new location in memory owned by
-/// the returned text node.
-fn createTextNode(alloc: Allocator, value: []const u8) !*ast.Node {
-    const copy = try alloc.dupeZ(u8, value);
-    errdefer alloc.free(copy);
-
-    const node = try alloc.create(ast.Node);
-    node.* = .{
-        .tag = .text,
-        .payload = .{
-            .text = .{
-                .value = copy,
-            },
-        },
-    };
-    return node;
 }
 
 fn peek(self: *Self, scratch: Allocator) !?InlineToken {

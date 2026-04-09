@@ -159,18 +159,41 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
         },
         .myst_role => {
             const n = node.payload.myst_role;
-            try out.print("<span class=\"role unhandled\">", .{});
-            _ = try out.write("<code class=\"kind\">{");
-            try printHTMLEscapedContent(out, std.mem.span(n.name));
-            _ = try out.write("}</code>");
-            try out.print("<code>", .{});
-            try printHTMLEscapedContent(out, std.mem.span(n.value));
-            try out.print("</code>", .{});
-            try out.print("</span>", .{});
+            if (n.n_children == 0) {
+                // unknown role
+                try out.print("<span class=\"role unhandled\">", .{});
+
+                _ = try out.write("<code class=\"kind\">{");
+                try printHTMLEscapedContent(out, std.mem.span(n.name));
+                _ = try out.write("}</code>");
+
+                try out.print("<code>", .{});
+                try printHTMLEscapedContent(out, std.mem.span(n.value));
+                try out.print("</code>", .{});
+
+                try out.print("</span>", .{});
+            } else {
+                // implemented role
+                const sliced = n.children[0..n.n_children];
+                for (sliced) |child| {
+                    _ = try renderNode(child, out);
+                }
+            }
         },
         .myst_role_error => {
             const n = node.payload.myst_role_error;
             try printHTMLEscapedContent(out, std.mem.span(n.value));
+        },
+        .subscript => {
+            const n = node.payload.subscript;
+            _ = try out.write("<sub>");
+
+            const sliced = n.children[0..n.n_children];
+            for (sliced) |child| {
+                _ = try renderNode(child, out);
+            }
+
+            _ = try out.write("</sub>");
         },
         // Doesn't get rendered
         .definition => return false,
