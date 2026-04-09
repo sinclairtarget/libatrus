@@ -157,11 +157,23 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
             const n = node.payload.html;
             try out.print("{s}", .{n.value});
         },
+        .myst_role => {
+            const n = node.payload.myst_role;
+            try out.print("<span class=\"role unhandled\">", .{});
+            _ = try out.write("<code class=\"kind\">{");
+            try printHTMLEscapedContent(out, std.mem.span(n.name));
+            _ = try out.write("}</code>");
+            try out.print("<code>", .{});
+            try printHTMLEscapedContent(out, std.mem.span(n.value));
+            try out.print("</code>", .{});
+            try out.print("</span>", .{});
+        },
+        .myst_role_error => {
+            const n = node.payload.myst_role_error;
+            try printHTMLEscapedContent(out, std.mem.span(n.value));
+        },
         // Doesn't get rendered
         .definition => return false,
-        .myst_role, .myst_role_error => {
-            @panic("unimplemented");
-        },
     }
 
     return true;

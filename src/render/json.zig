@@ -49,6 +49,8 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
     switch (node.tag) {
         .thematic_break => try stringify.write("thematicBreak"),
         .inline_code => try stringify.write("inlineCode"),
+        .myst_role => try stringify.write("mystRole"),
+        .myst_role_error => try stringify.write("mystRoleError"),
         else => try stringify.write(@tagName(node.tag)),
     }
 
@@ -106,11 +108,21 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
                 try stringify.write(title);
             }
         },
+        .myst_role => {
+            const n = node.payload.myst_role;
+            try stringify.objectField("name");
+            try stringify.write(std.mem.span(n.name));
+
+            try stringify.objectField("value");
+            try stringify.write(std.mem.span(n.value));
+        },
+        .myst_role_error => {
+            const n = node.payload.myst_role;
+            try stringify.objectField("value");
+            try stringify.write(std.mem.span(n.value));
+        },
         .@"break", .thematic_break => {},
         .definition => unreachable,
-        .myst_role, .myst_role_error => {
-            @panic("unimplemented");
-        },
     }
 
     try stringify.endObject();

@@ -6053,7 +6053,7 @@ test "unknown myst role" {
     );
 }
 
-// BEHAVIOR NOT EXPLICITLY SPECIFIED IN MYST SPEC
+// BEHAVIOR NOT EXPLICITLY DESCRIBED IN MYST SPEC
 test "myst role with invalid name" {
     const value = "{foo bar}`baz`";
     const nodes = try parseIntoNodes(value, .empty);
@@ -6067,7 +6067,7 @@ test "myst role with invalid name" {
     );
 }
 
-// BEHAVIOR NOT EXPLICITLY SPECIFIED IN MYST SPEC
+// BEHAVIOR NOT EXPLICITLY DESCRIBED IN MYST SPEC
 test "myst role with whitespace around name" {
     const value = "{ foo\t }`bar`";
     const nodes = try parseIntoNodes(value, .empty);
@@ -6086,7 +6086,7 @@ test "myst role with whitespace around name" {
     );
 }
 
-// BEHAVIOR NOT EXPLICITLY SPECIFIED IN MYST SPEC
+// BEHAVIOR NOT EXPLICITLY DESCRIBED IN MYST SPEC
 test "myst role cannot have empty value" {
     const value = "{foo}``";
     const nodes = try parseIntoNodes(value, .empty);
