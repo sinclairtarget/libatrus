@@ -3782,6 +3782,8 @@ fn emitInlineLiteral(token: InlineToken) []const u8 {
         .r_angle_bracket => ">",
         .l_paren => "(",
         .r_paren => ")",
+        .l_brace => "{",
+        .r_brace => "}",
         .single_quote => "'",
         .double_quote => "\"",
         .exclamation_mark => "!",

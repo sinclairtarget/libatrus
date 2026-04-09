@@ -199,6 +199,8 @@ fn matchSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
             '/'  => .{ .slash, .punct },
             '-'  => .{ .hyphen, .punct },
             '?'  => .{ .question_mark, .punct },
+            '{'  => .{ .l_brace, .punct },
+            '}'  => .{ .r_brace, .punct },
             else => return null,
     };
 
@@ -879,10 +881,10 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
 
             switch (self.in[lookahead_i]) {
                 '\n', ' ', '\t', '&', '`', '[', ']', '<', '>', '(', ')', '*',
-                '_', '\'', '"', '!', '\\', '=', '/', '-', '?' => {
+                '_', '\'', '"', '!', '\\', '=', '/', '-', '?', '{', '}' => {
                     break :fsm .normal;
                 },
-                '#'...'%', '+', ',', '.', ':', ';', '@', '^', '{'...'~' => {
+                '#'...'%', '+', ',', '.', ':', ';', '@', '^', '|', '~' => {
                     continue :fsm .punct;
                 },
                 else => {
@@ -897,13 +899,17 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
             }
 
             switch (self.in[lookahead_i]) {
+                '{', '}' => {
+                    // cannot be escaped
+                    break :fsm .normal;
+                },
                 '`', '\'', '"', '>' => @panic(
                     "escaped backtick, quote, or right angle bracket " ++
                     "should have been matched already as escaped token"
                 ),
                 '&', '[', ']', '<', '(', ')', '*', '_',
                 '!', '#'...'%', '+'...'/', ':', ';', '=', '?', '@', '^',
-                '{'...'~' => {
+                '|', '~' => {
                     lookahead_i += 1; // skip escaped character
                     continue :fsm .punct;
                 },
@@ -923,10 +929,10 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
 
             switch (self.in[lookahead_i]) {
                 '\n', ' ', '\t' ,'&', '`', '[', ']', '<', '>', '(', ')', '*',
-                '_', '\'', '"', '!', '=', '/', '-', '?' => {
+                '_', '\'', '"', '!', '=', '/', '-', '?', '{', '}' => {
                     break :fsm .punct;
                 },
-                '#'...'%', '+', ',', '.', ':', ';', '@', '^', '{'...'~' => {
+                '#'...'%', '+', ',', '.', ':', ';', '@', '^', '|', '~' => {
                     lookahead_i += 1;
                     continue :fsm .punct;
                 },
@@ -1024,6 +1030,8 @@ fn evaluateTokens(
         .r_angle_bracket,
         .l_paren,
         .r_paren,
+        .l_brace,
+        .r_brace,
         .single_quote,
         .double_quote,
         .exclamation_mark,
@@ -1285,5 +1293,19 @@ test "HTML open tag" {
         .whitespace,
         .slash,
         .r_angle_bracket,
+    }, line);
+}
+
+test "MyST role" {
+    const line = "{abc}`abc role`";
+    try expectEqualTokens(&.{
+        .l_brace,
+        .text,
+        .r_brace,
+        .backtick,
+        .text,
+        .whitespace,
+        .text,
+        .backtick,
     }, line);
 }

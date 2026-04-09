@@ -4,6 +4,10 @@
 //! our Zig source, this is just a regular Zig CLI program and not a module
 //! containing Zig test declarations. We consider a non-zero exit code a failure
 //! of the test suite.
+//!
+//! The MyST spec tests verify that the "raw" AST output by libatrus is
+//! correct.
+
 const std = @import("std");
 const json = std.json;
 const testing = std.testing;
@@ -47,7 +51,7 @@ const Test = struct {
         const ast = try atrus.parse(
             alloc,
             &reader,
-            .{ .parse_level = .pre },
+            .{ .parse_level = .pre }, // testing only the "raw" AST
         );
 
         var outbuf = Io.Writer.Allocating.init(alloc);

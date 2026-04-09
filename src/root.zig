@@ -43,12 +43,12 @@ pub const ParseError = error{
 
 pub const ParseOptions = extern struct {
     parse_level: enum(c_uint) {
-        /// Only parse blocks.
+        /// Only parse blocks, not inline content. This is only really useful
+        /// for debugging.
         block,
-        /// Parse blocks and inline content.
+        /// Parse blocks and inline content into a "raw" MyST AST.
         pre,
-        /// Parse everything, but also resolve internal references, finalize
-        /// AST etc.
+        /// Parse blocks and inline content into a "resolved" MyST AST.
         post,
     } = .post,
 };
