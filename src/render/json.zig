@@ -108,6 +108,9 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
         },
         .@"break", .thematic_break => {},
         .definition => unreachable,
+        .myst_role, .myst_role_error => {
+            @panic("unimplemented");
+        },
     }
 
     try stringify.endObject();

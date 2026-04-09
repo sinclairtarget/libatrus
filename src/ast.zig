@@ -30,6 +30,8 @@ pub const NodeType = enum(c_uint) {
     image = 13,
     blockquote = 14,
     html = 15,          // either an HTML block or a single inline HTML tag
+    myst_role = 16,
+    myst_role_error = 17,
 };
 
 pub const Node = extern struct {
@@ -50,6 +52,8 @@ pub const Node = extern struct {
         image: Image,
         blockquote: Container,
         html: Text,
+        myst_role: MySTRole,
+        myst_role_error: MySTRoleError,
     },
     tag: NodeType,
 
@@ -163,5 +167,31 @@ pub const Image = extern struct {
         alloc.free(std.mem.span(self.url));
         alloc.free(std.mem.span(self.title));
         alloc.free(std.mem.span(self.alt));
+    }
+};
+
+pub const MySTRole = extern struct {
+    children: [*]*Node,
+    n_children: c_uint,
+    name: [*:0]const u8,
+    value: [*:0]const u8,
+
+    pub fn deinit(self: *MySTRole, alloc: Allocator) void {
+        const sliced = self.children[0..self.n_children];
+        for (sliced) |child| {
+            child.deinit(alloc);
+        }
+        alloc.free(sliced);
+
+        alloc.free(std.mem.span(self.name));
+        alloc.free(std.mem.span(self.value));
+    }
+};
+
+pub const MySTRoleError = extern struct {
+    value: [*:0]const u8,
+
+    pub fn deinit(self: *MySTRoleError, alloc: Allocator) void {
+        alloc.free(std.mem.span(self.value));
     }
 };

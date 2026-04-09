@@ -159,6 +159,9 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
         },
         // Doesn't get rendered
         .definition => return false,
+        .myst_role, .myst_role_error => {
+            @panic("unimplemented");
+        },
     }
 
     return true;

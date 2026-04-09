@@ -49,6 +49,7 @@ const ast = @import("../ast.zig");
 const NodeList = @import("NodeList.zig");
 const alttext = @import("alttext.zig");
 const escape = @import("escape.zig");
+const myst = @import("../myst/myst.zig");
 
 pub const Error = (
     Io.Writer.Error
@@ -90,6 +91,11 @@ pub fn parse(
 
     for (0..util.safety.loop_bound) |_| { // could hit if we forget to consume tokens
         _ = try self.peek(scratch) orelse break;
+
+        if (try self.parseMySTRole(alloc, scratch)) |role| {
+            try nodes.append(role);
+            continue;
+        }
 
         if (try self.parseInlineCode(alloc, scratch)) |code| {
             try nodes.append(code);
@@ -212,6 +218,11 @@ fn parseStarStrong(
     }) orelse return null;
 
     for (0..util.safety.loop_bound) |_| {
+        if (try self.parseMySTRole(alloc, scratch)) |role| {
+            try children.append(role);
+            continue;
+        }
+
         if (try self.parseInlineCode(alloc, scratch)) |code| {
             try children.append(code);
             continue;
@@ -468,6 +479,10 @@ fn parseStarEmphasis(
 
         // Handle non-text nodes
         if (blk: {
+            if (try self.parseMySTRole(alloc, scratch)) |role| {
+                break :blk role;
+            }
+
             if (try self.parseInlineCode(alloc, scratch)) |code| {
                 break :blk code;
             }
@@ -736,6 +751,11 @@ fn parseUnderscoreStrong(
     }
 
     for (0..util.safety.loop_bound) |_| {
+        if (try self.parseMySTRole(alloc, scratch)) |role| {
+            try children.append(role);
+            continue;
+        }
+
         if (try self.parseInlineCode(alloc, scratch)) |code| {
             try children.append(code);
             continue;
@@ -1012,6 +1032,10 @@ fn parseUnderscoreEmphasis(
 
         // Handle non-text nodes
         if (blk: {
+            if (try self.parseMySTRole(alloc, scratch)) |role| {
+                break :blk role;
+            }
+
             if (try self.parseInlineCode(alloc, scratch)) |code| {
                 break :blk code;
             }
@@ -1372,6 +1396,7 @@ fn parseInlineCode(
     // @ => backtick(n) .+ backtick(n)
     const open = try self.consume(scratch, &.{ .backtick }) orelse return null;
 
+    // TODO: Use allocating writer instead
     var values: ArrayList([]const u8) = .empty;
     for (0..util.safety.loop_bound) |_| {
         const token = try self.peek(scratch) orelse return null;
@@ -1393,7 +1418,7 @@ fn parseInlineCode(
 
                 if (try self.consume(scratch, &.{.backtick})) |following| {
                     // Handle case where escaped backtick should be counted
-                    // with folloiwng backticks.
+                    // with following backticks.
                     const backtick_count = following.lexeme.len + 1;
                     if (open.lexeme.len == backtick_count) {
                         break;
@@ -1565,6 +1590,11 @@ fn parseLinkText(
 
     var bracket_depth: u32 = 0;
     loop: for (0..util.safety.loop_bound) |_| {
+        if (try self.parseMySTRole(alloc, scratch)) |role| {
+            try nodes.append(role);
+            continue;
+        }
+
         if (try self.parseInlineImage(alloc, scratch)) |image| {
             try nodes.append(image);
             continue;
@@ -2122,6 +2152,11 @@ fn parseLinkLabel(
             }
         }
 
+        if (try self.parseMySTRole(alloc, scratch)) |role| {
+            try nodes.append(role);
+            continue;
+        }
+
         if (try self.parseInlineCode(alloc, scratch)) |code| {
             try nodes.append(code);
             continue;
@@ -2264,6 +2299,11 @@ fn parseImageDescription(
 
     var bracket_depth: u32 = 0;
     loop: for (0..util.safety.loop_bound) |_| {
+        if (try self.parseMySTRole(alloc, scratch)) |role| {
+            try nodes.append(role);
+            continue;
+        }
+
         if (try self.parseInlineImage(alloc, scratch)) |image| {
             try nodes.append(image);
             continue;
@@ -3645,6 +3685,140 @@ fn scanHTMLAttrValUnquoted(self: *Self, scratch: Allocator) !?[]const u8 {
 
     did_parse = true;
     return try running_text.toOwnedSlice();
+}
+
+/// Parses a MyST role.
+///
+/// For roles defined by the MyST spec, this returns a `mystRole` node,
+/// potentially with children nodes necessary for implementing the role. For
+/// unrecognized roles, this returns a `mystRole` node with no children.
+///
+/// If the role name is invalid (vs. just unrecognized), this function returns
+/// a `mystRoleError` node.
+fn parseMySTRole(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) Error!?*ast.Node {
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+    };
+
+    _ = try self.consume(scratch, &.{.l_brace}) orelse return null;
+
+    var running_text = Io.Writer.Allocating.init(scratch);
+    while (try self.peek(scratch)) |token| {
+        switch (token.token_type) {
+            .text, .whitespace => {
+                _ = try self.consume(scratch, &.{token.token_type});
+                _ = try running_text.writer.write(emitInlineLiteral(token));
+            },
+            else => break,
+        }
+    }
+
+    _ = try self.consume(scratch, &.{.r_brace}) orelse return null;
+
+    const name = std.mem.trim(u8, try running_text.toOwnedSlice(), " \t");
+
+    const open = try self.consume(scratch, &.{.backtick}) orelse return null;
+
+    while (try self.peek(scratch)) |token| {
+        switch (token.token_type) {
+            .backtick => {
+                _ = try self.consume(scratch, &.{.backtick});
+                if (token.lexeme.len == open.lexeme.len) {
+                    break;
+                }
+
+                const value = try emitInlineCode(scratch, token);
+                _ = try running_text.writer.write(value);
+            },
+            .escaped_backtick => {
+                // Backslash-escaping is not allowed here. Treat as a backslash
+                // followed by a backtick.
+                _ = try self.consume(scratch, &.{.escaped_backtick});
+                _ = try running_text.writer.write("\\");
+
+                if (try self.consume(scratch, &.{.backtick})) |following| {
+                    // Handle case where escaped backtick should be counted
+                    // with following backticks.
+                    const backtick_count = following.lexeme.len + 1;
+                    if (open.lexeme.len == backtick_count) {
+                        break;
+                    }
+
+                    const value_escaped = try emitInlineCode(scratch, token);
+                    _ = try running_text.writer.write(value_escaped);
+
+                    const value_following = try emitInlineCode(
+                        scratch,
+                        following,
+                    );
+                    _ = try running_text.writer.write(value_following);
+                } else {
+                    // No following backticks, so we just have a single
+                    // backtick.
+                    if (open.lexeme.len == 1) {
+                        break;
+                    }
+
+                    const value = try emitInlineCode(scratch, token);
+                    _ = try running_text.writer.write(value);
+                }
+            },
+            else => |t| {
+                _ = try self.consume(scratch, &.{t});
+
+                const value = try emitInlineCode(scratch, token);
+                _ = try running_text.writer.write(value);
+            },
+        }
+    }
+
+    const value = try running_text.toOwnedSlice();
+
+    // value cannot be empty; parse fails altogether
+    if (value.len == 0) {
+        return null;
+    }
+
+    const owned_value = try alloc.dupeZ(u8, value);
+    errdefer alloc.free(owned_value);
+
+    did_parse = true;
+
+    if (!myst.roles.isValidRoleName(name)) {
+        const error_node = try alloc.create(ast.Node);
+        error_node.* = .{
+            .tag = .myst_role_error,
+            .payload = .{
+                .myst_role_error = .{
+                    .value = owned_value,
+                },
+            },
+        };
+        return error_node;
+    }
+
+    const owned_name = try alloc.dupeZ(u8, name);
+    errdefer alloc.free(owned_name);
+
+    const node = try alloc.create(ast.Node);
+    node.* = .{
+        .tag = .myst_role,
+        .payload = .{
+            .myst_role = .{
+                .name = owned_name,
+                .value = owned_value,
+                .children = &.{},
+                .n_children = 0,
+            },
+        },
+    };
+    return node;
 }
 
 /// Consumes tokens we know won't be parsed as anything else and emits them as
@@ -5859,4 +6033,65 @@ test "html within link" {
         ast.NodeType.html,
         nodes[0].payload.link.children[1].tag,
     );
+}
+
+test "unknown myst role" {
+    const value = "{foo}`bar`";
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.myst_role, nodes[0].tag);
+    try testing.expectEqual(0, nodes[0].payload.myst_role.n_children);
+    try testing.expectEqualStrings(
+        "foo",
+        std.mem.span(nodes[0].payload.myst_role.name),
+    );
+    try testing.expectEqualStrings(
+        "bar",
+        std.mem.span(nodes[0].payload.myst_role.value),
+    );
+}
+
+// BEHAVIOR NOT EXPLICITLY SPECIFIED IN MYST SPEC
+test "myst role with invalid name" {
+    const value = "{foo bar}`baz`";
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.myst_role_error, nodes[0].tag);
+    try testing.expectEqualStrings(
+        "baz",
+        std.mem.span(nodes[0].payload.myst_role_error.value),
+    );
+}
+
+// BEHAVIOR NOT EXPLICITLY SPECIFIED IN MYST SPEC
+test "myst role with whitespace around name" {
+    const value = "{ foo\t }`bar`";
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.myst_role, nodes[0].tag);
+    try testing.expectEqual(0, nodes[0].payload.myst_role.n_children);
+    try testing.expectEqualStrings(
+        "foo",
+        std.mem.span(nodes[0].payload.myst_role.name),
+    );
+    try testing.expectEqualStrings(
+        "bar",
+        std.mem.span(nodes[0].payload.myst_role.value),
+    );
+}
+
+// BEHAVIOR NOT EXPLICITLY SPECIFIED IN MYST SPEC
+test "myst role cannot have empty value" {
+    const value = "{foo}``";
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.text, nodes[0].tag);
 }
