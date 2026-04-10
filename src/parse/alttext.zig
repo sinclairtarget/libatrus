@@ -12,7 +12,7 @@ const ast = @import("../ast.zig");
 pub fn write(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
     switch (node.tag) {
         inline .root, .block, .blockquote, .paragraph, .emphasis, .strong,
-        .heading, .link, .subscript => |node_type| {
+        .heading, .link, .subscript, .superscript => |node_type| {
             const n = @field(node.payload, @tagName(node_type));
             const sliced = n.children[0..n.n_children];
             for (sliced) |child| {

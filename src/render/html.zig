@@ -195,6 +195,17 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
 
             _ = try out.write("</sub>");
         },
+        .superscript => {
+            const n = node.payload.superscript;
+            _ = try out.write("<sup>");
+
+            const sliced = n.children[0..n.n_children];
+            for (sliced) |child| {
+                _ = try renderNode(child, out);
+            }
+
+            _ = try out.write("</sup>");
+        },
         // Doesn't get rendered
         .definition => return false,
     }

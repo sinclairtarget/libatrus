@@ -29,6 +29,10 @@ pub fn handleBuiltin(
 
     if (std.mem.eql(u8, name, "sub") or std.mem.eql(u8, name, "subscript")) {
         return try handleSubscript(alloc, node, value);
+    } else if (
+        std.mem.eql(u8, name, "sup") or std.mem.eql(u8, name, "superscript")
+    ) {
+        return try handleSuperscript(alloc, node, value);
     }
 
     return node;
@@ -60,6 +64,42 @@ fn handleSubscript(
     };
 
     const role_children = try alloc.dupe(*ast.Node, &.{sub_node});
+
+    std.debug.assert(node.tag == .myst_role);
+    std.debug.assert(node.payload.myst_role.n_children == 0);
+
+    node.payload.myst_role.children = role_children.ptr;
+    node.payload.myst_role.n_children = @intCast(role_children.len);
+
+    return node;
+}
+
+/// Implements {sup} and {superscript}.
+fn handleSuperscript(
+    alloc: Allocator,
+    node: *ast.Node,
+    value: []const u8,
+) !*ast.Node {
+    const text_node = try util.nodes.createTextNode(alloc, value);
+    errdefer text_node.deinit(alloc);
+
+    const sup_node = try alloc.create(ast.Node);
+    errdefer alloc.destroy(sup_node);
+
+    const sup_children = try alloc.dupe(*ast.Node, &.{text_node});
+    errdefer alloc.free(sup_children);
+
+    sup_node.* = .{
+        .tag = .superscript,
+        .payload = .{
+            .superscript = .{
+                .children = sup_children.ptr,
+                .n_children = @intCast(sup_children.len),
+            },
+        },
+    };
+
+    const role_children = try alloc.dupe(*ast.Node, &.{sup_node});
 
     std.debug.assert(node.tag == .myst_role);
     std.debug.assert(node.payload.myst_role.n_children == 0);
@@ -149,6 +189,64 @@ test "subscript long name" {
     try testing.expectEqual(1, subscript_node.payload.subscript.n_children);
 
     const text_node = subscript_node.payload.subscript.children[0];
+    try testing.expectEqual(ast.NodeType.text, text_node.tag);
+    try testing.expectEqualStrings(
+        "foo",
+        std.mem.span(text_node.payload.text.value),
+    );
+}
+
+test "superscript short name" {
+    const node = try parseBuiltin("sup", "foo");
+    defer node.deinit(testing.allocator);
+
+    try testing.expectEqual(ast.NodeType.myst_role, node.tag);
+    try testing.expectEqualStrings(
+        "sup",
+        std.mem.span(node.payload.myst_role.name),
+    );
+    try testing.expectEqualStrings(
+        "foo",
+        std.mem.span(node.payload.myst_role.value),
+    );
+
+    try testing.expectEqual(1, node.payload.myst_role.n_children);
+
+    const superscript_node = node.payload.myst_role.children[0];
+    try testing.expectEqual(ast.NodeType.superscript, superscript_node.tag);
+
+    try testing.expectEqual(1, superscript_node.payload.superscript.n_children);
+
+    const text_node = superscript_node.payload.superscript.children[0];
+    try testing.expectEqual(ast.NodeType.text, text_node.tag);
+    try testing.expectEqualStrings(
+        "foo",
+        std.mem.span(text_node.payload.text.value),
+    );
+}
+
+test "superscript long name" {
+    const node = try parseBuiltin("superscript", "foo");
+    defer node.deinit(testing.allocator);
+
+    try testing.expectEqual(ast.NodeType.myst_role, node.tag);
+    try testing.expectEqualStrings(
+        "superscript",
+        std.mem.span(node.payload.myst_role.name),
+    );
+    try testing.expectEqualStrings(
+        "foo",
+        std.mem.span(node.payload.myst_role.value),
+    );
+
+    try testing.expectEqual(1, node.payload.myst_role.n_children);
+
+    const superscript_node = node.payload.myst_role.children[0];
+    try testing.expectEqual(ast.NodeType.superscript, superscript_node.tag);
+
+    try testing.expectEqual(1, superscript_node.payload.superscript.n_children);
+
+    const text_node = superscript_node.payload.superscript.children[0];
     try testing.expectEqual(ast.NodeType.text, text_node.tag);
     try testing.expectEqualStrings(
         "foo",

@@ -56,7 +56,7 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
 
     switch (node.tag) {
         inline .root, .paragraph, .block, .emphasis, .strong,
-        .blockquote, .subscript => |node_type| {
+        .blockquote, .subscript, .superscript => |node_type| {
             const n = @field(node.payload, @tagName(node_type));
             try render_children(stringify, n);
         },
