@@ -6,7 +6,8 @@
 
 Atrus parses [MyST-flavored Markdown](https://mystmd.org/spec/overview) into
 the MyST abstract syntax tree. It can render the AST as JSON or as HTML. Other
-renderers might be added in the future.
+renderers (such as for [Typst](https://github.com/typst/typst)) might be added
+in the future.
 
 MyST is a superset of [CommonMark](https://commonmark.org/), so Atrus is also
 a CommonMark-compliant Markdown parser and HTML renderer.
