@@ -35,6 +35,7 @@ pub const NodeType = enum(c_uint) {
     myst_role_error = 17,
     subscript = 18,
     superscript = 19,
+    abbreviation = 20,
 };
 
 pub const Node = extern struct {
@@ -59,6 +60,7 @@ pub const Node = extern struct {
         myst_role_error: MySTRoleError,
         subscript: Container,
         superscript: Container,
+        abbreviation: Abbreviation,
     },
     tag: NodeType,
 
@@ -198,5 +200,21 @@ pub const MySTRoleError = extern struct {
 
     pub fn deinit(self: *MySTRoleError, alloc: Allocator) void {
         alloc.free(std.mem.span(self.value));
+    }
+};
+
+pub const Abbreviation = extern struct {
+    children: [*]*Node,
+    n_children: c_uint,
+    title: [*:0]const u8,
+
+    pub fn deinit(self: *Abbreviation, alloc: Allocator) void {
+        const sliced = self.children[0..self.n_children];
+        for (sliced) |child| {
+            child.deinit(alloc);
+        }
+        alloc.free(sliced);
+
+        alloc.free(std.mem.span(self.title));
     }
 };

@@ -33,6 +33,8 @@ pub fn handleBuiltin(
         std.mem.eql(u8, name, "sup") or std.mem.eql(u8, name, "superscript")
     ) {
         return try handleSuperscript(alloc, node, value);
+    } else if (std.mem.eql(u8, name, "abbr")) {
+        return try handleAbbreviation(alloc, node, value);
     }
 
     return node;
@@ -100,6 +102,87 @@ fn handleSuperscript(
     };
 
     const role_children = try alloc.dupe(*ast.Node, &.{sup_node});
+
+    std.debug.assert(node.tag == .myst_role);
+    std.debug.assert(node.payload.myst_role.n_children == 0);
+
+    node.payload.myst_role.children = role_children.ptr;
+    node.payload.myst_role.n_children = @intCast(role_children.len);
+
+    return node;
+}
+
+/// Given a role value like "FOO (Foolish Ostrich Ogling)", returns an
+/// abbreviation node with "Foolish Ostrich Ogling" as the title and "FOO" as
+/// the value of a child text node.
+///
+/// The title is always the text between the last open parenthesis and the last
+/// close parenthesis in the role value. If parentheses are mismatched then no
+/// title is computed and the whole role value is used as for the child text
+/// node.
+fn handleAbbreviation(
+    alloc: Allocator,
+    node: *ast.Node,
+    value: []const u8,
+) !*ast.Node {
+    // Search from back to get last occurence
+    const open_i = std.mem.lastIndexOfScalar(u8, value, '(') orelse 0;
+    const close_i = open_i + (
+        std.mem.indexOfScalar(u8, value[open_i..], ')') orelse 0
+    );
+
+    const abbr_title = blk: {
+        if (open_i == 0) {
+            // No open paren or open bracket is first char; means no title
+            break :blk "";
+        }
+
+        if (close_i <= open_i) {
+            // No close paren after open paren; means no title
+            break :blk "";
+        }
+
+        if (close_i < value.len - 1) {
+            // Close paren not last char; means no title
+            break :blk "";
+        }
+
+        break :blk std.mem.trim(u8, value[open_i + 1..close_i], " \t");
+    };
+
+    const abbr_value = blk: {
+        if (abbr_title.len == 0) {
+            // No title, so value is just entire string
+            break :blk value;
+        }
+
+        break :blk std.mem.trim(u8, value[0..open_i], " \t");
+    };
+
+    const text_node = try util.nodes.createTextNode(alloc, abbr_value);
+    errdefer text_node.deinit(alloc);
+
+    const abbr_node = try alloc.create(ast.Node);
+    errdefer alloc.destroy(abbr_node);
+
+    const abbr_children = try alloc.dupe(*ast.Node, &.{text_node});
+    errdefer alloc.free(abbr_children);
+
+    const owned_abbr_title = try alloc.dupeZ(u8, abbr_title);
+    errdefer alloc.free(owned_abbr_title);
+
+    abbr_node.* = .{
+        .tag = .abbreviation,
+        .payload = .{
+            .abbreviation = .{
+                .children = abbr_children.ptr,
+                .n_children = @intCast(abbr_children.len),
+                .title = owned_abbr_title,
+            },
+        },
+    };
+
+    const role_children = try alloc.dupe(*ast.Node, &.{abbr_node});
 
     std.debug.assert(node.tag == .myst_role);
     std.debug.assert(node.payload.myst_role.n_children == 0);
@@ -250,6 +333,72 @@ test "superscript long name" {
     try testing.expectEqual(ast.NodeType.text, text_node.tag);
     try testing.expectEqualStrings(
         "foo",
+        std.mem.span(text_node.payload.text.value),
+    );
+}
+
+test "abbr" {
+    const node = try parseBuiltin("abbr", "MyST (Markedly Structured Text)");
+    defer node.deinit(testing.allocator);
+
+    try testing.expectEqual(ast.NodeType.myst_role, node.tag);
+    try testing.expectEqualStrings(
+        "abbr",
+        std.mem.span(node.payload.myst_role.name),
+    );
+    try testing.expectEqualStrings(
+        "MyST (Markedly Structured Text)",
+        std.mem.span(node.payload.myst_role.value),
+    );
+
+    try testing.expectEqual(1, node.payload.myst_role.n_children);
+
+    const abbr_node = node.payload.myst_role.children[0];
+    try testing.expectEqual(ast.NodeType.abbreviation, abbr_node.tag);
+    try testing.expectEqualStrings(
+        "Markedly Structured Text",
+        std.mem.span(abbr_node.payload.abbreviation.title),
+    );
+
+    try testing.expectEqual(1, abbr_node.payload.abbreviation.n_children);
+
+    const text_node = abbr_node.payload.abbreviation.children[0];
+    try testing.expectEqual(ast.NodeType.text, text_node.tag);
+    try testing.expectEqualStrings(
+        "MyST",
+        std.mem.span(text_node.payload.text.value),
+    );
+}
+
+test "bad abbr" {
+    const node = try parseBuiltin("abbr", "MyST (Markedly Structured Text");
+    defer node.deinit(testing.allocator);
+
+    try testing.expectEqual(ast.NodeType.myst_role, node.tag);
+    try testing.expectEqualStrings(
+        "abbr",
+        std.mem.span(node.payload.myst_role.name),
+    );
+    try testing.expectEqualStrings(
+        "MyST (Markedly Structured Text",
+        std.mem.span(node.payload.myst_role.value),
+    );
+
+    try testing.expectEqual(1, node.payload.myst_role.n_children);
+
+    const abbr_node = node.payload.myst_role.children[0];
+    try testing.expectEqual(ast.NodeType.abbreviation, abbr_node.tag);
+    try testing.expectEqualStrings(
+        "",
+        std.mem.span(abbr_node.payload.abbreviation.title),
+    );
+
+    try testing.expectEqual(1, abbr_node.payload.abbreviation.n_children);
+
+    const text_node = abbr_node.payload.abbreviation.children[0];
+    try testing.expectEqual(ast.NodeType.text, text_node.tag);
+    try testing.expectEqualStrings(
+        "MyST (Markedly Structured Text",
         std.mem.span(text_node.payload.text.value),
     );
 }

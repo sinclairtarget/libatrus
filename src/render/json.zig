@@ -125,6 +125,18 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
             try stringify.objectField("value");
             try stringify.write(std.mem.span(n.value));
         },
+        .abbreviation => {
+            const n = node.payload.abbreviation;
+            const title = std.mem.span(n.title);
+            if (title.len > 0) {
+                try stringify.objectField("title");
+                try stringify.write(title);
+            }
+
+            if (n.n_children > 0) {
+                try render_children(stringify, n);
+            }
+        },
         .@"break", .thematic_break => {},
         .definition => unreachable,
     }

@@ -206,6 +206,25 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
 
             _ = try out.write("</sup>");
         },
+        .abbreviation => {
+            const n = node.payload.abbreviation;
+
+            _ = try out.write("<abbr");
+            const title = std.mem.span(n.title);
+            if (title.len > 0) {
+                try out.print(" title=\"", .{});
+                try printHTMLEscapedAttrValue(out, title);
+                try out.print("\"", .{});
+            }
+            _ = try out.write(">");
+
+            const sliced = n.children[0..n.n_children];
+            for (sliced) |child| {
+                _ = try renderNode(child, out);
+            }
+
+            _ = try out.write("</abbr>");
+        },
         // Doesn't get rendered
         .definition => return false,
     }
