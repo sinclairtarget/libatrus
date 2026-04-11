@@ -4,16 +4,20 @@
 >
 > —Atrus, _Myst_ (1993)
 
-Atrus parses [MyST-flavored Markdown](https://mystmd.org/spec/overview) into
-the MyST abstract syntax tree. It can render the AST as JSON or as HTML. Other
-renderers (such as for [Typst](https://github.com/typst/typst)) might be added
-in the future.
+Atrus parses [MyST Markdown](https://mystmd.org/spec/overview) into the MyST
+abstract syntax tree. It can render the AST as JSON or as HTML. Other renderers
+(such as for [Typst](https://github.com/typst/typst)) might be added in the
+future.
 
 MyST is a superset of [CommonMark](https://commonmark.org/), so Atrus is also
 a CommonMark-compliant Markdown parser and HTML renderer.
 
 Atrus is written in Zig and can be consumed as a Zig module, but also exports
 a C API.
+
+## Disclaimer
+Atrus implements the MyST Markdown specification but has no affiliation with
+the MyST specification authors, Jupyter Book, or Project Jupyter.
 
 ## Roadmap
 Atrus can currently parse the following Markdown document:
