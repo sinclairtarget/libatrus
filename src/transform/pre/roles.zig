@@ -12,6 +12,13 @@ pub fn transform(
     switch (original_node.tag) {
         .myst_role => {
             const n = original_node.payload.myst_role;
+
+            // Check to see if we have already transformed this node. If so,
+            // abort. This ensures the transform is idempotent.
+            if (n.n_children > 0) {
+                return original_node;
+            }
+
             return try transformBuiltin(
                 alloc,
                 scratch,
@@ -415,5 +422,33 @@ test "bad abbr" {
     try testing.expectEqualStrings(
         "MyST (Markedly Structured Text",
         std.mem.span(text_node.payload.text.value),
+    );
+}
+
+test "role transform is idempotent" {
+    const node = try handleRole("abbr", "MyST (Markedly Structured Text)");
+    defer node.deinit(testing.allocator);
+
+    try testing.expectEqual(ast.NodeType.myst_role, node.tag);
+
+    const retransformed_node = try transform(
+        testing.allocator,
+        testing.allocator,
+        node,
+    );
+
+    try testing.expectEqual(ast.NodeType.myst_role, retransformed_node.tag);
+
+    try testing.expectEqual(
+        node.payload.myst_role.n_children,
+        retransformed_node.payload.myst_role.n_children,
+    );
+    try testing.expectEqualStrings(
+        std.mem.span(node.payload.myst_role.name),
+        std.mem.span(retransformed_node.payload.myst_role.name),
+    );
+    try testing.expectEqualStrings(
+        std.mem.span(node.payload.myst_role.value),
+        std.mem.span(retransformed_node.payload.myst_role.value),
     );
 }
