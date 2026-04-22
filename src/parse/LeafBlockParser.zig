@@ -1,8 +1,8 @@
 //! Parser in the first parsing stage that handles leaf blocks.
 //!
 //! Parser pulls tokens from the iterator as needed. The tokens are stored in
-//! an array list. The array list is cleared of consumed tokens as each block is
-//! successfully parsed.
+//! an array list. The array list is cleared of consumed tokens as each block
+//! is successfully parsed.
 //!
 //! This is a recursive-descent parser with backtracking.
 //!
@@ -30,6 +30,7 @@ const LinkDefMap = @import("link_defs.zig").LinkDefMap;
 const link_label_max_chars = @import("link_defs.zig").label_max_chars;
 const logger = @import("../logging.zig").logger;
 const NodeList = @import("NodeList.zig");
+const myst = @import("../myst/myst.zig");
 const TokenIterator = @import("../lex/iterator.zig").TokenIterator;
 const util = @import("../util/util.zig");
 
@@ -79,6 +80,18 @@ pub fn parse(
             const result = try self.parseIndentedCode(alloc, scratch);
             if (result.maybe_node) |code| {
                 try children.append(code);
+                if (result.should_end) {
+                    break;
+                } else {
+                    continue;
+                }
+            }
+        }
+
+        {
+            const result = try self.parseMySTDirective(alloc, scratch);
+            if (result.maybe_node) |directive| {
+                try children.append(directive);
                 if (result.should_end) {
                     break;
                 } else {
@@ -369,7 +382,9 @@ fn parseThematicBreak(
     return node;
 }
 
-// A parsed node that could end parsing.
+/// A parsed node that could end parsing.
+///
+/// TODO: Why exactly do we need this again?
 const EndingParseResult = struct {
     maybe_node: ?*ast.Node = null,
     should_end: bool = false,
@@ -635,8 +650,8 @@ fn parseFencedCode(
         }
     }
 
-    // Myst tests require trailing newline to be trimmed for AST, even though it
-    // should be added back when rendered as HTML.
+    // MyST tests require trailing newline to be trimmed for AST, even though
+    // it should be added back when rendered as HTML.
     // https://spec.commonmark.org/0.30/#example-119
     const trimmed = std.mem.trimEnd(u8, content.written(), "\n");
 
@@ -663,7 +678,7 @@ fn parseFencedCode(
 }
 
 /// Returns true if the next tokens can be parsed as the closing fence of a
-/// fenced code block.
+/// fenced code block or MyST directive.
 fn peekClosingFence(
     self: *Self,
     scratch: Allocator,
@@ -882,11 +897,11 @@ fn scanLinkDefDestination(self: *Self, scratch: Allocator) !?[]const u8 {
                 // None of these tokens should really be possible here, since
                 // they can only be matched at the beginning of a line.
                 .rule_star, .rule_underline, .rule_dash_with_whitespace,
-                .rule_dash, .rule_equals, .backtick_fence,
-                .tilde_fence => return null,
+                .rule_dash, .rule_equals, .backtick_fence, .tilde_fence,
+                .colon_fence => return null,
                 .text, .pound, .whitespace, .colon, .l_square_bracket,
-                .r_square_bracket, .l_paren, .r_paren, .double_quote,
-                .single_quote => |t| {
+                .r_square_bracket, .l_paren, .r_paren, .l_brace, .r_brace,
+                .double_quote, .single_quote => |t| {
                     _ = try self.it.consume(scratch, &.{t});
                     const value = try resolveText(scratch, token);
                     _ = try running_text.writer.write(value);
@@ -920,11 +935,11 @@ fn scanLinkDefDestination(self: *Self, scratch: Allocator) !?[]const u8 {
                 },
                 .newline, .whitespace => break,
                 .rule_star, .rule_underline, .rule_dash_with_whitespace,
-                .rule_dash, .rule_equals, .backtick_fence,
-                .tilde_fence => return null,
+                .rule_dash, .rule_equals, .backtick_fence, .tilde_fence,
+                .colon_fence => return null,
                 .text, .pound, .colon, .l_square_bracket, .r_square_bracket,
-                .l_angle_bracket, .r_angle_bracket, .double_quote,
-                .single_quote => |t| {
+                .l_angle_bracket, .r_angle_bracket, .l_brace, .r_brace,
+                .double_quote, .single_quote => |t| {
                     _ = try self.it.consume(scratch, &.{t});
                     if (util.strings.containsAsciiControl(token.lexeme)) {
                         return null;
@@ -1001,6 +1016,180 @@ fn scanLinkDefTitle(self: *Self, scratch: Allocator) !?[]const u8 {
 
     did_parse = true;
     return try running_text.toOwnedSlice();
+}
+
+/// Parses a MyST directive.
+///
+/// MyST directives are delimited by "fences" of three or more colons or
+/// backticks. The closing fence must use the same character and be at least
+/// as long as the opening fence.
+fn parseMySTDirective(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) !EndingParseResult {
+    var did_parse = false;
+    const checkpoint_index = self.it.checkpoint();
+    defer if (!did_parse) {
+        self.it.backtrack(checkpoint_index);
+    };
+
+    const fail: EndingParseResult = .{ .maybe_node = null };
+    var should_end = false;
+
+    // Opening code fence line
+    const maybe_whitespace = try self.consumeOptionalLeadingWhitespace(scratch);
+    const indentation: usize =
+        if (maybe_whitespace) |whitespace|
+            util.strings.whitespaceIndentLen(whitespace.lexeme)
+        else
+            0;
+
+    const open_fence = try self.it.consume(
+        scratch,
+        &.{.backtick_fence, .colon_fence},
+    ) orelse return fail;
+
+    _ = try self.it.consume(scratch, &.{.l_brace}) orelse return fail;
+
+    // Parse directive name
+    var running_text = Io.Writer.Allocating.init(scratch);
+    while (try self.it.peek(scratch)) |token| {
+        switch (token.token_type) {
+            .text, .whitespace => {
+                _ = try self.it.consume(scratch, &.{token.token_type});
+                const v = try resolveText(scratch, token);
+                _ = try running_text.writer.write(v);
+            },
+            else => break,
+        }
+    }
+
+    const name = std.mem.trim(u8, try running_text.toOwnedSlice(), " \t");
+
+    _ = try self.it.consume(scratch, &.{.r_brace}) orelse return fail;
+    _ = try self.it.consume(scratch, &.{.whitespace});
+    _ = try self.it.consume(scratch, &.{.newline}) orelse return fail;
+
+    // Block content
+    var content = Io.Writer.Allocating.init(scratch);
+    self.interruptible = false;
+    defer self.interruptible = true;
+    loop: while (try self.it.peek(scratch)) |line_start_token| {
+        // Handle first token in line
+        switch (line_start_token.token_type) {
+            .backtick_fence, .colon_fence => |t| {
+                if (try self.peekClosingFence(scratch, open_fence)) {
+                    break :loop;
+                }
+
+                _ = try self.it.consume(scratch, &.{t});
+                _ = try content.writer.write(line_start_token.lexeme);
+            },
+            .whitespace => {
+                if (try self.peekClosingFence(scratch, open_fence)) {
+                    break :loop;
+                }
+
+                _ = try self.it.consume(scratch, &.{.whitespace});
+                const value = util.strings.trimWhitespaceStart(
+                    line_start_token.lexeme,
+                    indentation,
+                );
+                _ = try content.writer.write(value);
+            },
+            .newline => {
+                _ = try self.it.consume(scratch, &.{.newline});
+                _ = try content.writer.write("\n");
+            },
+            .close => {
+                // Container is closing, can't keep parsing directive
+                _ = try self.it.consume(scratch, &.{.close});
+                should_end = true;
+                break :loop;
+            },
+            else => |t| {
+                _ = try self.it.consume(scratch, &.{t});
+                _ = try content.writer.write(line_start_token.lexeme);
+            },
+        }
+
+        // Handle trailing tokens
+        while (try self.it.peek(scratch)) |token| {
+            switch (token.token_type) {
+                .newline => {
+                    _ = try self.it.consume(scratch, &.{.newline});
+                    _ = try content.writer.write("\n");
+                    break;
+                },
+                else => {
+                    _ = try self.it.consume(scratch, &.{token.token_type});
+                    _ = try content.writer.write(token.lexeme);
+                },
+            }
+        }
+    }
+
+    // Closing fence
+    if (!should_end) {
+        // Closing fence line
+        // Not needed if file ends
+        _ = try self.consumeOptionalLeadingWhitespace(scratch);
+        if (try self.it.consume(scratch, &.{open_fence.token_type})) |_| {
+            _ = try self.it.consume(scratch, &.{.whitespace});
+            _ = try self.it.consume(scratch, &.{.newline}) orelse return fail;
+        }
+    }
+
+    did_parse = true;
+
+    if (!myst.isValidDirectiveName(name)) {
+        const owned_message = try alloc.dupeZ(
+            u8,
+            "Invalid MyST directive name",
+        );
+        errdefer alloc.free(owned_message);
+
+        const error_node = try alloc.create(ast.Node);
+        error_node.* = .{
+            .tag = .myst_directive_error,
+            .payload = .{
+                .myst_directive_error = .{
+                    .n_children = 0,
+                    .children = &.{},
+                    .message = owned_message,
+                },
+            },
+        };
+        return .{
+            .maybe_node = error_node,
+            .should_end = should_end,
+        };
+    }
+
+    const owned_name = try alloc.dupeZ(u8, name);
+    errdefer alloc.free(owned_name);
+
+    const value = std.mem.trimEnd(u8, content.written(), "\n");
+    const owned_value = try alloc.dupeZ(u8, value);
+    errdefer alloc.free(owned_value);
+
+    const node = try alloc.create(ast.Node);
+    node.* = .{
+        .tag = .myst_directive,
+        .payload = .{
+            .myst_directive = .{
+                .n_children = 0,
+                .children = &.{},
+                .name = owned_name.ptr,
+                .value = owned_value.ptr,
+            },
+        },
+    };
+    return .{
+        .maybe_node = node,
+        .should_end = should_end,
+    };
 }
 
 // Scanned text that could end parsing.
@@ -1564,6 +1753,224 @@ test "tilde code fence" {
     );
 }
 
+test "backtick MyST directive" {
+    const md =
+        \\```{foo}
+        \\Hi, this is my directive.
+        \\```
+        \\
+    ;
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksMd(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(1, nodes.len);
+
+    const directive_node = nodes[0];
+    try testing.expectEqual(.myst_directive, directive_node.tag);
+    try testing.expectEqualStrings(
+        "foo",
+        std.mem.span(directive_node.payload.myst_directive.name),
+    );
+    try testing.expectEqualStrings(
+        "Hi, this is my directive.",
+        std.mem.span(directive_node.payload.myst_directive.value),
+    );
+}
+
+test "colon MyST directive" {
+    const md =
+        \\:::{foo}
+        \\Hi, this is my directive.
+        \\:::
+        \\
+    ;
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksMd(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(1, nodes.len);
+
+    const directive_node = nodes[0];
+    try testing.expectEqual(.myst_directive, directive_node.tag);
+    try testing.expectEqualStrings(
+        "foo",
+        std.mem.span(directive_node.payload.myst_directive.name),
+    );
+    try testing.expectEqualStrings(
+        "Hi, this is my directive.",
+        std.mem.span(directive_node.payload.myst_directive.value),
+    );
+}
+
+test "MyST directive with indentation" {
+    const md =
+        \\   ```{foo}
+        \\   def foo():
+        \\       pass
+        \\   ```
+        \\
+    ;
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksMd(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(1, nodes.len);
+
+    const directive_node = nodes[0];
+    try testing.expectEqual(.myst_directive, directive_node.tag);
+    try testing.expectEqualStrings(
+        "foo",
+        std.mem.span(directive_node.payload.myst_directive.name),
+    );
+    try testing.expectEqualStrings(
+        "def foo():\n    pass",
+        std.mem.span(directive_node.payload.myst_directive.value),
+    );
+}
+
+test "MyST directive with nested blocks" {
+    // Note that the actual content of the directive isn't parsed until later.
+    // This test just ensures we are correctly handling lines that look like
+    // potential closing fences but aren't.
+    const md =
+        \\````{foo}
+        \\# Bar
+        \\This is baz.
+        \\
+        \\```python
+        \\def foo():
+        \\    pass
+        \\```
+        \\
+        \\```{bar}
+        \\bim
+        \\```
+        \\````
+        \\
+    ;
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksMd(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(1, nodes.len);
+
+    const directive_node = nodes[0];
+    try testing.expectEqual(.myst_directive, directive_node.tag);
+    try testing.expectEqualStrings(
+        "foo",
+        std.mem.span(directive_node.payload.myst_directive.name),
+    );
+    try testing.expectEqualStrings(
+        \\# Bar
+        \\This is baz.
+        \\
+        \\```python
+        \\def foo():
+        \\    pass
+        \\```
+        \\
+        \\```{bar}
+        \\bim
+        \\```
+        ,
+        std.mem.span(directive_node.payload.myst_directive.value),
+    );
+}
+
+test "MyST directive with invalid name" {
+    const md =
+        \\```{foo bar}
+        \\bim
+        \\```
+        \\
+    ;
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksMd(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(1, nodes.len);
+
+    const error_node = nodes[0];
+    try testing.expectEqual(.myst_directive_error, error_node.tag);
+    try testing.expect(
+        std.mem.span(error_node.payload.myst_directive_error.message).len > 0
+    );
+}
+
+test "MyST directive with whitespace around name" {
+    const md =
+        \\```{ foo }
+        \\Hi, this is my directive.
+        \\```
+        \\
+    ;
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksMd(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(1, nodes.len);
+
+    const directive_node = nodes[0];
+    try testing.expectEqual(.myst_directive, directive_node.tag);
+    try testing.expectEqualStrings(
+        "foo",
+        std.mem.span(directive_node.payload.myst_directive.name),
+    );
+    try testing.expectEqualStrings(
+        "Hi, this is my directive.",
+        std.mem.span(directive_node.payload.myst_directive.value),
+    );
+}
+
 fn parseBlocksTokens(
     tokens: []const BlockToken,
     link_defs: *LinkDefMap,
@@ -1758,4 +2165,49 @@ test "close token after atx heading" {
     const txt = h.payload.heading.children[0];
     try testing.expectEqual(.text, txt.tag);
     try testing.expectEqualStrings("foo", std.mem.span(txt.payload.text.value));
+}
+
+test "close token in MyST directive" {
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksTokens(&.{
+        .{
+            .token_type = .colon_fence,
+            .lexeme = ":::",
+        },
+        .{ .token_type = .l_brace },
+        .{
+            .token_type = .text,
+            .lexeme = "foo",
+        },
+        .{ .token_type = .r_brace },
+        .{ .token_type = .newline },
+        .{
+            .token_type = .text,
+            .lexeme = "bar",
+        },
+        .{ .token_type = .newline },
+        .{ .token_type = .close },
+        .{
+            .token_type = .text,
+            .lexeme = "baz",
+        },
+        .{ .token_type = .newline },
+    }, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(1, nodes.len);
+
+    const directive_node = nodes[0];
+    try testing.expectEqual(.myst_directive, directive_node.tag);
+    try testing.expectEqualStrings(
+        "bar",
+        std.mem.span(directive_node.payload.myst_directive.value),
+    );
 }

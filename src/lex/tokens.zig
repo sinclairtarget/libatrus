@@ -20,10 +20,13 @@ pub const BlockTokenType = enum {
     r_angle_bracket,
     l_paren,
     r_paren,
+    l_brace,
+    r_brace,
     single_quote,
     double_quote,
     backtick_fence,         // three or more consecutive '`' symbols
     tilde_fence,            // three or more consecutive '~' symbols
+    colon_fence,            // three or more consecutive ':' symbols
     close,                  // special token inserted by container block parser
 };
 

@@ -76,6 +76,12 @@ fn iteratorNext(ctx: *anyopaque, scratch: Allocator) Error!?BlockToken {
 /// Returns the next token starting at the current index.
 fn tokenize(self: *Self, scratch: Allocator) !BlockToken {
     const result: TokenizeResult = blk: {
+        // This has to go first so that colon fences have precedence over
+        // single colons.
+        if (try self.matchFence(scratch)) |result| {
+            break :blk result;
+        }
+
         if (try self.matchSingleCharTokens(scratch)) |result| {
             break :blk result;
         }
@@ -89,10 +95,6 @@ fn tokenize(self: *Self, scratch: Allocator) !BlockToken {
         }
 
         if (try self.matchRule(scratch)) |result| {
-            break :blk result;
-        }
-
-        if (try self.matchFence(scratch)) |result| {
             break :blk result;
         }
 
@@ -115,6 +117,8 @@ fn matchSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
         '>'  => .r_angle_bracket,
         '('  => .l_paren,
         ')'  => .r_paren,
+        '{'  => .l_brace,
+        '}'  => .r_brace,
         ':'  => .colon,
         '"'  => .double_quote,
         '\'' => .single_quote,
@@ -293,7 +297,7 @@ fn matchRule(self: Self, scratch: Allocator) !?TokenizeResult {
 fn matchFence(self: Self, scratch: Allocator) !?TokenizeResult {
     var lookahead_i = self.i;
 
-    const State = enum { start, backtick, tilde };
+    const State = enum { start, backtick, tilde, colon };
     const token_type: BlockTokenType = fsm: switch (State.start) {
         .start => {
             switch (self.line[lookahead_i]) {
@@ -304,6 +308,10 @@ fn matchFence(self: Self, scratch: Allocator) !?TokenizeResult {
                 '~' => {
                     lookahead_i += 1;
                     continue :fsm .tilde;
+                },
+                ':' => {
+                    lookahead_i += 1;
+                    continue :fsm .colon;
                 },
                 else => return null,
             }
@@ -332,6 +340,21 @@ fn matchFence(self: Self, scratch: Allocator) !?TokenizeResult {
                 else => {
                     if (lookahead_i - self.i >= 3) {
                         break :fsm .tilde_fence;
+                    } else {
+                        return null;
+                    }
+                },
+            }
+        },
+        .colon => {
+            switch (self.line[lookahead_i]) {
+                ':' => {
+                    lookahead_i += 1;
+                    continue :fsm .colon;
+                },
+                else => {
+                    if (lookahead_i - self.i >= 3) {
+                        break :fsm .colon_fence;
                     } else {
                         return null;
                     }
@@ -383,9 +406,9 @@ fn matchText(self: Self, scratch: Allocator) !TokenizeResult {
     const State = enum { start, text, escaped };
     fsm: switch (State.start) {
         .start => {
-            // We allow the first character to be something we'd otherwise break
-            // on, since we assume if it could have been tokenized as something
-            // else it already would have been.
+            // We allow the first character to be something we'd otherwise
+            // break on, since we assume if it could have been tokenized as
+            // something else it already would have been.
             switch (self.line[lookahead_i]) {
                 '\n' => break :fsm,
                 '\\' => {
@@ -400,7 +423,8 @@ fn matchText(self: Self, scratch: Allocator) !TokenizeResult {
         },
         .text => {
             switch (self.line[lookahead_i]) {
-                '"', '\'', '<', '>', '[', ']', '\n', ' ', '\t' => break :fsm,
+                '"', '\'', '<', '>', '[', ']', '{', '}', ':', '\n', ' ',
+                '\t' => break :fsm,
                 '\\' => {
                     lookahead_i += 1;
                     continue :fsm .escaped;
@@ -616,6 +640,20 @@ test "tilde code fence" {
         .text,
         .newline,
         .tilde_fence,
+        .newline,
+    }, md);
+}
+
+test "colon code fence" {
+    const md = "::: : :foo:\n";
+    try expectEqualTokens(&.{
+        .colon_fence,
+        .whitespace,
+        .colon,
+        .whitespace,
+        .colon,
+        .text,
+        .colon,
         .newline,
     }, md);
 }

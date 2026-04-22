@@ -10,3 +10,7 @@ pub fn isValidRoleName(name: []const u8) bool {
 
     return true;
 }
+
+pub fn isValidDirectiveName(name: []const u8) bool {
+    return isValidRoleName(name); // these happen to be the same right now
+}

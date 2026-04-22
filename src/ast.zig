@@ -30,12 +30,15 @@ pub const NodeType = enum(c_uint) {
     image = 13,
     blockquote = 14,
     html = 15,          // either an HTML block or a single inline HTML tag
-    // builtin roles
+    // built-in roles
     myst_role = 16,
     myst_role_error = 17,
     subscript = 18,
     superscript = 19,
     abbreviation = 20,
+    // built-in directives
+    myst_directive = 21,
+    myst_directive_error = 22,
 };
 
 pub const Node = extern struct {
@@ -61,6 +64,8 @@ pub const Node = extern struct {
         subscript: Container,
         superscript: Container,
         abbreviation: Abbreviation,
+        myst_directive: MySTDirective,
+        myst_directive_error: MySTDirectiveError,
     },
     tag: NodeType,
 
@@ -216,5 +221,39 @@ pub const Abbreviation = extern struct {
         alloc.free(sliced);
 
         alloc.free(std.mem.span(self.title));
+    }
+};
+
+pub const MySTDirective = extern struct {
+    children: [*]*Node,
+    n_children: c_uint,
+    name: [*:0]const u8,
+    value: [*:0]const u8,
+
+    pub fn deinit(self: *MySTDirective, alloc: Allocator) void {
+        const sliced = self.children[0..self.n_children];
+        for (sliced) |child| {
+            child.deinit(alloc);
+        }
+        alloc.free(sliced);
+
+        alloc.free(std.mem.span(self.name));
+        alloc.free(std.mem.span(self.value));
+    }
+};
+
+pub const MySTDirectiveError = extern struct {
+    children: [*]*Node,
+    n_children: c_uint,
+    message: [*:0]const u8,
+
+    pub fn deinit(self: *MySTDirectiveError, alloc: Allocator) void {
+        const sliced = self.children[0..self.n_children];
+        for (sliced) |child| {
+            child.deinit(alloc);
+        }
+        alloc.free(sliced);
+
+        alloc.free(std.mem.span(self.message));
     }
 };

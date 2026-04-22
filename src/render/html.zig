@@ -157,6 +157,8 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
             const n = node.payload.html;
             try out.print("{s}", .{n.value});
         },
+        // Doesn't get rendered
+        .definition => return false,
         .myst_role => {
             const n = node.payload.myst_role;
             if (n.n_children == 0) {
@@ -225,8 +227,39 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
 
             _ = try out.write("</abbr>");
         },
-        // Doesn't get rendered
-        .definition => return false,
+        .myst_directive => {
+            const n = node.payload.myst_directive;
+            if (n.n_children == 0) {
+                // unknown directive
+                _ = try out.write("<div class=\"directive unhandled\">\n");
+
+                _ = try out.write("  <p><code class=\"kind\">{");
+                try printHTMLEscapedContent(out, std.mem.span(n.name));
+                _ = try out.write("}</code></p>\n");
+
+                _ = try out.write("  <pre><code>");
+                try printHTMLEscapedContent(out, std.mem.span(n.value));
+                _ = try out.write("</code></pre>\n");
+
+                _ = try out.write("</div>");
+            } else {
+                // implemented directive; this is just a wrapper
+                const sliced = n.children[0..n.n_children];
+                for (sliced) |child| {
+                    _ = try renderNode(child, out);
+                }
+            }
+        },
+        .myst_directive_error => {
+            const n = node.payload.myst_directive_error;
+
+            _ = try out.write("<div>");
+            const sliced = n.children[0..n.n_children];
+            for (sliced) |child| {
+                _ = try renderNode(child, out);
+            }
+            _ = try out.write("</div>");
+        },
     }
 
     return true;

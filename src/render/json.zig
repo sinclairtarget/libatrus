@@ -51,6 +51,8 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
         .inline_code => try stringify.write("inlineCode"),
         .myst_role => try stringify.write("mystRole"),
         .myst_role_error => try stringify.write("mystRoleError"),
+        .myst_directive => try stringify.write("mystDirective"),
+        .myst_directive_error => try stringify.write("mystDirectiveError"),
         else => try stringify.write(@tagName(node.tag)),
     }
 
@@ -108,6 +110,8 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
                 try stringify.write(title);
             }
         },
+        .@"break", .thematic_break => {},
+        .definition => unreachable,
         .myst_role => {
             const n = node.payload.myst_role;
             try stringify.objectField("name");
@@ -137,8 +141,23 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
                 try render_children(stringify, n);
             }
         },
-        .@"break", .thematic_break => {},
-        .definition => unreachable,
+        .myst_directive => {
+            const n = node.payload.myst_directive;
+            try stringify.objectField("name");
+            try stringify.write(std.mem.span(n.name));
+
+            try stringify.objectField("value");
+            try stringify.write(std.mem.span(n.value));
+
+            if (n.n_children > 0) {
+                try render_children(stringify, n);
+            }
+        },
+        .myst_directive_error => {
+            const n = node.payload.myst_directive_error;
+            try stringify.objectField("message");
+            try stringify.write(std.mem.span(n.message));
+        },
     }
 
     try stringify.endObject();

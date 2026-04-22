@@ -19388,7 +19388,7 @@
     "html": "<figure id=\"myfigure\" class=\"numbered\">\n  <img src=\"https://via.placeholder.com/150\">\n  <figcaption>\n    <p><span class=\"caption-number\">Figure 1</span>This is the figure caption!</p>\n  </figcaption>\n</figure>\n<figure id=\"myotherfigure\" class=\"numbered\">\n  <img src=\"https://via.placeholder.com/151\">\n  <figcaption>\n    <p><span class=\"caption-number\">Figure 2</span>This is another caption!</p>\n  </figcaption>\n</figure>\n"
   },
   {
-    "title": "directives.generic: Unknown directive",
+    "title": "directives.generic: Unknown directive without args",
     "mdast": {
       "type": "root",
       "children": [
