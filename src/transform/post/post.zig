@@ -4,10 +4,19 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-const ast = @import("../ast.zig");
+const ast = @import("../../ast.zig");
 
-pub fn transform(alloc: Allocator, node: *ast.Node) !*ast.Node {
+/// Apply all "post" stage transformations.
+pub fn transform(
+    alloc: Allocator,
+    scratch: Allocator,
+    node: *ast.Node,
+) !*ast.Node {
+    _ = scratch;
+
     const block = try alloc.create(ast.Node);
+    errdefer block.deinit(alloc);
+
     block.* = .{
         .tag = .block,
         .payload = .{

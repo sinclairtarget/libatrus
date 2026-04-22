@@ -4,21 +4,36 @@ const Allocator = std.mem.Allocator;
 const ast = @import("../../ast.zig");
 const util = @import("../../util/util.zig");
 
-pub fn isValidName(name: []const u8) bool {
-    for (name) |c| {
-        switch (c) {
-            'a'...'z', 'A'...'Z', '0'...'9', '_', '-' => {},
-            else => {
-                return false;
-            },
-        }
+pub fn transform(
+    alloc: Allocator,
+    scratch: Allocator,
+    original_node: *ast.Node,
+) !*ast.Node {
+    switch (original_node.tag) {
+        .myst_role => {
+            const n = original_node.payload.myst_role;
+            return try transformBuiltin(
+                alloc,
+                scratch,
+                original_node,
+                std.mem.span(n.name),
+                std.mem.span(n.value),
+            );
+        },
+        inline .root, .block, .heading, .paragraph, .emphasis, .strong,
+        .link, .blockquote => |node_type| {
+            const n = @field(original_node.payload, @tagName(node_type));
+            for (0..n.n_children) |i| {
+                n.children[i] = try transform(alloc, scratch, n.children[i]);
+            }
+            return original_node;
+        },
+        else => return original_node,
     }
-
-    return true;
 }
 
 /// Implements all built-in MyST roles, e.g. "abbr", "sub", "sup", etc.
-pub fn handleBuiltin(
+fn transformBuiltin(
     alloc: Allocator,
     scratch: Allocator,
     node: *ast.Node,
@@ -28,20 +43,20 @@ pub fn handleBuiltin(
     _ = scratch;
 
     if (std.mem.eql(u8, name, "sub") or std.mem.eql(u8, name, "subscript")) {
-        return try handleSubscript(alloc, node, value);
+        return try transformSubscript(alloc, node, value);
     } else if (
         std.mem.eql(u8, name, "sup") or std.mem.eql(u8, name, "superscript")
     ) {
-        return try handleSuperscript(alloc, node, value);
+        return try transformSuperscript(alloc, node, value);
     } else if (std.mem.eql(u8, name, "abbr")) {
-        return try handleAbbreviation(alloc, node, value);
+        return try transformAbbreviation(alloc, node, value);
     }
 
     return node;
 }
 
 /// Implements {sub} and {subscript}.
-fn handleSubscript(
+fn transformSubscript(
     alloc: Allocator,
     node: *ast.Node,
     value: []const u8,
@@ -77,7 +92,7 @@ fn handleSubscript(
 }
 
 /// Implements {sup} and {superscript}.
-fn handleSuperscript(
+fn transformSuperscript(
     alloc: Allocator,
     node: *ast.Node,
     value: []const u8,
@@ -120,7 +135,7 @@ fn handleSuperscript(
 /// close parenthesis in the role value. If parentheses are mismatched then no
 /// title is computed and the whole role value is used as for the child text
 /// node.
-fn handleAbbreviation(
+fn transformAbbreviation(
     alloc: Allocator,
     node: *ast.Node,
     value: []const u8,
@@ -198,7 +213,7 @@ fn handleAbbreviation(
 // ----------------------------------------------------------------------------
 const testing = std.testing;
 
-fn parseBuiltin(name: []const u8, value: []const u8) !*ast.Node {
+fn handleRole(name: []const u8, value: []const u8) !*ast.Node {
     const role_node = try testing.allocator.create(ast.Node);
     role_node.* = .{
         .tag = .myst_role,
@@ -212,7 +227,7 @@ fn parseBuiltin(name: []const u8, value: []const u8) !*ast.Node {
         },
     };
 
-    return try handleBuiltin(
+    return try transformBuiltin(
         testing.allocator,
         testing.allocator,
         role_node,
@@ -222,7 +237,7 @@ fn parseBuiltin(name: []const u8, value: []const u8) !*ast.Node {
 }
 
 test "subscript short name" {
-    const node = try parseBuiltin("sub", "foo");
+    const node = try handleRole("sub", "foo");
     defer node.deinit(testing.allocator);
 
     try testing.expectEqual(ast.NodeType.myst_role, node.tag);
@@ -251,7 +266,7 @@ test "subscript short name" {
 }
 
 test "subscript long name" {
-    const node = try parseBuiltin("subscript", "foo");
+    const node = try handleRole("subscript", "foo");
     defer node.deinit(testing.allocator);
 
     try testing.expectEqual(ast.NodeType.myst_role, node.tag);
@@ -280,7 +295,7 @@ test "subscript long name" {
 }
 
 test "superscript short name" {
-    const node = try parseBuiltin("sup", "foo");
+    const node = try handleRole("sup", "foo");
     defer node.deinit(testing.allocator);
 
     try testing.expectEqual(ast.NodeType.myst_role, node.tag);
@@ -309,7 +324,7 @@ test "superscript short name" {
 }
 
 test "superscript long name" {
-    const node = try parseBuiltin("superscript", "foo");
+    const node = try handleRole("superscript", "foo");
     defer node.deinit(testing.allocator);
 
     try testing.expectEqual(ast.NodeType.myst_role, node.tag);
@@ -338,7 +353,7 @@ test "superscript long name" {
 }
 
 test "abbr" {
-    const node = try parseBuiltin("abbr", "MyST (Markedly Structured Text)");
+    const node = try handleRole("abbr", "MyST (Markedly Structured Text)");
     defer node.deinit(testing.allocator);
 
     try testing.expectEqual(ast.NodeType.myst_role, node.tag);
@@ -371,7 +386,7 @@ test "abbr" {
 }
 
 test "bad abbr" {
-    const node = try parseBuiltin("abbr", "MyST (Markedly Structured Text");
+    const node = try handleRole("abbr", "MyST (Markedly Structured Text");
     defer node.deinit(testing.allocator);
 
     try testing.expectEqual(ast.NodeType.myst_role, node.tag);

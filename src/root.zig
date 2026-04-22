@@ -99,7 +99,15 @@ pub fn parse(
     // second pass; parse inline elements
     timer.reset();
     logger.debug("Beginning inline parsing...", .{});
-    root = try transform.parseInlines(alloc, &arena, root, link_defs);
+    root = try transform.inlines.transform(alloc, &arena, root, link_defs);
+    logger.debug("Done in {D}.", .{timer.read()});
+
+    _ = arena.reset(.retain_capacity);
+
+    // run pre stage transforms (built-in roles and directives)
+    timer.reset();
+    logger.debug("Beginning pre transforms...", .{});
+    root = try transform.pre.transform(alloc, scratch, root);
     logger.debug("Done in {D}.", .{timer.read()});
 
     if (options.parse_level == .pre) {
@@ -108,10 +116,10 @@ pub fn parse(
 
     _ = arena.reset(.retain_capacity);
 
-    // third pass; MyST-specific transforms
+    // run post stage transforms
     timer.reset();
-    logger.debug("Beginning post-processing...", .{});
-    root = try transform.postProcess(alloc, root);
+    logger.debug("Beginning post transforms...", .{});
+    root = try transform.post.transform(alloc, scratch, root);
     logger.debug("Done in {D}.", .{timer.read()});
 
     return root;
@@ -181,6 +189,7 @@ const testing = std.testing;
 test {
     // Ensures all unit tests are reachable even when filtering only for tests
     // in imported structs/namespaces and not in this file.
+    _ = @import("cmark/cmark.zig");
     _ = @import("lex/LineReader.zig");
     _ = @import("lex/BlockTokenizer.zig");
     _ = @import("lex/InlineTokenizer.zig");
@@ -188,8 +197,7 @@ test {
     _ = @import("parse/ContainerBlockParser.zig");
     _ = @import("parse/escape.zig");
     _ = @import("parse/InlineParser.zig");
-    _ = @import("parse/myst/roles.zig");
-    _ = @import("cmark/cmark.zig");
+    _ = @import("transform/pre/roles.zig");
     _ = @import("util/util.zig");
 }
 

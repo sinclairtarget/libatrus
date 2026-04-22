@@ -42,6 +42,7 @@ const InlineToken = tokens.InlineToken;
 const InlineTokenType = tokens.InlineTokenType;
 const InlineTokenizer = @import("../lex/InlineTokenizer.zig");
 const cmark = @import("../cmark/cmark.zig");
+const myst = @import("../myst/myst.zig");
 const LinkDefMap = @import("../parse/link_defs.zig").LinkDefMap;
 const link_label_max_chars = @import("link_defs.zig").label_max_chars;
 const util = @import("../util/util.zig");
@@ -49,7 +50,6 @@ const ast = @import("../ast.zig");
 const NodeList = @import("NodeList.zig");
 const alttext = @import("alttext.zig");
 const escape = @import("escape.zig");
-const myst = @import("myst/myst.zig");
 
 pub const Error = (
     Io.Writer.Error
@@ -3790,7 +3790,7 @@ fn parseMySTRole(
 
     did_parse = true;
 
-    if (!myst.roles.isValidName(name)) {
+    if (!myst.isValidRoleName(name)) {
         const error_node = try alloc.create(ast.Node);
         error_node.* = .{
             .tag = .myst_role_error,
@@ -3807,8 +3807,6 @@ fn parseMySTRole(
     errdefer alloc.free(owned_name);
 
     const node = try alloc.create(ast.Node);
-    errdefer alloc.destroy(node);
-
     node.* = .{
         .tag = .myst_role,
         .payload = .{
@@ -3821,14 +3819,7 @@ fn parseMySTRole(
         },
     };
 
-    const modified_node = try myst.roles.handleBuiltin(
-        alloc,
-        scratch,
-        node,
-        name,
-        value,
-    );
-    return modified_node;
+    return node;
 }
 
 /// Consumes tokens we know won't be parsed as anything else and emits them as
