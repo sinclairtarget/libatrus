@@ -45,19 +45,22 @@ pub const ParseOptions = extern struct {
     parse_level: enum(c_uint) {
         /// Only parse blocks, not inline content. This is only really useful
         /// for debugging.
-        block,
+        block = 0,
         /// Parse blocks and inline content into a "raw" MyST AST. A "raw" AST
         /// is hot out of the parser and has not yet been transformed in any
-        /// way. The structure of this AST conforms to the MyST specification.
-        /// Choose this option if you want a maximally portable AST for interop
-        /// with other MyST tooling.
-        pre,
+        /// way. This is also only really useful for debugging.
+        raw = 1,
+        /// Parse MyST Markdown into an unresolved MyST AST. The structure of
+        /// this AST conforms to the MyST specification. Choose this option if
+        /// you want a maximally portable AST for interop with other MyST
+        /// tooling.
+        pre = 2,
         /// Parse blocks and inline content into a "resolved" MyST AST. A
-        /// "resolved" AST is the result of running some transformations on
-        /// the raw AST, including transformations to simplify the AST and
+        /// "resolved" AST is the result of running several transformations on
+        /// the AST, including transformations to simplify the AST and
         /// resolve internal references. Choose this option if you intend to
-        /// consume the AST as-is.
-        post,
+        /// render the AST using libatrus.
+        post = 3,
     } = .post,
 };
 
@@ -101,6 +104,10 @@ pub fn parse(
     logger.debug("Beginning inline parsing...", .{});
     root = try transform.inlines.transform(alloc, &arena, root, link_defs);
     logger.debug("Done in {D}.", .{timer.read()});
+
+    if (options.parse_level == .raw) {
+        return root;
+    }
 
     _ = arena.reset(.retain_capacity);
 

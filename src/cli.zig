@@ -11,14 +11,15 @@ pub const OutputChoice = enum {
 
 pub const ParseLevel = enum {
     block,
+    raw,
     pre,
-    final,
+    post,
 };
 
 pub const Options = struct {
     filepath_or_input: ?[]const u8 = null,
     output_choice: OutputChoice = .json,
-    parse_level: ParseLevel = .final,
+    parse_level: ParseLevel = .post,
 
     const Self = @This();
 
@@ -49,7 +50,7 @@ pub const Diagnostic = struct {
 
 pub fn printUsage(out: *Io.Writer) !void {
     const usage =
-        \\Usage: atrus [--block|--pre|--html] [FILEPATH]
+        \\Usage: atrus [--block|--raw|--pre|--html] [FILEPATH]
         \\       atrus --version
         \\       atrus -h|--help
         \\
@@ -111,7 +112,7 @@ pub fn parseArgs(
 
     var action = Action.parse;
     var output_choice = OutputChoice.json;
-    var parse_level = ParseLevel.final;
+    var parse_level = ParseLevel.post;
     var filepath_or_input: ?[]const u8 = null;
     var args_processed: u32 = 1;
     for (args[1..args.len]) |arg| {
@@ -119,6 +120,8 @@ pub fn parseArgs(
             output_choice = .html;
         } else if (std.mem.eql(u8, arg, "--block")) {
             parse_level = .block;
+        } else if (std.mem.eql(u8, arg, "--raw")) {
+            parse_level = .raw;
         } else if (std.mem.eql(u8, arg, "--pre")) {
             parse_level = .pre;
         } else if (builtin.mode == .Debug and std.mem.eql(u8, arg, "--tokens")) {
@@ -138,7 +141,7 @@ pub fn parseArgs(
         return ArgsError.UnrecognizedArg;
     }
 
-    if (output_choice == .html and parse_level != .final) {
+    if (output_choice == .html and parse_level != .post) {
         return ArgsError.IncompatibleArgs;
     }
 

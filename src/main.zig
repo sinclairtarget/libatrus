@@ -89,8 +89,9 @@ pub fn main() !void {
             const ast = try atrus.parse(gpa, &reader, .{
                 .parse_level = switch (options.parse_level) {
                     .block => .block,
+                    .raw => .raw,
                     .pre => .pre,
-                    .final => .post,
+                    .post => .post,
                 }
             });
             defer ast.deinit(gpa);

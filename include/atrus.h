@@ -98,8 +98,9 @@ struct atrus_ast_node {
 // ----------------------------------------------------------------------------
 typedef enum : unsigned int {
     ATRUS_BLOCK_PARSE_LEVEL = 0,
-    ATRUS_PRE_PARSE_LEVEL = 1,
-    ATRUS_POST_PARSE_LEVEL = 2,
+    ATRUS_RAW_PARSE_LEVEL = 1,
+    ATRUS_PRE_PARSE_LEVEL = 2,
+    ATRUS_POST_PARSE_LEVEL = 3,
 } atrus_parse_option_parse_level_t;
 
 /*
@@ -122,10 +123,10 @@ typedef enum {
  * The caller is responsible for freeing the AST using atrus_free().
  */
 atrus_parse_error_t atrus_parse(
-    const char* in, 
+    const char* in,
     struct atrus_ast_node** out,
     const struct atrus_parse_opts* options
-); 
+);
 
 /*
  * Frees the given AST, recursively.
@@ -162,7 +163,7 @@ struct atrus_json_opts {
  * The caller is responsible for freeing the string.
  */
 int atrus_render_json(
-    struct atrus_ast_node* root, 
+    struct atrus_ast_node* root,
     char** out,
     const struct atrus_json_opts* options
 );
@@ -175,11 +176,11 @@ typedef enum {
 /*
  * Given a null-terminated JSON string, attempts to parse the JSON string into
  * a MyST AST. Returns 0 on success or a negative number on error.
- * 
+ *
  * The caller is responsible for freeing the returned AST using atrus_free().
  */
 atrus_load_error_t atrus_load_json(
-    const char* in, 
+    const char* in,
     struct atrus_ast_node** out
 );
 
