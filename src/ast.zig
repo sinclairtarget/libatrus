@@ -39,6 +39,8 @@ pub const NodeType = enum(c_uint) {
     // built-in directives
     myst_directive = 21,
     myst_directive_error = 22,
+    admonition = 23,
+    admonition_title = 24,
 };
 
 pub const Node = extern struct {
@@ -66,6 +68,8 @@ pub const Node = extern struct {
         abbreviation: Abbreviation,
         myst_directive: MySTDirective,
         myst_directive_error: MySTDirectiveError,
+        admonition: Admonition,
+        admonition_title: Container,
     },
     tag: NodeType,
 
@@ -257,5 +261,21 @@ pub const MySTDirectiveError = extern struct {
         alloc.free(sliced);
 
         alloc.free(std.mem.span(self.message));
+    }
+};
+
+pub const Admonition = extern struct {
+    children: [*]*Node,
+    n_children: c_uint,
+    kind: [*:0]const u8,
+
+    pub fn deinit(self: *Admonition, alloc: Allocator) void {
+        const sliced = self.children[0..self.n_children];
+        for (sliced) |child| {
+            child.deinit(alloc);
+        }
+        alloc.free(sliced);
+
+        alloc.free(std.mem.span(self.kind));
     }
 };

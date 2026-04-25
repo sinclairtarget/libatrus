@@ -13,7 +13,8 @@ pub fn write(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
     switch (node.tag) {
         inline .root, .block, .blockquote, .paragraph, .emphasis, .strong,
         .heading, .link, .subscript, .superscript, .abbreviation,
-        .myst_directive, .myst_directive_error => |node_type| {
+        .myst_directive, .myst_directive_error, .admonition,
+        .admonition_title => |node_type| {
             const n = @field(node.payload, @tagName(node_type));
             const sliced = n.children[0..n.n_children];
             for (sliced) |child| {

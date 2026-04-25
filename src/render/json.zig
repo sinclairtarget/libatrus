@@ -53,12 +53,14 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
         .myst_role_error => try stringify.write("mystRoleError"),
         .myst_directive => try stringify.write("mystDirective"),
         .myst_directive_error => try stringify.write("mystDirectiveError"),
+        .admonition_title => try stringify.write("admonitionTitle"),
         else => try stringify.write(@tagName(node.tag)),
     }
 
     switch (node.tag) {
         inline .root, .paragraph, .block, .emphasis, .strong,
-        .blockquote, .subscript, .superscript => |node_type| {
+        .blockquote, .subscript, .superscript,
+        .admonition_title => |node_type| {
             const n = @field(node.payload, @tagName(node_type));
             try render_children(stringify, n);
         },
@@ -163,6 +165,19 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
             const n = node.payload.myst_directive_error;
             try stringify.objectField("message");
             try stringify.write(std.mem.span(n.message));
+        },
+        .admonition => {
+            const n = node.payload.admonition;
+
+            const kind = std.mem.span(n.kind);
+            if (kind.len > 0) {
+                try stringify.objectField("kind");
+                try stringify.write(kind);
+            }
+
+            if (n.n_children > 0) {
+                try render_children(stringify, n);
+            }
         },
     }
 

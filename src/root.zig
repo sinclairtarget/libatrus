@@ -205,6 +205,7 @@ test {
     _ = @import("parse/escape.zig");
     _ = @import("parse/InlineParser.zig");
     _ = @import("transform/pre/roles.zig");
+    _ = @import("transform/pre/directives.zig");
     _ = @import("util/util.zig");
 }
 

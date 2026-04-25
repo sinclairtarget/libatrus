@@ -270,6 +270,33 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
             }
             _ = try out.write("</div>");
         },
+        .admonition => {
+            const n = node.payload.admonition;
+
+            _ = try out.write("<aside class=\"admonition");
+
+            const kind = std.mem.span(n.kind);
+            if (kind.len > 0) {
+                try out.print(" {s}", .{kind});
+            }
+            _ = try out.write("\">");
+
+            const sliced = n.children[0..n.n_children];
+            for (sliced) |child| {
+                _ = try renderNode(child, out);
+            }
+            _ = try out.write("</aside>");
+        },
+        .admonition_title => {
+            const n = node.payload.admonition_title;
+
+            _ = try out.write("<p class=\"admonition-title\">");
+            const sliced = n.children[0..n.n_children];
+            for (sliced) |child| {
+                _ = try renderNode(child, out);
+            }
+            _ = try out.write("</p>");
+        },
     }
 
     return true;
