@@ -423,8 +423,8 @@ fn matchText(self: Self, scratch: Allocator) !TokenizeResult {
         },
         .text => {
             switch (self.line[lookahead_i]) {
-                '"', '\'', '<', '>', '[', ']', '{', '}', ':', '\n', ' ',
-                '\t' => break :fsm,
+                '"', '\'', '<', '>', '[', ']', '{', '}', ':', '`', '~', '\n',
+                ' ', '\t' => break :fsm,
                 '\\' => {
                     lookahead_i += 1;
                     continue :fsm .escaped;
@@ -654,6 +654,21 @@ test "colon code fence" {
         .colon,
         .text,
         .colon,
+        .newline,
+    }, md);
+}
+
+test "fence tokenization later in line" {
+    // checks that we tokenize fences even when they aren't the first token in
+    // a line
+    const md = "```:::~~~```:::~~~\n";
+    try expectEqualTokens(&.{
+        .backtick_fence,
+        .colon_fence,
+        .tilde_fence,
+        .backtick_fence,
+        .colon_fence,
+        .tilde_fence,
         .newline,
     }, md);
 }

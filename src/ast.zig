@@ -228,6 +228,7 @@ pub const MySTDirective = extern struct {
     children: [*]*Node,
     n_children: c_uint,
     name: [*:0]const u8,
+    args: [*:0]const u8,
     value: [*:0]const u8,
 
     pub fn deinit(self: *MySTDirective, alloc: Allocator) void {
@@ -238,6 +239,7 @@ pub const MySTDirective = extern struct {
         alloc.free(sliced);
 
         alloc.free(std.mem.span(self.name));
+        alloc.free(std.mem.span(self.args));
         alloc.free(std.mem.span(self.value));
     }
 };

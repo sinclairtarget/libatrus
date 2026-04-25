@@ -233,9 +233,19 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
                 // unknown directive
                 _ = try out.write("<div class=\"directive unhandled\">\n");
 
-                _ = try out.write("  <p><code class=\"kind\">{");
+                _ = try out.write("  <p>");
+                _ = try out.write("<code class=\"kind\">{");
                 try printHTMLEscapedContent(out, std.mem.span(n.name));
-                _ = try out.write("}</code></p>\n");
+                _ = try out.write("}</code>");
+
+                const args = std.mem.span(n.args);
+                if (args.len > 0) {
+                    _ = try out.write("<code class=\"args\">");
+                    try printHTMLEscapedContent(out, args);
+                    _ = try out.write("</code>");
+                }
+
+                _ = try out.write("</p>\n");
 
                 _ = try out.write("  <pre><code>");
                 try printHTMLEscapedContent(out, std.mem.span(n.value));

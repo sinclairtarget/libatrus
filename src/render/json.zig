@@ -146,6 +146,12 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
             try stringify.objectField("name");
             try stringify.write(std.mem.span(n.name));
 
+            const args = std.mem.span(n.args);
+            if (args.len > 0) {
+                try stringify.objectField("args");
+                try stringify.write(args);
+            }
+
             try stringify.objectField("value");
             try stringify.write(std.mem.span(n.value));
 
