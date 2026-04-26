@@ -159,6 +159,15 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
         },
         // Doesn't get rendered
         .definition => return false,
+        .container => {
+            const n = node.payload.container;
+            const kind = std.mem.span(n.kind);
+            if (std.mem.eql(u8, kind, "figure")) {
+                try renderFigure(out, node);
+            } else {
+                @panic("no HTML rendering implementation for  container kind");
+            }
+        },
         .myst_role => {
             const n = node.payload.myst_role;
             if (n.n_children == 0) {
@@ -348,6 +357,19 @@ fn renderAdmonitionTitle(out: *Io.Writer, kind: []const u8) !void {
         }
     };
     try out.print("<p class=\"admonition-title\">{s}</p>", .{title});
+}
+
+fn renderFigure(out: *Io.Writer, node: *ast.Node) !void {
+    std.debug.assert(node.tag == .container);
+
+    const n = node.payload.container;
+    _ = try out.write("<figure class=\"numbered\">");
+
+    const sliced = n.children[0..n.n_children];
+    for (sliced) |child| {
+        _ = try renderNode(child, out);
+    }
+    _ = try out.write("</figure>");
 }
 
 /// HTML-escape output to appear as text content.

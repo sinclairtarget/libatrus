@@ -12,7 +12,7 @@ const ast = @import("../ast.zig");
 pub fn write(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
     switch (node.tag) {
         inline .root, .block, .blockquote, .paragraph, .emphasis, .strong,
-        .heading, .link, .subscript, .superscript, .abbreviation,
+        .heading, .link, .subscript, .superscript, .abbreviation, .container,
         .myst_directive, .myst_directive_error, .admonition,
         .admonition_title => |node_type| {
             const n = @field(node.payload, @tagName(node_type));

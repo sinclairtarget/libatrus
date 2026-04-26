@@ -30,6 +30,7 @@ pub const NodeType = enum(c_uint) {
     image = 13,
     blockquote = 14,
     html = 15,          // either an HTML block or a single inline HTML tag
+    container = 25,
     // built-in roles
     myst_role = 16,
     myst_role_error = 17,
@@ -46,30 +47,31 @@ pub const NodeType = enum(c_uint) {
 pub const Node = extern struct {
     payload: extern union {
         root: Root,
-        block: Container,
+        block: Wrapper,
         heading: Heading,
-        paragraph: Container,
+        paragraph: Wrapper,
         text: Text,
         code: Code,
         thematic_break: void,
         @"break": void,
-        emphasis: Container,
-        strong: Container,
+        emphasis: Wrapper,
+        strong: Wrapper,
         inline_code: Text,
         link: Link,
         definition: LinkDefinition,
         image: Image,
-        blockquote: Container,
+        blockquote: Wrapper,
         html: Text,
+        container: Container,
         myst_role: MySTRole,
         myst_role_error: MySTRoleError,
-        subscript: Container,
-        superscript: Container,
+        subscript: Wrapper,
+        superscript: Wrapper,
         abbreviation: Abbreviation,
         myst_directive: MySTDirective,
         myst_directive_error: MySTDirectiveError,
         admonition: Admonition,
-        admonition_title: Container,
+        admonition_title: Wrapper,
     },
     tag: NodeType,
 
@@ -99,11 +101,11 @@ pub const Root = extern struct {
     }
 };
 
-pub const Container = extern struct {
+pub const Wrapper = extern struct {
     children: [*]*Node,
     n_children: c_uint,
 
-    pub fn deinit(self: *Container, alloc: Allocator) void {
+    pub fn deinit(self: *Wrapper, alloc: Allocator) void {
         const sliced = self.children[0..self.n_children];
         for (sliced) |child| {
             child.deinit(alloc);
@@ -270,6 +272,22 @@ pub const Admonition = extern struct {
     kind: [*:0]const u8,
 
     pub fn deinit(self: *Admonition, alloc: Allocator) void {
+        const sliced = self.children[0..self.n_children];
+        for (sliced) |child| {
+            child.deinit(alloc);
+        }
+        alloc.free(sliced);
+
+        alloc.free(std.mem.span(self.kind));
+    }
+};
+
+pub const Container = extern struct {
+    children: [*]*Node,
+    n_children: c_uint,
+    kind: [*:0]const u8,
+
+    pub fn deinit(self: *Container, alloc: Allocator) void {
         const sliced = self.children[0..self.n_children];
         for (sliced) |child| {
             child.deinit(alloc);

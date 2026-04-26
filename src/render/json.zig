@@ -114,6 +114,16 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
         },
         .@"break", .thematic_break => {},
         .definition => unreachable,
+        .container => {
+            const n = node.payload.container;
+
+            try stringify.objectField("kind");
+            try stringify.write(std.mem.span(n.kind));
+
+            if (n.n_children > 0) {
+                try render_children(stringify, n);
+            }
+        },
         .myst_role => {
             const n = node.payload.myst_role;
             try stringify.objectField("name");
