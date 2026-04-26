@@ -70,6 +70,10 @@ fn transformBuiltin(
         return try transformAdmonition(alloc, node, name, args, value);
     }
 
+    if (std.mem.eql(u8, name, "figure")) {
+        return try transformFigure(alloc, node, args, value);
+    }
+
     return node;
 }
 
@@ -182,6 +186,86 @@ fn transformAdmonition(
     return node;
 }
 
+fn transformFigure(
+    alloc: Allocator,
+    node: *ast.Node,
+    args: []const u8,
+    value: []const u8,
+) !*ast.Node {
+    var children: ArrayList(*ast.Node) = .empty;
+
+    if (args.len > 0) {
+        const owned_url = try alloc.dupeZ(u8, std.mem.trim(u8, args, " \t"));
+        errdefer alloc.free(owned_url);
+
+        const owned_title = try alloc.dupeZ(u8, "");
+        errdefer alloc.free(owned_title);
+
+        const owned_alt = try alloc.dupeZ(u8, "");
+        errdefer alloc.free(owned_alt);
+
+        const img_node = try alloc.create(ast.Node);
+        errdefer alloc.destroy(img_node);
+
+        img_node.* = .{
+            .tag = .image,
+            .payload = .{
+                .image = .{
+                    .url = owned_url,
+                    .title = owned_title,
+                    .alt = owned_alt,
+                },
+            },
+        };
+
+        try children.append(alloc, img_node);
+    }
+
+    // Parse directive contents as nested MyST Markdown document!
+    var reader = Io.Reader.fixed(value);
+    const root = try atrus.parse(alloc, &reader, .{.parse_level = .pre});
+    defer {
+        alloc.free(
+            root.payload.root.children[0..root.payload.root.n_children],
+        );
+        alloc.destroy(root); // we don't need the root node
+    }
+
+    for (root.payload.root.children[0..root.payload.root.n_children]) |child| {
+        try children.append(alloc, child);
+    }
+
+    const owned_kind = try alloc.dupeZ(u8, "figure");
+    errdefer alloc.free(owned_kind);
+
+    const container_node = try alloc.create(ast.Node);
+    errdefer alloc.destroy(container_node);
+
+    const owned_children = try children.toOwnedSlice(alloc);
+    errdefer alloc.free(owned_children);
+
+    container_node.* = .{
+        .tag = .container,
+        .payload = .{
+            .container = .{
+                .children = owned_children.ptr,
+                .n_children = @intCast(owned_children.len),
+                .kind = owned_kind,
+            },
+        },
+    };
+
+    const directive_children = try alloc.dupe(*ast.Node, &.{container_node});
+
+    std.debug.assert(node.tag == .myst_directive);
+    std.debug.assert(node.payload.myst_directive.n_children == 0);
+
+    node.payload.myst_directive.children = directive_children.ptr;
+    node.payload.myst_directive.n_children = @intCast(directive_children.len);
+
+    return node;
+}
+
 // ----------------------------------------------------------------------------
 // Unit Tests
 // ----------------------------------------------------------------------------
@@ -282,5 +366,43 @@ test "simple warning" {
     try testing.expectEqualStrings(
         "This is a body",
         std.mem.span(text_node_2.payload.text.value),
+    );
+}
+
+test "simple figure" {
+    const node = try handleDirective(
+        "figure",
+        "http://foo.com/cat.jpg",
+        "This is a picture of my cat!",
+    );
+    defer node.deinit(testing.allocator);
+
+    try testing.expectEqual(ast.NodeType.myst_directive, node.tag);
+    try testing.expectEqual(1, node.payload.myst_directive.n_children);
+
+    const container_node = node.payload.myst_directive.children[0];
+    try testing.expectEqual(ast.NodeType.container, container_node.tag);
+    try testing.expectEqualStrings(
+        "figure",
+        std.mem.span(container_node.payload.container.kind),
+    );
+    try testing.expectEqual(2, container_node.payload.container.n_children);
+
+    const img_node = container_node.payload.container.children[0];
+    try testing.expectEqual(ast.NodeType.image, img_node.tag);
+    try testing.expectEqualStrings(
+        "http://foo.com/cat.jpg",
+        std.mem.span(img_node.payload.image.url),
+    );
+
+    const p_node = container_node.payload.container.children[1];
+    try testing.expectEqual(ast.NodeType.paragraph, p_node.tag);
+    try testing.expectEqual(1, p_node.payload.paragraph.n_children);
+
+    const text_node = p_node.payload.paragraph.children[0];
+    try testing.expectEqual(ast.NodeType.text, text_node.tag);
+    try testing.expectEqualStrings(
+        "This is a picture of my cat!",
+        std.mem.span(text_node.payload.text.value),
     );
 }

@@ -51,7 +51,7 @@ const Test = struct {
         const ast = try atrus.parse(
             alloc,
             &reader,
-            .{ .parse_level = .pre }, // testing only the "raw" AST
+            .{ .parse_level = .pre }, // testing only the "pre" AST
         );
 
         var outbuf = Io.Writer.Allocating.init(alloc);

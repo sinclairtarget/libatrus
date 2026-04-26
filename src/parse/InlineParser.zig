@@ -2256,20 +2256,20 @@ fn parseInlineImage(
         try alttext.write(&running_text.writer, node);
     }
 
-    const ownedUrl = try alloc.dupeZ(u8, url);
-    errdefer alloc.free(ownedUrl);
-    const ownedTitle = try alloc.dupeZ(u8, title);
-    errdefer alloc.free(ownedTitle);
-    const ownedAlt = try running_text.toOwnedSliceSentinel(0);
-    errdefer alloc.free(ownedAlt);
+    const owned_url = try alloc.dupeZ(u8, url);
+    errdefer alloc.free(owned_url);
+    const owned_title = try alloc.dupeZ(u8, title);
+    errdefer alloc.free(owned_title);
+    const owned_alt = try running_text.toOwnedSliceSentinel(0);
+    errdefer alloc.free(owned_alt);
     const image = try alloc.create(ast.Node);
     image.* = .{
         .tag = .image,
         .payload = .{
             .image = .{
-                .url = ownedUrl,
-                .title = ownedTitle,
-                .alt = ownedAlt,
+                .url = owned_url,
+                .title = owned_title,
+                .alt = owned_alt,
             },
         },
     };
