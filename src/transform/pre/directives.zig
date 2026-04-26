@@ -83,29 +83,52 @@ fn transformAdmonition(
     var children: ArrayList(*ast.Node) = .empty;
 
     if (args.len > 0) {
+        // Handle args
         const text_node = try util.nodes.createTextNode(
             alloc,
             std.mem.trim(u8, args, " \t"),
         );
         errdefer text_node.deinit(alloc);
 
-        const title_node = try alloc.create(ast.Node);
-        errdefer alloc.destroy(title_node);
+        if (value.len > 0) {
+            // Args are used as title when there is a value
+            const title_node = try alloc.create(ast.Node);
+            errdefer alloc.destroy(title_node);
 
-        const title_children = try alloc.dupe(*ast.Node, &.{text_node});
-        errdefer alloc.free(title_children);
+            const title_children = try alloc.dupe(*ast.Node, &.{text_node});
+            errdefer alloc.free(title_children);
 
-        title_node.* = .{
-            .tag = .admonition_title,
-            .payload = .{
-                .admonition_title = .{
-                    .children = title_children.ptr,
-                    .n_children = @intCast(title_children.len),
+            title_node.* = .{
+                .tag = .admonition_title,
+                .payload = .{
+                    .admonition_title = .{
+                        .children = title_children.ptr,
+                        .n_children = @intCast(title_children.len),
+                    },
                 },
-            },
-        };
+            };
 
-        try children.append(alloc, title_node);
+            try children.append(alloc, title_node);
+        } else {
+            // Args are used as body otherwise
+            const p_node = try alloc.create(ast.Node);
+            errdefer alloc.destroy(p_node);
+
+            const p_children = try alloc.dupe(*ast.Node, &.{text_node});
+            errdefer alloc.free(p_children);
+
+            p_node.* = .{
+                .tag = .paragraph,
+                .payload = .{
+                    .paragraph = .{
+                        .children = p_children.ptr,
+                        .n_children = @intCast(p_children.len),
+                    },
+                },
+            };
+
+            try children.append(alloc, p_node);
+        }
     }
 
     // Parse directive contents as nested MyST Markdown document!
@@ -234,8 +257,8 @@ test "simple admonition" {
 test "simple warning" {
     const node = try handleDirective(
         "warning",
-        "This is a title",
         "This is a body",
+        "",
     );
     defer node.deinit(testing.allocator);
 
@@ -248,20 +271,9 @@ test "simple warning" {
         "warning",
         std.mem.span(node.payload.admonition.kind),
     );
-    try testing.expectEqual(2, admonition_node.payload.admonition.n_children);
+    try testing.expectEqual(1, admonition_node.payload.admonition.n_children);
 
-    const title_node = admonition_node.payload.admonition.children[0];
-    try testing.expectEqual(ast.NodeType.admonition_title, title_node.tag);
-    try testing.expectEqual(1, title_node.payload.admonition_title.n_children);
-
-    const text_node = title_node.payload.admonition_title.children[0];
-    try testing.expectEqual(ast.NodeType.text, text_node.tag);
-    try testing.expectEqualStrings(
-        "This is a title",
-        std.mem.span(text_node.payload.text.value),
-    );
-
-    const p_node = admonition_node.payload.admonition.children[1];
+    const p_node = admonition_node.payload.admonition.children[0];
     try testing.expectEqual(ast.NodeType.paragraph, p_node.tag);
     try testing.expectEqual(1, p_node.payload.paragraph.n_children);
 

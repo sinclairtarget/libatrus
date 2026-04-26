@@ -1156,7 +1156,7 @@ fn parseMySTDirective(
         }
     }
 
-    const value = std.mem.trimEnd(u8, content.written(), "\n");
+    const value = std.mem.trim(u8, content.written(), " \t\n");
 
     // Closing fence
     if (!should_end) {
