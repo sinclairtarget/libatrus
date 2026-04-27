@@ -168,6 +168,18 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
                 @panic("no HTML rendering implementation for  container kind");
             }
         },
+        .caption => {
+            const n = node.payload.caption;
+
+            _ = try out.write("<figcaption>\n");
+            const sliced = n.children[0..n.n_children];
+            for (sliced) |child| {
+                _ = try out.write("  ");
+                _ = try renderNode(child, out);
+                _ = try out.write("\n");
+            }
+            _ = try out.write("</figcaption>");
+        },
         .myst_role => {
             const n = node.payload.myst_role;
             if (n.n_children == 0) {
