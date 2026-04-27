@@ -375,7 +375,7 @@ fn renderFigure(out: *Io.Writer, node: *ast.Node) !void {
     std.debug.assert(node.tag == .container);
 
     const n = node.payload.container;
-    _ = try out.write("<figure class=\"numbered\">");
+    _ = try out.write("<figure class=\"numbered\">\n");
 
     const sliced = n.children[0..n.n_children];
     for (sliced) |child| {

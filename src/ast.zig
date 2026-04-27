@@ -64,7 +64,7 @@ pub const Node = extern struct {
         blockquote: Wrapper,
         html: Text,
         container: Container,
-        caption: Container,
+        caption: Wrapper,
         myst_role: MySTRole,
         myst_role_error: MySTRoleError,
         subscript: Wrapper,
