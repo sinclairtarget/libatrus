@@ -18,7 +18,7 @@ a C API.
 ## Usage
 _For an example of an application using Atrus as a Zig module, see
 [here][aweigh gh]. For an example of an application using Atrus via the C API,
-see [Michel][michel gh]._
+see [Michel][michel gh] and [libatrus-go][libatrus-go gh]._
 
 ## Disclaimer
 Atrus implements the MyST Markdown specification but has no affiliation with
@@ -61,3 +61,4 @@ Much more work remains:
 
 [aweigh gh]: https://github.com/sinclairtarget/aweigh
 [michel gh]: https://github.com/sinclairtarget/michel
+[libatrus-go gh]: https://github.com/sinclairtarget/libatrus-go
