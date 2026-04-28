@@ -15,6 +15,11 @@ a CommonMark-compliant Markdown parser and HTML renderer.
 Atrus is written in Zig and can be consumed as a Zig module, but also exports
 a C API.
 
+## Usage
+_For an example of an application using Atrus as a Zig module, see
+[here][aweigh gh]. For an example of an application using Atrus via the C API,
+see [Michel][michel gh]._
+
 ## Disclaimer
 Atrus implements the MyST Markdown specification but has no affiliation with
 the MyST specification authors, Jupyter Book, or Project Jupyter.
@@ -53,3 +58,6 @@ Much more work remains:
 - [ ] Implement JSON AST parser
 - [ ] Add benchmarks
 - [ ] Make if faaast
+
+[aweigh gh]: https://github.com/sinclairtarget/aweigh
+[michel gh]: https://github.com/sinclairtarget/michel
