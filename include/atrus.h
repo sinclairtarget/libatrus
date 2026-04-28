@@ -147,7 +147,7 @@ struct atrus_ast_node {
         struct atrus_ast_node_container             container;
         struct atrus_ast_node_container             caption;
         struct atrus_ast_node_myst_role             myst_role;
-        struct aturs_ast_node_myst_role_error       myst_role_error;
+        struct atrus_ast_node_myst_role_error       myst_role_error;
         struct atrus_ast_node_wrapper               subscript;
         struct atrus_ast_node_wrapper               superscript;
         struct atrus_ast_node_abbreviation          abbreviation;
