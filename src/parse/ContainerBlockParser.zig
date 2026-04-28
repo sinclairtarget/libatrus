@@ -366,7 +366,7 @@ pub fn parse(
     var leaf_it = self.iterator();
     for (0..util.safety.loop_bound) |_| {
         self.leaf_parser = .{ .it = &leaf_it };
-        const original_top = self.top();
+        const loop_start_stack_len = self.container_stack.items.len;
 
         // Internal iterator logic runs, potentially pushing onto stack
         const nodes = try self.leaf_parser.?.parse(alloc, scratch, link_defs);
@@ -377,11 +377,14 @@ pub fn parse(
         }
         defer alloc.free(nodes);
 
+        const original_top = &self.container_stack.items[
+            loop_start_stack_len - 1
+        ];
         for (nodes) |node| {
             try original_top.add(scratch, node);
         }
 
-        if (self.top() != original_top) {
+        if (self.container_stack.items.len > loop_start_stack_len) {
             // We pushed a new container
             std.debug.assert(leaf_it.is_exhausted);
             leaf_it = self.iterator(); // reset iterator
@@ -453,6 +456,13 @@ fn next(self: *Self, scratch: Allocator) Error!?BlockToken {
     return result.token;
 }
 
+/// Returns pointer to last container in stack.
+///
+/// Be careful holding on to this pointer. Could be invalidated by the stack
+/// growing or shrinking.
+///
+/// TODO: Maybe the ArrayList should hold pointers to the containers and not
+/// the containers themselves.
 fn top(self: *Self) *OpenContainer {
     std.debug.assert(self.container_stack.items.len > 0);
     return &self.container_stack.items[
