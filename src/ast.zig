@@ -190,6 +190,22 @@ pub const Image = extern struct {
     }
 };
 
+pub const Container = extern struct {
+    children: [*]*Node,
+    n_children: c_uint,
+    kind: [*:0]const u8,
+
+    pub fn deinit(self: *Container, alloc: Allocator) void {
+        const sliced = self.children[0..self.n_children];
+        for (sliced) |child| {
+            child.deinit(alloc);
+        }
+        alloc.free(sliced);
+
+        alloc.free(std.mem.span(self.kind));
+    }
+};
+
 pub const MySTRole = extern struct {
     children: [*]*Node,
     n_children: c_uint,
@@ -274,22 +290,6 @@ pub const Admonition = extern struct {
     kind: [*:0]const u8,
 
     pub fn deinit(self: *Admonition, alloc: Allocator) void {
-        const sliced = self.children[0..self.n_children];
-        for (sliced) |child| {
-            child.deinit(alloc);
-        }
-        alloc.free(sliced);
-
-        alloc.free(std.mem.span(self.kind));
-    }
-};
-
-pub const Container = extern struct {
-    children: [*]*Node,
-    n_children: c_uint,
-    kind: [*:0]const u8,
-
-    pub fn deinit(self: *Container, alloc: Allocator) void {
         const sliced = self.children[0..self.n_children];
         for (sliced) |child| {
             child.deinit(alloc);

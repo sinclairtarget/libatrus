@@ -26,6 +26,17 @@ typedef enum : unsigned int {
     ATRUS_NODE_TYPE_IMAGE = 13,
     ATRUS_NODE_TYPE_BLOCKQUOTE = 14,
     ATRUS_NODE_TYPE_HTML = 15,
+    ATRUS_NODE_TYPE_CONTAINER = 25,
+    ATRUS_NODE_TYPE_CAPTION = 26,
+    ATRUS_NODE_TYPE_MYST_ROLE = 16,
+    ATRUS_NODE_TYPE_MYST_ROLE_ERROR = 17,
+    ATRUS_NODE_TYPE_SUBSCRIPT = 18,
+    ATRUS_NODE_TYPE_SUPERSCRIPT = 19,
+    ATRUS_NODE_TYPE_ABBREVIATION = 20,
+    ATRUS_NODE_TYPE_MYST_DIRECTIVE = 21,
+    ATRUS_NODE_TYPE_MYST_DIRECTIVE_ERROR = 22,
+    ATRUS_NODE_TYPE_ADMONITION = 23,
+    ATRUS_NODE_TYPE_ADMONITION_TITLE = 24,
 } atrus_node_type_t;
 
 struct atrus_ast_node_root {
@@ -33,7 +44,7 @@ struct atrus_ast_node_root {
     unsigned int n_children;
 };
 
-struct atrus_ast_node_container {
+struct atrus_ast_node_wrapper {
     struct atrus_ast_node** children;
     unsigned int n_children;
 };
@@ -72,23 +83,78 @@ struct atrus_ast_node_image {
     const char* alt;
 };
 
+struct atrus_ast_node_container {
+    struct atrus_ast_node** children;
+    unsigned int n_children;
+    const char* kind;
+};
+
+struct atrus_ast_node_myst_role {
+    struct atrus_ast_node** children;
+    unsigned int n_children;
+    const char* name;
+    const char* value;
+};
+
+struct atrus_ast_node_myst_role_error {
+    const char* value;
+};
+
+struct atrus_ast_node_abbreviation {
+    struct atrus_ast_node** children;
+    unsigned int n_children;
+    const char* title;
+};
+
+struct atrus_ast_node_myst_directive {
+    struct atrus_ast_node** children;
+    unsigned int n_children;
+    const char* name;
+    const char* args;
+    const char* value;
+};
+
+struct atrus_ast_node_myst_directive_error {
+    struct atrus_ast_node** children;
+    unsigned int n_children;
+    const char* message;
+};
+
+struct atrus_ast_node_admonition {
+    struct atrus_ast_node** children;
+    unsigned int n_children;
+    const char* kind;
+};
+
 struct atrus_ast_node {
     union {
-        struct atrus_ast_node_root            root;
-        struct atrus_ast_node_container       block;
-        struct atrus_ast_node_heading         heading;
-        struct atrus_ast_node_container       paragraph;
-        struct atrus_ast_node_text            text;
-        struct atrus_ast_node_code            code;
+        struct atrus_ast_node_root                  root;
+        struct atrus_ast_node_wrapper               block;
+        struct atrus_ast_node_heading               heading;
+        struct atrus_ast_node_wrapper               paragraph;
+        struct atrus_ast_node_text                  text;
+        struct atrus_ast_node_code                  code;
         // thematic_break (void) omitted
         // break          (void) omitted
-        struct atrus_ast_node_container       emphasis;
-        struct atrus_ast_node_container       strong;
-        struct atrus_ast_node_text            inline_code;
-        struct atrus_ast_node_link            link;
-        struct atrus_ast_node_link_definition definition;
-        struct atrus_ast_node_image           image;
-        struct atrus_ast_node_container       blockquote;
+        struct atrus_ast_node_wrapper               emphasis;
+        struct atrus_ast_node_wrapper               strong;
+        struct atrus_ast_node_text                  inline_code;
+        struct atrus_ast_node_link                  link;
+        struct atrus_ast_node_link_definition       definition;
+        struct atrus_ast_node_image                 image;
+        struct atrus_ast_node_wrapper               blockquote;
+        struct atrus_ast_node_text                  html;
+        struct atrus_ast_node_container             container;
+        struct atrus_ast_node_container             caption;
+        struct atrus_ast_node_myst_role             myst_role;
+        struct aturs_ast_node_myst_role_error       myst_role_error;
+        struct atrus_ast_node_wrapper               subscript;
+        struct atrus_ast_node_wrapper               superscript;
+        struct atrus_ast_node_abbreviation          abbreviation;
+        struct atrus_ast_node_myst_directive        myst_directive;
+        struct atrus_ast_node_myst_directive_error  myst_directive_error;
+        struct atrus_ast_node_admonition            admonition;
+        struct atrus_ast_node_wrapper               admonition_title;
     } payload;
     atrus_node_type_t tag;
 };
