@@ -1,4 +1,5 @@
 const std = @import("std");
+const pkg_zon = @import("build.zig.zon");
 
 const Step = std.Build.Step;
 
@@ -34,11 +35,6 @@ pub fn build(b: *std.Build) void {
         .preferred_optimize_mode = .ReleaseSafe,
     });
 
-    const version = b.option(
-        []const u8,
-        "version",
-        "Application version string",
-    ) orelse genVersion(b);
     const test_case_filter = b.option(
         []const u8,
         "test-filter",
@@ -51,7 +47,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     const options = b.addOptions();
-    options.addOption([]const u8, "version", version);
+    options.addOption([]const u8, "version", pkg_zon.version);
     atrus_module.addOptions("config", options);
 
     // atrus cli
@@ -327,9 +323,4 @@ fn addBenchmarks(
         .memory = memory_cmd,
         .speed = speed_cmd,
     };
-}
-
-fn genVersion(b: *std.Build) []const u8 {
-    const v = b.run(&.{"git", "describe", "--tags", "--always", "--dirty"});
-    return std.mem.trim(u8, v, &std.ascii.whitespace);
 }
