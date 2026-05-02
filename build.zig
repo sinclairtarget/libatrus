@@ -66,6 +66,9 @@ pub fn build(b: *std.Build) void {
     );
     const benchmark_cmds = addBenchmarks(b, exe_artifact.artifact, optimize);
 
+    // docs
+    const docs = installDocs(b, exe_artifact.artifact);
+
     // -- top-level build steps ------------------------------------------------
     // exe
     const exe_step = b.step("exe", "Install Atrus CLI executable only");
@@ -123,6 +126,10 @@ pub fn build(b: *std.Build) void {
     const benchmark_step = b.step("benchmark", "Run all benchmarks");
     benchmark_step.dependOn(&benchmark_cmds.memory.step);
     benchmark_step.dependOn(&benchmark_cmds.speed.step);
+
+    // docs
+    const docs_step = b.step("docs", "Install documentation");
+    docs_step.dependOn(&docs.step);
 }
 
 fn installExecutable(
@@ -323,4 +330,12 @@ fn addBenchmarks(
         .memory = memory_cmd,
         .speed = speed_cmd,
     };
+}
+
+fn installDocs(b: *std.Build, exe: *Step.Compile) *Step.InstallDir {
+    return b.addInstallDirectory(.{
+        .source_dir = exe.getEmittedDocs(),
+        .install_dir = .prefix,
+        .install_subdir = "docs",
+    });
 }
