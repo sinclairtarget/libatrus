@@ -12,13 +12,11 @@ pub fn transform(
     scratch: Allocator,
     original_node: *ast.Node,
 ) !*ast.Node {
-    switch (original_node.tag) {
-        .myst_directive => {
-            const n = original_node.payload.myst_directive;
-
+    switch (original_node.*) {
+        .myst_directive => |n| {
             // Check to see if we have already transformed this node. If so,
             // abort. This ensures the transform is idempotent.
-            if (n.n_children > 0) {
+            if (n.children.len > 0) {
                 return original_node;
             }
 
@@ -26,15 +24,14 @@ pub fn transform(
                 alloc,
                 scratch,
                 original_node,
-                std.mem.span(n.name),
-                std.mem.span(n.args),
-                std.mem.span(n.value),
+                n.name,
+                n.args,
+                n.value,
             );
         },
         inline .root, .block, .heading, .paragraph, .emphasis, .strong,
-        .link, .blockquote => |node_type| {
-            const n = @field(original_node.payload, @tagName(node_type));
-            for (0..n.n_children) |i| {
+        .link, .blockquote => |n| {
+            for (0..n.children.len) |i| {
                 n.children[i] = try transform(alloc, scratch, n.children[i]);
             }
             return original_node;
@@ -103,12 +100,8 @@ fn transformAdmonition(
             errdefer alloc.free(title_children);
 
             title_node.* = .{
-                .tag = .admonition_title,
-                .payload = .{
-                    .admonition_title = .{
-                        .children = title_children.ptr,
-                        .n_children = @intCast(title_children.len),
-                    },
+                .admonition_title = .{
+                    .children = title_children,
                 },
             };
 
@@ -122,12 +115,8 @@ fn transformAdmonition(
             errdefer alloc.free(p_children);
 
             p_node.* = .{
-                .tag = .paragraph,
-                .payload = .{
-                    .paragraph = .{
-                        .children = p_children.ptr,
-                        .n_children = @intCast(p_children.len),
-                    },
+                .paragraph = .{
+                    .children = p_children,
                 },
             };
 
@@ -139,13 +128,11 @@ fn transformAdmonition(
     var reader = Io.Reader.fixed(value);
     const root = try atrus.parse(alloc, &reader, .{.parse_level = .pre});
     defer {
-        alloc.free(
-            root.payload.root.children[0..root.payload.root.n_children],
-        );
+        alloc.free(root.root.children);
         alloc.destroy(root); // we don't need the root node
     }
 
-    for (root.payload.root.children[0..root.payload.root.n_children]) |child| {
+    for (root.root.children) |child| {
         try children.append(alloc, child);
     }
 
@@ -165,24 +152,18 @@ fn transformAdmonition(
     errdefer alloc.free(owned_children);
 
     admonition_node.* = .{
-        .tag = .admonition,
-        .payload = .{
-            .admonition = .{
-                .children = owned_children.ptr,
-                .n_children = @intCast(owned_children.len),
-                .kind = owned_kind,
-            },
+        .admonition = .{
+            .children = owned_children,
+            .kind = owned_kind,
         },
     };
 
     const directive_children = try alloc.dupe(*ast.Node, &.{admonition_node});
 
-    std.debug.assert(node.tag == .myst_directive);
-    std.debug.assert(node.payload.myst_directive.n_children == 0);
+    std.debug.assert(@as(ast.NodeType, node.*) == .myst_directive);
+    std.debug.assert(node.myst_directive.children.len == 0);
 
-    node.payload.myst_directive.children = directive_children.ptr;
-    node.payload.myst_directive.n_children = @intCast(directive_children.len);
-
+    node.myst_directive.children = directive_children;
     return node;
 }
 
@@ -208,13 +189,10 @@ fn transformFigure(
         errdefer alloc.destroy(img_node);
 
         img_node.* = .{
-            .tag = .image,
-            .payload = .{
-                .image = .{
-                    .url = owned_url,
-                    .title = owned_title,
-                    .alt = owned_alt,
-                },
+            .image = .{
+                .url = owned_url,
+                .title = owned_title,
+                .alt = owned_alt,
             },
         };
 
@@ -225,13 +203,11 @@ fn transformFigure(
     var reader = Io.Reader.fixed(value);
     const root = try atrus.parse(alloc, &reader, .{.parse_level = .pre});
     defer {
-        alloc.free(
-            root.payload.root.children[0..root.payload.root.n_children],
-        );
+        alloc.free(root.root.children);
         alloc.destroy(root); // we don't need the root node
     }
 
-    for (root.payload.root.children[0..root.payload.root.n_children]) |child| {
+    for (root.root.children) |child| {
         try children.append(alloc, child);
     }
 
@@ -245,23 +221,18 @@ fn transformFigure(
     errdefer alloc.free(owned_children);
 
     container_node.* = .{
-        .tag = .container,
-        .payload = .{
-            .container = .{
-                .children = owned_children.ptr,
-                .n_children = @intCast(owned_children.len),
-                .kind = owned_kind,
-            },
+        .container = .{
+            .children = owned_children,
+            .kind = owned_kind,
         },
     };
 
     const directive_children = try alloc.dupe(*ast.Node, &.{container_node});
 
-    std.debug.assert(node.tag == .myst_directive);
-    std.debug.assert(node.payload.myst_directive.n_children == 0);
+    std.debug.assert(@as(ast.NodeType, node.*) == .myst_directive);
+    std.debug.assert(node.myst_directive.children.len == 0);
 
-    node.payload.myst_directive.children = directive_children.ptr;
-    node.payload.myst_directive.n_children = @intCast(directive_children.len);
+    node.myst_directive.children = directive_children;
 
     return node;
 }
@@ -278,15 +249,11 @@ fn handleDirective(
 ) !*ast.Node {
     const directive_node = try testing.allocator.create(ast.Node);
     directive_node.* = .{
-        .tag = .myst_directive,
-        .payload = .{
-            .myst_directive = .{
-                .name = try testing.allocator.dupeZ(u8, name),
-                .args = try testing.allocator.dupeZ(u8, args),
-                .value = try testing.allocator.dupeZ(u8, value),
-                .children = &.{},
-                .n_children = 0,
-            },
+        .myst_directive = .{
+            .name = try testing.allocator.dupeZ(u8, name),
+            .args = try testing.allocator.dupeZ(u8, args),
+            .value = try testing.allocator.dupeZ(u8, value),
+            .children = &.{},
         },
     };
 
@@ -308,33 +275,33 @@ test "simple admonition" {
     );
     defer node.deinit(testing.allocator);
 
-    try testing.expectEqual(ast.NodeType.myst_directive, node.tag);
-    try testing.expectEqual(1, node.payload.myst_directive.n_children);
+    try testing.expectEqual(.myst_directive, @as(ast.NodeType, node.*));
+    try testing.expectEqual(1, node.myst_directive.children.len);
 
-    const admonition_node = node.payload.myst_directive.children[0];
-    try testing.expectEqual(ast.NodeType.admonition, admonition_node.tag);
-    try testing.expectEqual(2, admonition_node.payload.admonition.n_children);
+    const admonition_node = node.myst_directive.children[0];
+    try testing.expectEqual(.admonition, @as(ast.NodeType, admonition_node.*));
+    try testing.expectEqual(2, admonition_node.admonition.children.len);
 
-    const title_node = admonition_node.payload.admonition.children[0];
-    try testing.expectEqual(ast.NodeType.admonition_title, title_node.tag);
-    try testing.expectEqual(1, title_node.payload.admonition_title.n_children);
+    const title_node = admonition_node.admonition.children[0];
+    try testing.expectEqual(.admonition_title, @as(ast.NodeType, title_node.*));
+    try testing.expectEqual(1, title_node.admonition_title.children.len);
 
-    const text_node = title_node.payload.admonition_title.children[0];
-    try testing.expectEqual(ast.NodeType.text, text_node.tag);
+    const text_node = title_node.admonition_title.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
     try testing.expectEqualStrings(
         "This is a title",
-        std.mem.span(text_node.payload.text.value),
+        text_node.text.value,
     );
 
-    const p_node = admonition_node.payload.admonition.children[1];
-    try testing.expectEqual(ast.NodeType.paragraph, p_node.tag);
-    try testing.expectEqual(1, p_node.payload.paragraph.n_children);
+    const p_node = admonition_node.admonition.children[1];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node.*));
+    try testing.expectEqual(1, p_node.paragraph.children.len);
 
-    const text_node_2 = p_node.payload.paragraph.children[0];
-    try testing.expectEqual(ast.NodeType.text, text_node_2.tag);
+    const text_node_2 = p_node.paragraph.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, text_node_2.*));
     try testing.expectEqualStrings(
         "This is a body",
-        std.mem.span(text_node_2.payload.text.value),
+        text_node_2.text.value,
     );
 }
 
@@ -346,26 +313,26 @@ test "simple warning" {
     );
     defer node.deinit(testing.allocator);
 
-    try testing.expectEqual(ast.NodeType.myst_directive, node.tag);
-    try testing.expectEqual(1, node.payload.myst_directive.n_children);
+    try testing.expectEqual(.myst_directive, @as(ast.NodeType, node.*));
+    try testing.expectEqual(1, node.myst_directive.children.len);
 
-    const admonition_node = node.payload.myst_directive.children[0];
-    try testing.expectEqual(ast.NodeType.admonition, admonition_node.tag);
+    const admonition_node = node.myst_directive.children[0];
+    try testing.expectEqual(.admonition, @as(ast.NodeType, admonition_node.*));
     try testing.expectEqualStrings(
         "warning",
-        std.mem.span(node.payload.admonition.kind),
+        admonition_node.admonition.kind,
     );
-    try testing.expectEqual(1, admonition_node.payload.admonition.n_children);
+    try testing.expectEqual(1, admonition_node.admonition.children.len);
 
-    const p_node = admonition_node.payload.admonition.children[0];
-    try testing.expectEqual(ast.NodeType.paragraph, p_node.tag);
-    try testing.expectEqual(1, p_node.payload.paragraph.n_children);
+    const p_node = admonition_node.admonition.children[0];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node.*));
+    try testing.expectEqual(1, p_node.paragraph.children.len);
 
-    const text_node_2 = p_node.payload.paragraph.children[0];
-    try testing.expectEqual(ast.NodeType.text, text_node_2.tag);
+    const text_node_2 = p_node.paragraph.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, text_node_2.*));
     try testing.expectEqualStrings(
         "This is a body",
-        std.mem.span(text_node_2.payload.text.value),
+        text_node_2.text.value,
     );
 }
 
@@ -377,32 +344,32 @@ test "simple figure" {
     );
     defer node.deinit(testing.allocator);
 
-    try testing.expectEqual(ast.NodeType.myst_directive, node.tag);
-    try testing.expectEqual(1, node.payload.myst_directive.n_children);
+    try testing.expectEqual(.myst_directive, @as(ast.NodeType, node.*));
+    try testing.expectEqual(1, node.myst_directive.children.len);
 
-    const container_node = node.payload.myst_directive.children[0];
-    try testing.expectEqual(ast.NodeType.container, container_node.tag);
+    const container_node = node.myst_directive.children[0];
+    try testing.expectEqual(.container, @as(ast.NodeType, container_node.*));
     try testing.expectEqualStrings(
         "figure",
-        std.mem.span(container_node.payload.container.kind),
+        container_node.container.kind,
     );
-    try testing.expectEqual(2, container_node.payload.container.n_children);
+    try testing.expectEqual(2, container_node.container.children.len);
 
-    const img_node = container_node.payload.container.children[0];
-    try testing.expectEqual(ast.NodeType.image, img_node.tag);
+    const img_node = container_node.container.children[0];
+    try testing.expectEqual(.image, @as(ast.NodeType, img_node.*));
     try testing.expectEqualStrings(
         "http://foo.com/cat.jpg",
-        std.mem.span(img_node.payload.image.url),
+        img_node.image.url,
     );
 
-    const p_node = container_node.payload.container.children[1];
-    try testing.expectEqual(ast.NodeType.paragraph, p_node.tag);
-    try testing.expectEqual(1, p_node.payload.paragraph.n_children);
+    const p_node = container_node.container.children[1];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node.*));
+    try testing.expectEqual(1, p_node.paragraph.children.len);
 
-    const text_node = p_node.payload.paragraph.children[0];
-    try testing.expectEqual(ast.NodeType.text, text_node.tag);
+    const text_node = p_node.paragraph.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
     try testing.expectEqualStrings(
         "This is a picture of my cat!",
-        std.mem.span(text_node.payload.text.value),
+        text_node.text.value,
     );
 }

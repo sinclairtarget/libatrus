@@ -10,25 +10,21 @@ const ast = @import("../ast.zig");
 
 /// Write node as alt text to writer.
 pub fn write(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
-    switch (node.tag) {
+    switch (node.*) {
         inline .root, .block, .blockquote, .paragraph, .emphasis, .strong,
         .heading, .link, .subscript, .superscript, .abbreviation, .container,
         .caption, .myst_directive, .myst_directive_error, .admonition,
-        .admonition_title => |node_type| {
-            const n = @field(node.payload, @tagName(node_type));
-            const sliced = n.children[0..n.n_children];
-            for (sliced) |child| {
+        .admonition_title => |n| {
+            for (n.children) |child| {
                 try write(out, child);
             }
         },
         inline .text, .code, .inline_code, .html, .myst_role,
-        .myst_role_error => |node_type| {
-            const n = @field(node.payload, @tagName(node_type));
-            _ = try out.write(std.mem.span(n.value));
+        .myst_role_error => |n| {
+            _ = try out.write(n.value);
         },
-        .image => {
-            const n = node.payload.image;
-            _ = try out.write(std.mem.span(n.alt));
+        .image => |n| {
+            _ = try out.write(n.alt);
         },
         .@"break", .thematic_break, .definition => {},
     }

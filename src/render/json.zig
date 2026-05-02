@@ -39,14 +39,14 @@ pub fn render(
 
 fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
     // These nodes don't get rendered
-    if (node.tag == .definition) {
+    if (@as(ast.NodeType, node.*) == .definition) {
         return;
     }
 
     try stringify.beginObject();
     try stringify.objectField("type");
 
-    switch (node.tag) {
+    switch (node.*) {
         .thematic_break => try stringify.write("thematicBreak"),
         .inline_code => try stringify.write("inlineCode"),
         .myst_role => try stringify.write("mystRole"),
@@ -54,39 +54,34 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
         .myst_directive => try stringify.write("mystDirective"),
         .myst_directive_error => try stringify.write("mystDirectiveError"),
         .admonition_title => try stringify.write("admonitionTitle"),
-        else => try stringify.write(@tagName(node.tag)),
+        else => try stringify.write(@tagName(node.*)),
     }
 
-    switch (node.tag) {
+    switch (node.*) {
         inline .root, .paragraph, .block, .emphasis, .strong, .blockquote,
-        .subscript, .superscript, .admonition_title, .caption => |node_type| {
-            const n = @field(node.payload, @tagName(node_type));
+        .subscript, .superscript, .admonition_title, .caption => |n| {
             try render_children(stringify, n);
         },
-        .heading => {
-            const n = node.payload.heading;
+        .heading => |n| {
             try stringify.objectField("depth");
             try stringify.write(n.depth);
             try render_children(stringify, n);
         },
-        inline .text, .inline_code, .html => |node_type| {
-            const n = @field(node.payload, @tagName(node_type));
+        inline .text, .inline_code, .html => |n| {
             try stringify.objectField("value");
             try stringify.write(n.value);
         },
-        .code => {
-            const n = node.payload.code;
+        .code => |n| {
             try stringify.objectField("lang");
             try stringify.write(n.lang);
             try stringify.objectField("value");
             try stringify.write(n.value);
         },
-        .link => {
-            const n = node.payload.link;
+        .link => |n| {
             try stringify.objectField("url");
-            try stringify.write(std.mem.span(n.url));
+            try stringify.write(n.url);
 
-            const title = std.mem.span(n.title);
+            const title = n.title;
             if (title.len > 0) {
                 try stringify.objectField("title");
                 try stringify.write(title);
@@ -94,18 +89,17 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
 
             try render_children(stringify, n);
         },
-        .image => {
-            const n = node.payload.image;
+        .image => |n| {
             try stringify.objectField("url");
-            try stringify.write(std.mem.span(n.url));
+            try stringify.write(n.url);
 
-            const alt = std.mem.span(n.alt);
+            const alt = n.alt;
             if (alt.len > 0) {
                 try stringify.objectField("alt");
                 try stringify.write(alt);
             }
 
-            const title = std.mem.span(n.title);
+            const title = n.title;
             if (title.len > 0) {
                 try stringify.objectField("title");
                 try stringify.write(title);
@@ -113,81 +107,72 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
         },
         .@"break", .thematic_break => {},
         .definition => unreachable,
-        .container => {
-            const n = node.payload.container;
-
+        .container => |n| {
             try stringify.objectField("kind");
-            try stringify.write(std.mem.span(n.kind));
+            try stringify.write(n.kind);
 
-            if (n.n_children > 0) {
+            if (n.children.len > 0) {
                 try render_children(stringify, n);
             }
         },
-        .myst_role => {
-            const n = node.payload.myst_role;
+        .myst_role => |n| {
             try stringify.objectField("name");
-            try stringify.write(std.mem.span(n.name));
+            try stringify.write(n.name);
 
             try stringify.objectField("value");
-            try stringify.write(std.mem.span(n.value));
+            try stringify.write(n.value);
 
-            if (n.n_children > 0) {
+            if (n.children.len > 0) {
                 try render_children(stringify, n);
             }
         },
-        .myst_role_error => {
-            const n = node.payload.myst_role;
+        .myst_role_error => |n| {
             try stringify.objectField("value");
-            try stringify.write(std.mem.span(n.value));
+            try stringify.write(n.value);
         },
-        .abbreviation => {
-            const n = node.payload.abbreviation;
-            const title = std.mem.span(n.title);
+        .abbreviation => |n| {
+            const title = n.title;
             if (title.len > 0) {
                 try stringify.objectField("title");
                 try stringify.write(title);
             }
 
-            if (n.n_children > 0) {
+            if (n.children.len > 0) {
                 try render_children(stringify, n);
             }
         },
-        .myst_directive => {
-            const n = node.payload.myst_directive;
+        .myst_directive => |n| {
             try stringify.objectField("name");
-            try stringify.write(std.mem.span(n.name));
+            try stringify.write(n.name);
 
-            const args = std.mem.span(n.args);
+            const args = n.args;
             if (args.len > 0) {
                 try stringify.objectField("args");
                 try stringify.write(args);
             }
 
-            const value = std.mem.span(n.value);
+            const value = n.value;
             if (value.len > 0) {
                 try stringify.objectField("value");
                 try stringify.write(value);
             }
 
-            if (n.n_children > 0) {
+            if (n.children.len > 0) {
                 try render_children(stringify, n);
             }
         },
-        .myst_directive_error => {
-            const n = node.payload.myst_directive_error;
+        .myst_directive_error => |n| {
             try stringify.objectField("message");
-            try stringify.write(std.mem.span(n.message));
+            try stringify.write(n.message);
         },
-        .admonition => {
-            const n = node.payload.admonition;
-
-            const kind = std.mem.span(n.kind);
+        .admonition => |n| {
+            const kind = n.kind;
             if (kind.len > 0) {
                 try stringify.objectField("kind");
                 try stringify.write(kind);
             }
 
-            if (n.n_children > 0) {
+            if (n.children.len > 0) {
                 try render_children(stringify, n);
             }
         },
@@ -198,13 +183,12 @@ fn render_node(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
 
 fn render_children(
     stringify: *Stringify,
-    node_data: anytype,
+    node_payload: anytype,
 ) Io.Writer.Error!void {
     try stringify.objectField("children");
     try stringify.beginArray();
 
-    const sliced = node_data.children[0..node_data.n_children];
-    for (sliced) |child| {
+    for (node_payload.children) |child| {
         try render_node(stringify, child);
     }
 

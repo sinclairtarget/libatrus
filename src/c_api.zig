@@ -1,6 +1,16 @@
-//! Exported interface for linking using the C ABI.
+//! Implements the C-ABI-compatible interface to libatrus.
 //!
-//! See include/atrus.h for documentation.
+//! See include/atrus.h for usage documentation.
+//!
+//! Any "extern" data structures here must be kept in sync with the definitions
+//! in include/atrus.h. Doing any of the following constitutes a breaking ABI
+//! change:
+//!
+//! * Adding a new field to an extern struct
+//! * Changing the order of fields in an extern struct
+//! * Adding a new member to an extern union, if the member is bigger than the
+//!   others.
+//! * Changing any field types.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

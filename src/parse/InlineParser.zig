@@ -400,12 +400,8 @@ fn parseStarStrong(
     errdefer alloc.destroy(node);
     const owned = try children.toOwnedSlice();
     node.* = .{
-        .tag = .strong,
-        .payload = .{
-            .strong = .{
-                .children = owned.ptr,
-                .n_children = @intCast(owned.len),
-            },
+        .strong = .{
+            .children = owned,
         },
     };
     did_parse = true;
@@ -683,12 +679,8 @@ fn parseStarEmphasis(
     errdefer alloc.destroy(emphasis_node);
     const owned = try children.toOwnedSlice();
     emphasis_node.* = .{
-        .tag = .emphasis,
-        .payload = .{
-            .emphasis = .{
-                .children = owned.ptr,
-                .n_children = @intCast(owned.len),
-            },
+        .emphasis = .{
+            .children = owned,
         },
     };
     did_parse = true;
@@ -942,12 +934,8 @@ fn parseUnderscoreStrong(
     errdefer alloc.destroy(strong_node);
     const owned = try children.toOwnedSlice();
     strong_node.* = .{
-        .tag = .strong,
-        .payload = .{
-            .strong = .{
-                .children = owned.ptr,
-                .n_children = @intCast(owned.len),
-            },
+        .strong = .{
+            .children = owned,
         },
     };
     did_parse = true;
@@ -1246,12 +1234,8 @@ fn parseUnderscoreEmphasis(
     errdefer alloc.destroy(emphasis_node);
     const owned = try children.toOwnedSlice();
     emphasis_node.* = .{
-        .tag = .emphasis,
-        .payload = .{
-            .emphasis = .{
-                .children = owned.ptr,
-                .n_children = @intCast(owned.len),
-            },
+        .emphasis = .{
+            .children = owned,
         },
     };
     did_parse = true;
@@ -1469,11 +1453,8 @@ fn parseInlineCode(
 
     const inline_code_node = try alloc.create(ast.Node);
     inline_code_node.* = .{
-        .tag = .inline_code,
-        .payload = .{
-            .inline_code = .{
-                .value = value_copy.ptr,
-            },
+        .inline_code = .{
+            .value = value_copy,
         },
     };
     did_parse = true;
@@ -1554,14 +1535,10 @@ fn parseInlineLink(
     errdefer alloc.free(ownedTitle);
     const inline_link = try alloc.create(ast.Node);
     inline_link.* = .{
-        .tag = .link,
-        .payload = .{
-            .link = .{
-                .url = ownedUrl,
-                .title = ownedTitle,
-                .children = link_text_nodes.ptr,
-                .n_children = @intCast(link_text_nodes.len),
-            },
+        .link = .{
+            .url = ownedUrl,
+            .title = ownedTitle,
+            .children = link_text_nodes,
         },
     };
     did_parse = true;
@@ -1894,21 +1871,17 @@ fn parseFullReferenceLink(
         scanned_link_label,
     ) orelse return null; // no matching def means parse failure
 
-    const url = try alloc.dupeZ(u8, std.mem.span(link_def.url));
+    const url = try alloc.dupeZ(u8, link_def.url);
     errdefer alloc.free(url);
-    const title = try alloc.dupeZ(u8, std.mem.span(link_def.title));
+    const title = try alloc.dupeZ(u8, link_def.title);
     errdefer alloc.free(title);
 
     const link_node = try alloc.create(ast.Node);
     link_node.* = .{
-        .tag = .link,
-        .payload = .{
-            .link = .{
-                .url = url,
-                .title = title,
-                .children = link_text_nodes.ptr,
-                .n_children = @intCast(link_text_nodes.len),
-            },
+        .link = .{
+            .url = url,
+            .title = title,
+            .children = link_text_nodes,
         },
     };
     did_parse = true;
@@ -1963,21 +1936,17 @@ fn parseCollapsedReferenceLink(
     _ = try self.consume(scratch, &.{.l_square_bracket}) orelse unreachable;
     _ = try self.consume(scratch, &.{.r_square_bracket}) orelse unreachable;
 
-    const url = try alloc.dupeZ(u8, std.mem.span(link_def.url));
+    const url = try alloc.dupeZ(u8, link_def.url);
     errdefer alloc.free(url);
-    const title = try alloc.dupeZ(u8, std.mem.span(link_def.title));
+    const title = try alloc.dupeZ(u8, link_def.title);
     errdefer alloc.free(title);
 
     const link_node = try alloc.create(ast.Node);
     link_node.* = .{
-        .tag = .link,
-        .payload = .{
-            .link = .{
-                .url = url,
-                .title = title,
-                .children = inline_nodes.ptr,
-                .n_children = @intCast(inline_nodes.len),
-            },
+        .link = .{
+            .url = url,
+            .title = title,
+            .children = inline_nodes,
         },
     };
     did_parse = true;
@@ -2040,21 +2009,17 @@ fn parseShortcutReferenceLink(
         scanned_link_label,
     ) orelse return null; // no matching def means parse failure
 
-    const url = try alloc.dupeZ(u8, std.mem.span(link_def.url));
+    const url = try alloc.dupeZ(u8, link_def.url);
     errdefer alloc.free(url);
-    const title = try alloc.dupeZ(u8, std.mem.span(link_def.title));
+    const title = try alloc.dupeZ(u8, link_def.title);
     errdefer alloc.free(title);
 
     const link_node = try alloc.create(ast.Node);
     link_node.* = .{
-        .tag = .link,
-        .payload = .{
-            .link = .{
-                .url = url,
-                .title = title,
-                .children = inline_nodes.ptr,
-                .n_children = @intCast(inline_nodes.len),
-            },
+        .link = .{
+            .url = url,
+            .title = title,
+            .children = inline_nodes,
         },
     };
     did_parse = true;
@@ -2264,13 +2229,10 @@ fn parseInlineImage(
     errdefer alloc.free(owned_alt);
     const image = try alloc.create(ast.Node);
     image.* = .{
-        .tag = .image,
-        .payload = .{
-            .image = .{
-                .url = owned_url,
-                .title = owned_title,
-                .alt = owned_alt,
-            },
+        .image = .{
+            .url = owned_url,
+            .title = owned_title,
+            .alt = owned_alt,
         },
     };
     did_parse = true;
@@ -2440,22 +2402,19 @@ fn parseFullReferenceImage(
         try alttext.write(&running_text.writer, node);
     }
 
-    const url = try alloc.dupeZ(u8, std.mem.span(link_def.url));
+    const url = try alloc.dupeZ(u8, link_def.url);
     errdefer alloc.free(url);
-    const title = try alloc.dupeZ(u8, std.mem.span(link_def.title));
+    const title = try alloc.dupeZ(u8, link_def.title);
     errdefer alloc.free(title);
     const alt = try running_text.toOwnedSliceSentinel(0);
     errdefer alloc.free(alt);
 
     const img_node = try alloc.create(ast.Node);
     img_node.* = .{
-        .tag = .image,
-        .payload = .{
-            .image = .{
-                .url = url,
-                .title = title,
-                .alt = alt,
-            },
+        .image = .{
+            .url = url,
+            .title = title,
+            .alt = alt,
         },
     };
     did_parse = true;
@@ -2517,22 +2476,19 @@ fn parseCollapsedReferenceImage(
         try alttext.write(&running_text.writer, node);
     }
 
-    const url = try alloc.dupeZ(u8, std.mem.span(link_def.url));
+    const url = try alloc.dupeZ(u8, link_def.url);
     errdefer alloc.free(url);
-    const title = try alloc.dupeZ(u8, std.mem.span(link_def.title));
+    const title = try alloc.dupeZ(u8, link_def.title);
     errdefer alloc.free(title);
     const alt = try running_text.toOwnedSliceSentinel(0);
     errdefer alloc.free(alt);
 
     const img_node = try alloc.create(ast.Node);
     img_node.* = .{
-        .tag = .image,
-        .payload = .{
-            .image = .{
-                .url = url,
-                .title = title,
-                .alt = alt,
-            },
+        .image = .{
+            .url = url,
+            .title = title,
+            .alt = alt,
         },
     };
     did_parse = true;
@@ -2606,22 +2562,19 @@ fn parseShortcutReferenceImage(
         try alttext.write(&running_text.writer, node);
     }
 
-    const url = try alloc.dupeZ(u8, std.mem.span(link_def.url));
+    const url = try alloc.dupeZ(u8, link_def.url);
     errdefer alloc.free(url);
-    const title = try alloc.dupeZ(u8, std.mem.span(link_def.title));
+    const title = try alloc.dupeZ(u8, link_def.title);
     errdefer alloc.free(title);
     const alt = try running_text.toOwnedSliceSentinel(0);
     errdefer alloc.free(alt);
 
     const img_node = try alloc.create(ast.Node);
     img_node.* = .{
-        .tag = .image,
-        .payload = .{
-            .image = .{
-                .url = url,
-                .title = title,
-                .alt = alt,
-            },
+        .image = .{
+            .url = url,
+            .title = title,
+            .alt = alt,
         },
     };
     did_parse = true;
@@ -2681,14 +2634,10 @@ fn parseURIAutolink(
 
     const inline_link = try alloc.create(ast.Node);
     inline_link.* = .{
-        .tag = .link,
-        .payload = .{
-            .link = .{
-                .url = ownedUrl,
-                .title = ownedTitle,
-                .children = children.ptr,
-                .n_children = @intCast(children.len),
-            },
+        .link = .{
+            .url = ownedUrl,
+            .title = ownedTitle,
+            .children = children,
         },
     };
     did_parse = true;
@@ -2818,14 +2767,10 @@ fn parseEmailAutolink(
     errdefer alloc.free(ownedTitle);
     const inline_link = try alloc.create(ast.Node);
     inline_link.* = .{
-        .tag = .link,
-        .payload = .{
-            .link = .{
-                .url = url,
-                .title = ownedTitle,
-                .children = children.ptr,
-                .n_children = @intCast(children.len),
-            },
+        .link = .{
+            .url = url,
+            .title = ownedTitle,
+            .children = children,
         },
     };
     did_parse = true;
@@ -2993,12 +2938,7 @@ fn parseHardLineBreak(
     _ = try self.consume(scratch, &.{token.token_type});
 
     const break_node = try alloc.create(ast.Node);
-    break_node.* = .{
-        .tag = .@"break",
-        .payload = .{
-            .@"break" = {},
-        },
-    };
+    break_node.* = .{ .@"break" = {} };
     return break_node;
 }
 
@@ -3104,11 +3044,8 @@ fn parseHTMLOpenTag(
 
     const node = try alloc.create(ast.Node);
     node.* = .{
-        .tag = .html,
-        .payload = .{
-            .html = .{
-                .value = content,
-            },
+        .html = .{
+            .value = content,
         },
     };
     did_parse = true;
@@ -3155,11 +3092,8 @@ fn parseHTMLCloseTag(
 
     const node = try alloc.create(ast.Node);
     node.* = .{
-        .tag = .html,
-        .payload = .{
-            .html = .{
-                .value = content,
-            },
+        .html = .{
+            .value = content,
         },
     };
     did_parse = true;
@@ -3235,11 +3169,8 @@ fn parseHTMLComment(
 
     const node = try alloc.create(ast.Node);
     node.* = .{
-        .tag = .html,
-        .payload = .{
-            .html = .{
-                .value = comment,
-            },
+        .html = .{
+            .value = comment,
         },
     };
     did_parse = true;
@@ -3294,11 +3225,8 @@ fn parseHTMLProcessingInstruction(
 
     const node = try alloc.create(ast.Node);
     node.* = .{
-        .tag = .html,
-        .payload = .{
-            .html = .{
-                .value = instruction,
-            },
+        .html = .{
+            .value = instruction,
         },
     };
     did_parse = true;
@@ -3353,11 +3281,8 @@ fn parseHTMLDeclaration(
 
     const node = try alloc.create(ast.Node);
     node.* = .{
-        .tag = .html,
-        .payload = .{
-            .html = .{
-                .value = declaration,
-            },
+        .html = .{
+            .value = declaration,
         },
     };
     did_parse = true;
@@ -3421,11 +3346,8 @@ fn parseHTMLCDATA(
 
     const node = try alloc.create(ast.Node);
     node.* = .{
-        .tag = .html,
-        .payload = .{
-            .html = .{
-                .value = cdata,
-            },
+        .html = .{
+            .value = cdata,
         },
     };
     did_parse = true;
@@ -3793,11 +3715,8 @@ fn parseMySTRole(
     if (!myst.isValidRoleName(name)) {
         const error_node = try alloc.create(ast.Node);
         error_node.* = .{
-            .tag = .myst_role_error,
-            .payload = .{
-                .myst_role_error = .{
-                    .value = owned_value,
-                },
+            .myst_role_error = .{
+                .value = owned_value,
             },
         };
         return error_node;
@@ -3808,14 +3727,10 @@ fn parseMySTRole(
 
     const node = try alloc.create(ast.Node);
     node.* = .{
-        .tag = .myst_role,
-        .payload = .{
-            .myst_role = .{
-                .name = owned_name,
-                .value = owned_value,
-                .children = &.{},
-                .n_children = 0,
-            },
+        .myst_role = .{
+            .name = owned_name,
+            .value = owned_value,
+            .children = &.{},
         },
     };
 
@@ -4075,14 +3990,14 @@ test "star emphasis" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(2, nodes.len);
-    try testing.expectEqual(ast.NodeType.text, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
     try testing.expectEqual(
         ast.NodeType.emphasis,
-        nodes[1].tag,
+        @as(ast.NodeType, nodes[1].*),
     );
     try testing.expectEqualStrings(
         "is emphasized.",
-        std.mem.span(nodes[1].payload.emphasis.children[0].payload.text.value),
+        nodes[1].emphasis.children[0].text.value,
     );
 }
 
@@ -4092,16 +4007,16 @@ test "intraword star emphasis" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(3, nodes.len);
-    try testing.expectEqual(ast.NodeType.text, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
     try testing.expectEqual(
         ast.NodeType.emphasis,
-        nodes[1].tag,
+        @as(ast.NodeType, nodes[1].*),
     );
     try testing.expectEqualStrings(
         "pha",
-        std.mem.span(nodes[1].payload.emphasis.children[0].payload.text.value),
+        nodes[1].emphasis.children[0].text.value,
     );
-    try testing.expectEqual(ast.NodeType.text, nodes[2].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
 }
 
 test "nested star emphasis" {
@@ -4110,26 +4025,26 @@ test "nested star emphasis" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(2, nodes.len);
-    try testing.expectEqual(ast.NodeType.text, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
 
     try testing.expectEqual(
         ast.NodeType.emphasis,
-        nodes[1].tag,
+        @as(ast.NodeType, nodes[1].*),
     );
-    try testing.expectEqual(2, nodes[1].payload.emphasis.n_children);
+    try testing.expectEqual(2, nodes[1].emphasis.children.len);
 
-    const nested_emph = nodes[1].payload.emphasis.children[0];
+    const nested_emph = nodes[1].emphasis.children[0];
     try testing.expectEqual(
         ast.NodeType.emphasis,
-        nested_emph.tag,
+        @as(ast.NodeType, nested_emph.*),
     );
     try testing.expectEqualStrings(
         "is",
-        std.mem.span(nested_emph.payload.emphasis.children[0].payload.text.value),
+        nested_emph.emphasis.children[0].text.value,
     );
     try testing.expectEqualStrings(
         " emphasized.",
-        std.mem.span(nodes[1].payload.emphasis.children[1].payload.text.value),
+        nodes[1].emphasis.children[1].text.value,
     );
 }
 
@@ -4139,8 +4054,8 @@ test "unmatched open star emphasis" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.text, nodes[0].tag);
-    try testing.expectEqualStrings(value, std.mem.span(nodes[0].payload.text.value));
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqualStrings(value, nodes[0].text.value);
 }
 
 test "unmatched close star emphasis" {
@@ -4149,8 +4064,8 @@ test "unmatched close star emphasis" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.text, nodes[0].tag);
-    try testing.expectEqualStrings(value, std.mem.span(nodes[0].payload.text.value));
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqualStrings(value, nodes[0].text.value);
 }
 
 test "same delimiter run star emphasis" {
@@ -4159,8 +4074,8 @@ test "same delimiter run star emphasis" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.text, nodes[0].tag);
-    try testing.expectEqualStrings(value, std.mem.span(nodes[0].payload.text.value));
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqualStrings(value, nodes[0].text.value);
 }
 
 test "same delimiter run star strong" {
@@ -4169,8 +4084,8 @@ test "same delimiter run star strong" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.text, nodes[0].tag);
-    try testing.expectEqualStrings(value, std.mem.span(nodes[0].payload.text.value));
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqualStrings(value, nodes[0].text.value);
 }
 
 test "star strong" {
@@ -4179,15 +4094,15 @@ test "star strong" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(3, nodes.len);
-    try testing.expectEqual(ast.NodeType.text, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
 
-    try testing.expectEqual(ast.NodeType.strong, nodes[1].tag);
+    try testing.expectEqual(ast.NodeType.strong, @as(ast.NodeType, nodes[1].*));
     try testing.expectEqualStrings(
         "strongly emphasized",
-        std.mem.span(nodes[1].payload.strong.children[0].payload.text.value),
+        nodes[1].strong.children[0].text.value,
     );
 
-    try testing.expectEqual(ast.NodeType.text, nodes[2].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
 }
 
 test "triple star strong nested" {
@@ -4196,29 +4111,29 @@ test "triple star strong nested" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(3, nodes.len);
-    try testing.expectEqual(ast.NodeType.text, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
     try testing.expectEqualStrings(
         "This is ",
-        std.mem.span(nodes[0].payload.text.value),
+        nodes[0].text.value,
     );
 
     try testing.expectEqual(
         ast.NodeType.emphasis,
-        nodes[1].tag,
+        @as(ast.NodeType, nodes[1].*),
     );
     try testing.expectEqual(
         ast.NodeType.strong,
-        nodes[1].payload.emphasis.children[0].tag,
+        @as(ast.NodeType, nodes[1].emphasis.children[0].*),
     );
     try testing.expectEqualStrings(
         "a strong in an emphasis",
-        std.mem.span(
-            nodes[1].payload.emphasis.children[0].payload.strong.children[0].payload.text.value
-        ),
+
+            nodes[1].emphasis.children[0].strong.children[0].text.value
+        ,
     );
 
-    try testing.expectEqual(ast.NodeType.text, nodes[2].tag);
-    try testing.expectEqualStrings(".", std.mem.span(nodes[2].payload.text.value));
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
+    try testing.expectEqualStrings(".", nodes[2].text.value);
 }
 
 test "unmatched nested emphasis" {
@@ -4227,16 +4142,16 @@ test "unmatched nested emphasis" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.strong, nodes[0].tag);
-    try testing.expectEqual(1, nodes[0].payload.strong.n_children);
+    try testing.expectEqual(ast.NodeType.strong, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqual(1, nodes[0].strong.children.len);
 
     try testing.expectEqual(
         ast.NodeType.text,
-        nodes[0].payload.strong.children[0].tag,
+        @as(ast.NodeType, nodes[0].strong.children[0].*),
     );
     try testing.expectEqualStrings(
         "strong * with asterisk",
-        std.mem.span(nodes[0].payload.strong.children[0].payload.text.value),
+        nodes[0].strong.children[0].text.value,
     );
 }
 
@@ -4246,16 +4161,16 @@ test "unmatched nested emphasis no spacing" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.strong, nodes[0].tag);
-    try testing.expectEqual(1, nodes[0].payload.strong.n_children);
+    try testing.expectEqual(ast.NodeType.strong, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqual(1, nodes[0].strong.children.len);
 
     try testing.expectEqual(
         ast.NodeType.text,
-        nodes[0].payload.strong.children[0].tag,
+        @as(ast.NodeType, nodes[0].strong.children[0].*),
     );
     try testing.expectEqualStrings(
         "foo*bar",
-        std.mem.span(nodes[0].payload.strong.children[0].payload.text.value),
+        nodes[0].strong.children[0].text.value,
     );
 }
 
@@ -4267,7 +4182,7 @@ test "bad star strong given spacing" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.text, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
 }
 
 test "star strong nested inside star emphasis" {
@@ -4276,34 +4191,32 @@ test "star strong nested inside star emphasis" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(3, nodes.len);
-    try testing.expectEqual(ast.NodeType.text, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
 
     const emphasis_node = nodes[1];
     try testing.expectEqual(
         ast.NodeType.emphasis,
-        emphasis_node.tag,
+        @as(ast.NodeType, emphasis_node.*),
     );
-    try testing.expectEqual(2, emphasis_node.payload.emphasis.n_children);
+    try testing.expectEqual(2, emphasis_node.emphasis.children.len);
     try testing.expectEqual(
         ast.NodeType.strong,
-        emphasis_node.payload.emphasis.children[0].tag,
+        @as(ast.NodeType, emphasis_node.emphasis.children[0].*),
     );
     try testing.expectEqualStrings(
         "is strong",
-        std.mem.span(
-            emphasis_node.payload.emphasis.children[0].payload.strong.children[0].payload.text.value,
-        ),
+        emphasis_node.emphasis.children[0].strong.children[0].text.value,
     );
     try testing.expectEqual(
         ast.NodeType.text,
-        emphasis_node.payload.emphasis.children[1].tag,
+        @as(ast.NodeType, emphasis_node.emphasis.children[1].*),
     );
     try testing.expectEqualStrings(
         " that is also emphasized",
-        std.mem.span(emphasis_node.payload.emphasis.children[1].payload.text.value),
+        emphasis_node.emphasis.children[1].text.value,
     );
 
-    try testing.expectEqual(ast.NodeType.text, nodes[2].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
 }
 
 test "star emphasis nested inside star strong" {
@@ -4312,34 +4225,32 @@ test "star emphasis nested inside star strong" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(3, nodes.len);
-    try testing.expectEqual(ast.NodeType.text, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
 
     const strong_node = nodes[1];
     try testing.expectEqual(
         ast.NodeType.strong,
-        strong_node.tag,
+        @as(ast.NodeType, strong_node.*),
     );
-    try testing.expectEqual(2, strong_node.payload.strong.n_children);
+    try testing.expectEqual(2, strong_node.strong.children.len);
     try testing.expectEqual(
         ast.NodeType.emphasis,
-        strong_node.payload.strong.children[0].tag,
+        @as(ast.NodeType, strong_node.strong.children[0].*),
     );
     try testing.expectEqualStrings(
         "is emphasis",
-        std.mem.span(
-            strong_node.payload.strong.children[0].payload.emphasis.children[0].payload.text.value,
-        ),
+        strong_node.strong.children[0].emphasis.children[0].text.value,
     );
     try testing.expectEqual(
         ast.NodeType.text,
-        strong_node.payload.strong.children[1].tag,
+        @as(ast.NodeType, strong_node.strong.children[1].*),
     );
     try testing.expectEqualStrings(
         " that is also strong",
-        std.mem.span(strong_node.payload.strong.children[1].payload.text.value),
+        strong_node.strong.children[1].text.value,
     );
 
-    try testing.expectEqual(ast.NodeType.text, nodes[2].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
 }
 
 test "star strong interior sum of lengths rule" {
@@ -4353,16 +4264,16 @@ test "star strong interior sum of lengths rule" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.strong, nodes[0].tag);
-    try testing.expectEqual(1, nodes[0].payload.strong.n_children);
+    try testing.expectEqual(ast.NodeType.strong, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqual(1, nodes[0].strong.children.len);
 
     try testing.expectEqual(
         ast.NodeType.text,
-        nodes[0].payload.strong.children[0].tag,
+        @as(ast.NodeType, nodes[0].strong.children[0].*),
     );
     try testing.expectEqualStrings(
         "(foo)****(bar)",
-        std.mem.span(nodes[0].payload.strong.children[0].payload.text.value),
+        nodes[0].strong.children[0].text.value,
     );
 }
 
@@ -4372,14 +4283,14 @@ test "underscore emphasis" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(2, nodes.len);
-    try testing.expectEqual(ast.NodeType.text, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
     try testing.expectEqual(
         ast.NodeType.emphasis,
-        nodes[1].tag,
+        @as(ast.NodeType, nodes[1].*),
     );
     try testing.expectEqualStrings(
         "is emphasized.",
-        std.mem.span(nodes[1].payload.emphasis.children[0].payload.text.value),
+        nodes[1].emphasis.children[0].text.value,
     );
 }
 
@@ -4389,16 +4300,16 @@ test "underscore right-delimiter emphasis" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(3, nodes.len);
-    try testing.expectEqual(ast.NodeType.text, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
     try testing.expectEqual(
         ast.NodeType.emphasis,
-        nodes[1].tag,
+        @as(ast.NodeType, nodes[1].*),
     );
     try testing.expectEqualStrings(
         "hyper",
-        std.mem.span(nodes[1].payload.emphasis.children[0].payload.text.value),
+        nodes[1].emphasis.children[0].text.value,
     );
-    try testing.expectEqual(ast.NodeType.text, nodes[2].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
 }
 
 // Unlike with star emphasis, this isn't valid
@@ -4408,10 +4319,10 @@ test "intraword underscore emphasis" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.text, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
     try testing.expectEqualStrings(
         "snake_case_baby",
-        std.mem.span(nodes[0].payload.text.value),
+        nodes[0].text.value,
     );
 }
 
@@ -4421,18 +4332,18 @@ test "underscore emphasis after punctuation" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(3, nodes.len);
-    try testing.expectEqual(ast.NodeType.text, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
 
     try testing.expectEqual(
         ast.NodeType.emphasis,
-        nodes[1].tag,
+        @as(ast.NodeType, nodes[1].*),
     );
     try testing.expectEqualStrings(
         "\"emphasis\"",
-        std.mem.span(nodes[1].payload.emphasis.children[0].payload.text.value),
+        nodes[1].emphasis.children[0].text.value,
     );
 
-    try testing.expectEqual(ast.NodeType.text, nodes[2].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
 }
 
 test "underscore emphasis nested unmatched" {
@@ -4443,17 +4354,17 @@ test "underscore emphasis nested unmatched" {
     try testing.expectEqual(1, nodes.len);
     try testing.expectEqual(
         ast.NodeType.emphasis,
-        nodes[0].tag,
+        @as(ast.NodeType, nodes[0].*),
     );
-    try testing.expectEqual(1, nodes[0].payload.emphasis.n_children);
+    try testing.expectEqual(1, nodes[0].emphasis.children.len);
 
     try testing.expectEqual(
         ast.NodeType.text,
-        nodes[0].payload.emphasis.children[0].tag,
+        @as(ast.NodeType, nodes[0].emphasis.children[0].*),
     );
     try testing.expectEqualStrings(
         "foo *bar",
-        std.mem.span(nodes[0].payload.emphasis.children[0].payload.text.value),
+        nodes[0].emphasis.children[0].text.value,
     );
 }
 
@@ -4475,16 +4386,16 @@ test "underscore emphasis interior sum of lengths rule" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.emphasis, nodes[0].tag);
-    try testing.expectEqual(1, nodes[0].payload.emphasis.n_children);
+    try testing.expectEqual(ast.NodeType.emphasis, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqual(1, nodes[0].emphasis.children.len);
 
     try testing.expectEqual(
         ast.NodeType.text,
-        nodes[0].payload.emphasis.children[0].tag,
+        @as(ast.NodeType, nodes[0].emphasis.children[0].*),
     );
     try testing.expectEqualStrings(
         "(foo)__(bar)",
-        std.mem.span(nodes[0].payload.emphasis.children[0].payload.text.value),
+        nodes[0].emphasis.children[0].text.value,
     );
 }
 
@@ -4494,15 +4405,15 @@ test "underscore strong" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(3, nodes.len);
-    try testing.expectEqual(ast.NodeType.text, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
 
-    try testing.expectEqual(ast.NodeType.strong, nodes[1].tag);
+    try testing.expectEqual(ast.NodeType.strong, @as(ast.NodeType, nodes[1].*));
     try testing.expectEqualStrings(
         "strongly emphasized",
-        std.mem.span(nodes[1].payload.strong.children[0].payload.text.value),
+        nodes[1].strong.children[0].text.value,
     );
 
-    try testing.expectEqual(ast.NodeType.text, nodes[2].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
 }
 
 test "underscore strong with nested unmatched" {
@@ -4511,16 +4422,16 @@ test "underscore strong with nested unmatched" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.strong, nodes[0].tag);
-    try testing.expectEqual(1, nodes[0].payload.strong.n_children);
+    try testing.expectEqual(ast.NodeType.strong, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqual(1, nodes[0].strong.children.len);
 
     try testing.expectEqual(
         ast.NodeType.text,
-        nodes[0].payload.strong.children[0].tag,
+        @as(ast.NodeType, nodes[0].strong.children[0].*),
     );
     try testing.expectEqualStrings(
         "foo*bar",
-        std.mem.span(nodes[0].payload.strong.children[0].payload.text.value),
+        nodes[0].strong.children[0].text.value,
     );
 }
 
@@ -4532,16 +4443,16 @@ test "underscore strong interior sum of lengths rule" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.strong, nodes[0].tag);
-    try testing.expectEqual(1, nodes[0].payload.strong.n_children);
+    try testing.expectEqual(ast.NodeType.strong, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqual(1, nodes[0].strong.children.len);
 
     try testing.expectEqual(
         ast.NodeType.text,
-        nodes[0].payload.strong.children[0].tag,
+        @as(ast.NodeType, nodes[0].strong.children[0].*),
     );
     try testing.expectEqualStrings(
         "(foo)____(bar)",
-        std.mem.span(nodes[0].payload.strong.children[0].payload.text.value),
+        nodes[0].strong.children[0].text.value,
     );
 }
 
@@ -4551,29 +4462,27 @@ test "triple underscore strong nested" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(3, nodes.len);
-    try testing.expectEqual(ast.NodeType.text, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
     try testing.expectEqualStrings(
         "This is ",
-        std.mem.span(nodes[0].payload.text.value),
+        nodes[0].text.value,
     );
 
     try testing.expectEqual(
         ast.NodeType.emphasis,
-        nodes[1].tag,
+        @as(ast.NodeType, nodes[1].*),
     );
     try testing.expectEqual(
         ast.NodeType.strong,
-        nodes[1].payload.emphasis.children[0].tag,
+        @as(ast.NodeType, nodes[1].emphasis.children[0].*),
     );
     try testing.expectEqualStrings(
         "a strong in an emphasis",
-        std.mem.span(
-            nodes[1].payload.emphasis.children[0].payload.strong.children[0].payload.text.value,
-        ),
+        nodes[1].emphasis.children[0].strong.children[0].text.value,
     );
 
-    try testing.expectEqual(ast.NodeType.text, nodes[2].tag);
-    try testing.expectEqualStrings(".", std.mem.span(nodes[2].payload.text.value));
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
+    try testing.expectEqualStrings(".", nodes[2].text.value);
 }
 
 test "unmatched nested underscore" {
@@ -4584,17 +4493,17 @@ test "unmatched nested underscore" {
     try testing.expectEqual(1, nodes.len);
     try testing.expectEqual(
         ast.NodeType.emphasis,
-        nodes[0].tag,
+        @as(ast.NodeType, nodes[0].*),
     );
-    try testing.expectEqual(1, nodes[0].payload.emphasis.n_children);
+    try testing.expectEqual(1, nodes[0].emphasis.children.len);
 
     try testing.expectEqual(
         ast.NodeType.text,
-        nodes[0].payload.emphasis.children[0].tag,
+        @as(ast.NodeType, nodes[0].emphasis.children[0].*),
     );
     try testing.expectEqualStrings(
         "foo _bar",
-        std.mem.span(nodes[0].payload.emphasis.children[0].payload.text.value),
+        nodes[0].emphasis.children[0].text.value,
     );
 }
 
@@ -4606,21 +4515,21 @@ test "interleaved emphasis" {
 
     try testing.expectEqual(2, nodes.len);
 
-    try testing.expectEqual(ast.NodeType.emphasis, nodes[0].tag);
-    try testing.expectEqual(1, nodes[0].payload.strong.n_children);
+    try testing.expectEqual(ast.NodeType.emphasis, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqual(1, nodes[0].emphasis.children.len);
     try testing.expectEqual(
         ast.NodeType.text,
-        nodes[0].payload.emphasis.children[0].tag,
+        @as(ast.NodeType, nodes[0].emphasis.children[0].*),
     );
     try testing.expectEqualStrings(
         "_bar",
-        std.mem.span(nodes[0].payload.emphasis.children[0].payload.text.value),
+        nodes[0].emphasis.children[0].text.value,
     );
 
-    try testing.expectEqual(ast.NodeType.text, nodes[1].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[1].*));
     try testing.expectEqualStrings(
         "_",
-        std.mem.span(nodes[1].payload.text.value),
+        nodes[1].text.value,
     );
 
     // Same test with symbols reversed
@@ -4630,21 +4539,21 @@ test "interleaved emphasis" {
 
     try testing.expectEqual(2, nodes2.len);
 
-    try testing.expectEqual(ast.NodeType.emphasis, nodes2[0].tag);
-    try testing.expectEqual(1, nodes2[0].payload.strong.n_children);
+    try testing.expectEqual(ast.NodeType.emphasis, @as(ast.NodeType, nodes2[0].*));
+    try testing.expectEqual(1, nodes2[0].emphasis.children.len);
     try testing.expectEqual(
         ast.NodeType.text,
-        nodes2[0].payload.emphasis.children[0].tag,
+        @as(ast.NodeType, nodes2[0].emphasis.children[0].*),
     );
     try testing.expectEqualStrings(
         "*bar",
-        std.mem.span(nodes2[0].payload.emphasis.children[0].payload.text.value),
+        nodes2[0].emphasis.children[0].text.value,
     );
 
-    try testing.expectEqual(ast.NodeType.text, nodes2[1].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes2[1].*));
     try testing.expectEqualStrings(
         "*",
-        std.mem.span(nodes2[1].payload.text.value),
+        nodes2[1].text.value,
     );
 }
 
@@ -4659,26 +4568,26 @@ test "nested interleaved emphasis" {
 
     try testing.expectEqual(2, nodes.len);
 
-    try testing.expectEqual(ast.NodeType.emphasis, nodes[0].tag);
-    try testing.expectEqual(1, nodes[0].payload.emphasis.n_children);
+    try testing.expectEqual(ast.NodeType.emphasis, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqual(1, nodes[0].emphasis.children.len);
     try testing.expectEqual(
         ast.NodeType.text,
-        nodes[0].payload.emphasis.children[0].tag,
+        @as(ast.NodeType, nodes[0].emphasis.children[0].*),
     );
     try testing.expectEqualStrings(
         "_(_bar",
-        std.mem.span(nodes[0].payload.emphasis.children[0].payload.text.value),
+        nodes[0].emphasis.children[0].text.value,
     );
 
-    try testing.expectEqual(ast.NodeType.emphasis, nodes[1].tag);
-    try testing.expectEqual(1, nodes[1].payload.emphasis.n_children);
+    try testing.expectEqual(ast.NodeType.emphasis, @as(ast.NodeType, nodes[1].*));
+    try testing.expectEqual(1, nodes[1].emphasis.children.len);
     try testing.expectEqual(
         ast.NodeType.text,
-        nodes[1].payload.emphasis.children[0].tag,
+        @as(ast.NodeType, nodes[1].emphasis.children[0].*),
     );
     try testing.expectEqualStrings(
         ")",
-        std.mem.span(nodes[1].payload.emphasis.children[0].payload.text.value),
+        nodes[1].emphasis.children[0].text.value,
     );
 }
 
@@ -4690,21 +4599,21 @@ test "interleaved strong" {
 
     try testing.expectEqual(2, nodes.len);
 
-    try testing.expectEqual(ast.NodeType.strong, nodes[0].tag);
-    try testing.expectEqual(1, nodes[0].payload.strong.n_children);
+    try testing.expectEqual(ast.NodeType.strong, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqual(1, nodes[0].strong.children.len);
     try testing.expectEqual(
         ast.NodeType.text,
-        nodes[0].payload.strong.children[0].tag,
+        @as(ast.NodeType, nodes[0].strong.children[0].*),
     );
     try testing.expectEqualStrings(
         "__bar",
-        std.mem.span(nodes[0].payload.strong.children[0].payload.text.value),
+        nodes[0].strong.children[0].text.value,
     );
 
-    try testing.expectEqual(ast.NodeType.text, nodes[1].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[1].*));
     try testing.expectEqualStrings(
         "__",
-        std.mem.span(nodes[1].payload.text.value),
+        nodes[1].text.value,
     );
 
     // Same test with symbols reversed
@@ -4714,21 +4623,21 @@ test "interleaved strong" {
 
     try testing.expectEqual(2, nodes2.len);
 
-    try testing.expectEqual(ast.NodeType.strong, nodes2[0].tag);
-    try testing.expectEqual(1, nodes2[0].payload.strong.n_children);
+    try testing.expectEqual(ast.NodeType.strong, @as(ast.NodeType, nodes2[0].*));
+    try testing.expectEqual(1, nodes2[0].strong.children.len);
     try testing.expectEqual(
         ast.NodeType.text,
-        nodes2[0].payload.strong.children[0].tag,
+        @as(ast.NodeType, nodes2[0].strong.children[0].*),
     );
     try testing.expectEqualStrings(
         "**bar",
-        std.mem.span(nodes2[0].payload.strong.children[0].payload.text.value),
+        nodes2[0].strong.children[0].text.value,
     );
 
-    try testing.expectEqual(ast.NodeType.text, nodes2[1].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes2[1].*));
     try testing.expectEqualStrings(
         "**",
-        std.mem.span(nodes2[1].payload.text.value),
+        nodes2[1].text.value,
     );
 }
 
@@ -4743,21 +4652,21 @@ test "nested interleaved emphasis and strong" {
 
     try testing.expectEqual(2, nodes.len);
 
-    try testing.expectEqual(ast.NodeType.emphasis, nodes[0].tag);
-    try testing.expectEqual(1, nodes[0].payload.emphasis.n_children);
+    try testing.expectEqual(ast.NodeType.emphasis, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqual(1, nodes[0].emphasis.children.len);
     try testing.expectEqual(
         ast.NodeType.text,
-        nodes[0].payload.emphasis.children[0].tag,
+        @as(ast.NodeType, nodes[0].emphasis.children[0].*),
     );
     try testing.expectEqualStrings(
         "__(_bar",
-        std.mem.span(nodes[0].payload.emphasis.children[0].payload.text.value),
+        nodes[0].emphasis.children[0].text.value,
     );
 
-    try testing.expectEqual(ast.NodeType.text, nodes[1].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[1].*));
     try testing.expectEqualStrings(
         "_)__",
-        std.mem.span(nodes[1].payload.text.value),
+        nodes[1].text.value,
     );
 
     value = "_****foo_****";
@@ -4766,21 +4675,21 @@ test "nested interleaved emphasis and strong" {
 
     try testing.expectEqual(2, nodes2.len);
 
-    try testing.expectEqual(ast.NodeType.emphasis, nodes2[0].tag);
-    try testing.expectEqual(1, nodes2[0].payload.emphasis.n_children);
+    try testing.expectEqual(ast.NodeType.emphasis, @as(ast.NodeType, nodes2[0].*));
+    try testing.expectEqual(1, nodes2[0].emphasis.children.len);
     try testing.expectEqual(
         ast.NodeType.text,
-        nodes2[0].payload.emphasis.children[0].tag,
+        @as(ast.NodeType, nodes2[0].emphasis.children[0].*),
     );
     try testing.expectEqualStrings(
         "****foo",
-        std.mem.span(nodes2[0].payload.emphasis.children[0].payload.text.value),
+        nodes2[0].emphasis.children[0].text.value,
     );
 
-    try testing.expectEqual(ast.NodeType.text, nodes2[1].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes2[1].*));
     try testing.expectEqualStrings(
         "****",
-        std.mem.span(nodes2[1].payload.text.value),
+        nodes2[1].text.value,
     );
 }
 
@@ -4801,78 +4710,78 @@ test "nesting feast of insanity" {
     //   - strong
     //     - text "feast!"
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.strong, nodes[0].tag);
-    try testing.expectEqual(3, nodes[0].payload.strong.n_children);
+    try testing.expectEqual(ast.NodeType.strong, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqual(3, nodes[0].strong.children.len);
 
-    const emph = nodes[0].payload.strong.children[0];
-    try testing.expectEqual(ast.NodeType.emphasis, emph.tag);
-    try testing.expectEqual(2, emph.payload.emphasis.n_children);
+    const emph = nodes[0].strong.children[0];
+    try testing.expectEqual(ast.NodeType.emphasis, @as(ast.NodeType, emph.*));
+    try testing.expectEqual(2, emph.emphasis.children.len);
     {
-        const child_text = emph.payload.emphasis.children[0];
+        const child_text = emph.emphasis.children[0];
         try testing.expectEqual(
             ast.NodeType.text,
-            child_text.tag,
+            @as(ast.NodeType, child_text.*),
         );
         try testing.expectEqualStrings(
             "My, ",
-            std.mem.span(child_text.payload.text.value),
+            child_text.text.value,
         );
 
-        const child_strong = emph.payload.emphasis.children[1];
+        const child_strong = emph.emphasis.children[1];
         try testing.expectEqual(
             ast.NodeType.strong,
-            child_strong.tag,
+            @as(ast.NodeType, child_strong.*),
         );
-        try testing.expectEqual(1, child_strong.payload.strong.n_children);
-        const grandchild_strong = child_strong.payload.strong.children[0];
+        try testing.expectEqual(1, child_strong.strong.children.len);
+        const grandchild_strong = child_strong.strong.children[0];
         try testing.expectEqual(
             ast.NodeType.strong,
-            grandchild_strong.tag,
+            @as(ast.NodeType, grandchild_strong.*),
         );
-        try testing.expectEqual(1, grandchild_strong.payload.strong.n_children);
-        const ggrandchild_text = grandchild_strong.payload.strong.children[0];
+        try testing.expectEqual(1, grandchild_strong.strong.children.len);
+        const ggrandchild_text = grandchild_strong.strong.children[0];
         try testing.expectEqual(
             ast.NodeType.text,
-            ggrandchild_text.tag,
+            @as(ast.NodeType, ggrandchild_text.*),
         );
         try testing.expectEqualStrings(
             "hello",
-            std.mem.span(ggrandchild_text.payload.text.value),
+            ggrandchild_text.text.value,
         );
     }
 
-    const text = nodes[0].payload.strong.children[1];
-    try testing.expectEqual(ast.NodeType.text, text.tag);
-    try testing.expectEqualStrings(", ", std.mem.span(text.payload.text.value));
+    const text = nodes[0].strong.children[1];
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, text.*));
+    try testing.expectEqualStrings(", ", text.text.value);
 
-    const emph2 = nodes[0].payload.strong.children[2];
-    try testing.expectEqual(ast.NodeType.emphasis, emph2.tag);
-    try testing.expectEqual(2, emph2.payload.emphasis.n_children);
+    const emph2 = nodes[0].strong.children[2];
+    try testing.expectEqual(ast.NodeType.emphasis, @as(ast.NodeType, emph2.*));
+    try testing.expectEqual(2, emph2.emphasis.children.len);
     {
-        const child_text = emph2.payload.emphasis.children[0];
+        const child_text = emph2.emphasis.children[0];
         try testing.expectEqual(
             ast.NodeType.text,
-            child_text.tag,
+            @as(ast.NodeType, child_text.*),
         );
         try testing.expectEqualStrings(
             "what a ",
-            std.mem.span(child_text.payload.text.value),
+            child_text.text.value,
         );
 
-        const child_strong = emph2.payload.emphasis.children[1];
+        const child_strong = emph2.emphasis.children[1];
         try testing.expectEqual(
             ast.NodeType.strong,
-            child_strong.tag,
+            @as(ast.NodeType, child_strong.*),
         );
-        try testing.expectEqual(1, child_strong.payload.strong.n_children);
-        const grandchild_text = child_strong.payload.strong.children[0];
+        try testing.expectEqual(1, child_strong.strong.children.len);
+        const grandchild_text = child_strong.strong.children[0];
         try testing.expectEqual(
             ast.NodeType.text,
-            grandchild_text.tag,
+            @as(ast.NodeType, grandchild_text.*),
         );
         try testing.expectEqualStrings(
             "feast!",
-            std.mem.span(grandchild_text.payload.text.value),
+            grandchild_text.text.value,
         );
     }
 }
@@ -4884,21 +4793,21 @@ test "emphasis with nonsignificant brackets" {
 
     try testing.expectEqual(2, nodes.len);
 
-    try testing.expectEqual(ast.NodeType.text, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
     try testing.expectEqualStrings(
         "[foo ",
-        std.mem.span(nodes[0].payload.text.value),
+        nodes[0].text.value,
     );
 
-    try testing.expectEqual(ast.NodeType.emphasis, nodes[1].tag);
-    try testing.expectEqual(1, nodes[1].payload.emphasis.n_children);
+    try testing.expectEqual(ast.NodeType.emphasis, @as(ast.NodeType, nodes[1].*));
+    try testing.expectEqual(1, nodes[1].emphasis.children.len);
     try testing.expectEqual(
         ast.NodeType.text,
-        nodes[1].payload.emphasis.children[0].tag,
+        @as(ast.NodeType, nodes[1].emphasis.children[0].*),
     );
     try testing.expectEqualStrings(
         "bar] baz",
-        std.mem.span(nodes[1].payload.emphasis.children[0].payload.text.value),
+        nodes[1].emphasis.children[0].text.value,
     );
 }
 
@@ -4911,29 +4820,29 @@ test "codespan and underscore emphasis" {
 
     try testing.expectEqual(
         ast.NodeType.inline_code,
-        nodes[0].tag,
+        @as(ast.NodeType, nodes[0].*),
     );
     try testing.expectEqualStrings(
         "foo",
-        std.mem.span(nodes[0].payload.inline_code.value),
+        nodes[0].inline_code.value,
     );
 
     try testing.expectEqual(
         ast.NodeType.emphasis,
-        nodes[1].tag,
+        @as(ast.NodeType, nodes[1].*),
     );
     try testing.expectEqualStrings(
         "bim",
-        std.mem.span(nodes[1].payload.emphasis.children[0].payload.text.value),
+        nodes[1].emphasis.children[0].text.value,
     );
 
     try testing.expectEqual(
         ast.NodeType.inline_code,
-        nodes[2].tag,
+        @as(ast.NodeType, nodes[2].*),
     );
     try testing.expectEqualStrings(
         "bar",
-        std.mem.span(nodes[2].payload.inline_code.value),
+        nodes[2].inline_code.value,
     );
 }
 
@@ -4945,11 +4854,11 @@ test "codespan strip space" {
     try testing.expectEqual(1, nodes.len);
     try testing.expectEqual(
         ast.NodeType.inline_code,
-        nodes[0].tag,
+        @as(ast.NodeType, nodes[0].*),
     );
     try testing.expectEqualStrings(
         "``foo``",
-        std.mem.span(nodes[0].payload.inline_code.value),
+        nodes[0].inline_code.value,
     );
 }
 
@@ -4961,16 +4870,16 @@ test "codespan escaped backtick" {
 
     try testing.expectEqual(2, nodes.len);
 
-    try testing.expectEqual(ast.NodeType.inline_code, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.inline_code, @as(ast.NodeType, nodes[0].*));
     try testing.expectEqualStrings(
         "foo\\",
-        std.mem.span(nodes[0].payload.inline_code.value),
+        nodes[0].inline_code.value,
     );
 
-    try testing.expectEqual(ast.NodeType.text, nodes[1].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[1].*));
     try testing.expectEqualStrings(
         " bar`",
-        std.mem.span(nodes[1].payload.inline_code.value),
+        nodes[1].text.value,
     );
 }
 
@@ -4982,18 +4891,18 @@ test "inline link containing emphasis" {
     try testing.expectEqual(1, nodes.len);
     try testing.expectEqual(
         ast.NodeType.link,
-        nodes[0].tag,
+        @as(ast.NodeType, nodes[0].*),
     );
 
-    try testing.expectEqual(1, nodes[0].payload.link.n_children);
-    const emph = nodes[0].payload.link.children[0];
+    try testing.expectEqual(1, nodes[0].link.children.len);
+    const emph = nodes[0].link.children[0];
     try testing.expectEqual(
         ast.NodeType.emphasis,
-        emph.tag,
+        @as(ast.NodeType, emph.*),
     );
     try testing.expectEqualStrings(
         "my link",
-        std.mem.span(emph.payload.emphasis.children[0].payload.text.value),
+        emph.emphasis.children[0].text.value,
     );
 }
 
@@ -5006,27 +4915,27 @@ test "inline link emphasis precedence" {
 
     try testing.expectEqual(
         ast.NodeType.text,
-        nodes[0].tag,
+        @as(ast.NodeType, nodes[0].*),
     );
     try testing.expectEqualStrings(
         "*",
-        std.mem.span(nodes[0].payload.text.value),
+        nodes[0].text.value,
     );
 
     const link_node = nodes[1];
     try testing.expectEqual(
         ast.NodeType.link,
-        link_node.tag,
+        @as(ast.NodeType, link_node.*),
     );
 
-    try testing.expectEqual(1, link_node.payload.link.n_children);
+    try testing.expectEqual(1, link_node.link.children.len);
     try testing.expectEqual(
         ast.NodeType.text,
-        link_node.payload.link.children[0].tag,
+        @as(ast.NodeType, link_node.link.children[0].*),
     );
     try testing.expectEqualStrings(
         "foo*",
-        std.mem.span(link_node.payload.link.children[0].payload.text.value),
+        link_node.link.children[0].text.value,
     );
 }
 
@@ -5036,18 +4945,18 @@ test "inline link with hyphens, slashes, and equals" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.link, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[0].*));
     try testing.expectEqualStrings(
         "google.com/bim-bam?q=bar",
-        std.mem.span(nodes[0].payload.link.url),
+        nodes[0].link.url,
     );
 
-    try testing.expectEqual(1, nodes[0].payload.link.n_children);
-    const text = nodes[0].payload.link.children[0];
-    try testing.expectEqual(ast.NodeType.text, text.tag);
+    try testing.expectEqual(1, nodes[0].link.children.len);
+    const text = nodes[0].link.children[0];
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, text.*));
     try testing.expectEqualStrings(
         "foo-bar",
-        std.mem.span(text.payload.text.value),
+        text.text.value,
     );
 }
 
@@ -5060,25 +4969,25 @@ test "inline link nesting not allowed" {
 
     try testing.expectEqual(
         ast.NodeType.text,
-        nodes[0].tag,
+        @as(ast.NodeType, nodes[0].*),
     );
     try testing.expectEqualStrings(
         "[foo ",
-        std.mem.span(nodes[0].payload.text.value),
+        nodes[0].text.value,
     );
 
     try testing.expectEqual(
         ast.NodeType.link,
-        nodes[1].tag,
+        @as(ast.NodeType, nodes[1].*),
     );
 
     try testing.expectEqual(
         ast.NodeType.text,
-        nodes[2].tag,
+        @as(ast.NodeType, nodes[2].*),
     );
     try testing.expectEqualStrings(
         "]()",
-        std.mem.span(nodes[2].payload.text.value),
+        nodes[2].text.value,
     );
 }
 
@@ -5088,11 +4997,11 @@ test "inline link destination angle brackets" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.link, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[0].*));
 
     try testing.expectEqualStrings(
         "bar",
-        std.mem.span(nodes[0].payload.link.url),
+        nodes[0].link.url,
     );
 }
 
@@ -5102,11 +5011,11 @@ test "inline link destination no angle brackets" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.link, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[0].*));
 
     try testing.expectEqualStrings(
         "bar",
-        std.mem.span(nodes[0].payload.link.url),
+        nodes[0].link.url,
     );
 }
 
@@ -5116,15 +5025,15 @@ test "inline link with destination and title" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.link, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[0].*));
 
     try testing.expectEqualStrings(
         "bar",
-        std.mem.span(nodes[0].payload.link.url),
+        nodes[0].link.url,
     );
     try testing.expectEqualStrings(
         "baz",
-        std.mem.span(nodes[0].payload.link.title),
+        nodes[0].link.title,
     );
 }
 
@@ -5134,20 +5043,20 @@ test "inline link with exclamation mark" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.link, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[0].*));
 
     try testing.expectEqualStrings(
         "bar",
-        std.mem.span(nodes[0].payload.link.url),
+        nodes[0].link.url,
     );
 
-    try testing.expectEqual(1, nodes[0].payload.link.n_children);
-    const text = nodes[0].payload.link.children[0];
+    try testing.expectEqual(1, nodes[0].link.children.len);
+    const text = nodes[0].link.children[0];
     try testing.expectEqual(
         ast.NodeType.text,
-        text.tag,
+        @as(ast.NodeType, text.*),
     );
-    try testing.expectEqualStrings("foo!", std.mem.span(text.payload.text.value));
+    try testing.expectEqualStrings("foo!", text.text.value);
 }
 
 test "inline link nested emphasis with nonsignificant brackets" {
@@ -5158,67 +5067,67 @@ test "inline link nested emphasis with nonsignificant brackets" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.link, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[0].*));
 
     const link_node = nodes[0];
     try testing.expectEqualStrings(
         "/bar",
-        std.mem.span(link_node.payload.link.url),
+        link_node.link.url,
     );
     try testing.expectEqualStrings(
         "",
-        std.mem.span(link_node.payload.link.title),
+        link_node.link.title,
     );
 
-    try testing.expectEqual(3, link_node.payload.link.n_children);
+    try testing.expectEqual(3, link_node.link.children.len);
 
     // first emphasis node
     try testing.expectEqual(
         ast.NodeType.emphasis,
-        link_node.payload.link.children[0].tag,
+        @as(ast.NodeType, link_node.link.children[0].*),
     );
     {
-        const emphasis_node = link_node.payload.link.children[0];
-        try testing.expectEqual(1, emphasis_node.payload.emphasis.n_children);
+        const emphasis_node = link_node.link.children[0];
+        try testing.expectEqual(1, emphasis_node.emphasis.children.len);
         try testing.expectEqual(
             ast.NodeType.text,
-            emphasis_node.payload.emphasis.children[0].tag,
+            @as(ast.NodeType, emphasis_node.emphasis.children[0].*),
         );
         try testing.expectEqualStrings(
             "[",
-            std.mem.span(
-                emphasis_node.payload.emphasis.children[0].payload.text.value
-            ),
+
+                emphasis_node.emphasis.children[0].text.value
+            ,
         );
     }
 
     // text node
     try testing.expectEqual(
         ast.NodeType.text,
-        link_node.payload.link.children[1].tag,
+        @as(ast.NodeType, link_node.link.children[1].*),
     );
     try testing.expectEqualStrings(
         "[",
-        std.mem.span(link_node.payload.link.children[1].payload.text.value),
+        link_node.link.children[1].text.value,
     );
 
     // second emphasis node
     try testing.expectEqual(
         ast.NodeType.emphasis,
-        link_node.payload.link.children[2].tag,
+        @as(ast.NodeType, link_node.link.children[2].*),
     );
     {
-        const emphasis_node = link_node.payload.link.children[2];
-        try testing.expectEqual(1, emphasis_node.payload.emphasis.n_children);
+        const emphasis_node = link_node.link.children[2];
+        try testing.expectEqual(1, emphasis_node.emphasis.children.len);
         try testing.expectEqual(
             ast.NodeType.text,
-            emphasis_node.payload.emphasis.children[0].tag,
+            @as(ast.NodeType, emphasis_node.emphasis.children[0].*),
         );
         try testing.expectEqualStrings(
             "foo[]]]",
-            std.mem.span(
-                emphasis_node.payload.emphasis.children[0].payload.text.value
-            ),
+
+                emphasis_node.emphasis.children[0].text.value
+            ,
         );
     }
 }
@@ -5229,26 +5138,26 @@ test "URI autolink" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.link, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[0].*));
 
     const link_node = nodes[0];
     try testing.expectEqualStrings(
         "http://foo.com/bar?bim%5B%5D=baz",
-        std.mem.span(link_node.payload.link.url),
+        link_node.link.url,
     );
     try testing.expectEqualStrings(
         "",
-        std.mem.span(link_node.payload.link.title),
+        link_node.link.title,
     );
 
-    try testing.expectEqual(1, link_node.payload.link.n_children);
+    try testing.expectEqual(1, link_node.link.children.len);
     try testing.expectEqual(
         ast.NodeType.text,
-        link_node.payload.link.children[0].tag,
+        @as(ast.NodeType, link_node.link.children[0].*),
     );
     try testing.expectEqualStrings(
         "http://foo.com/bar?bim[]=baz",
-        std.mem.span(link_node.payload.link.children[0].payload.text.value),
+        link_node.link.children[0].text.value,
     );
 }
 
@@ -5258,26 +5167,26 @@ test "email autolink" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.link, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[0].*));
 
     const link_node = nodes[0];
     try testing.expectEqualStrings(
         "mailto:person@gmail.com",
-        std.mem.span(link_node.payload.link.url),
+        link_node.link.url,
     );
     try testing.expectEqualStrings(
         "",
-        std.mem.span(link_node.payload.link.title),
+        link_node.link.title,
     );
 
-    try testing.expectEqual(1, link_node.payload.link.n_children);
+    try testing.expectEqual(1, link_node.link.children.len);
     try testing.expectEqual(
         ast.NodeType.text,
-        link_node.payload.link.children[0].tag,
+        @as(ast.NodeType, link_node.link.children[0].*),
     );
     try testing.expectEqualStrings(
         "person@gmail.com",
-        std.mem.span(link_node.payload.link.children[0].payload.text.value),
+        link_node.link.children[0].text.value,
     );
 }
 
@@ -5287,20 +5196,20 @@ test "image" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.image, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.image, @as(ast.NodeType, nodes[0].*));
 
     const image_node = nodes[0];
     try testing.expectEqualStrings(
         "foo",
-        std.mem.span(image_node.payload.image.alt),
+        image_node.image.alt,
     );
     try testing.expectEqualStrings(
         "/bar",
-        std.mem.span(image_node.payload.image.url),
+        image_node.image.url,
     );
     try testing.expectEqualStrings(
         "bim",
-        std.mem.span(image_node.payload.image.title),
+        image_node.image.title,
     );
 }
 
@@ -5310,16 +5219,16 @@ test "image complicated alt text" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.image, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.image, @as(ast.NodeType, nodes[0].*));
 
     const image_node = nodes[0];
     try testing.expectEqualStrings(
         "foo bim",
-        std.mem.span(image_node.payload.image.alt),
+        image_node.image.alt,
     );
     try testing.expectEqualStrings(
         "/bar",
-        std.mem.span(image_node.payload.image.url),
+        image_node.image.url,
     );
 }
 
@@ -5329,25 +5238,25 @@ test "image inside link" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.link, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[0].*));
     const link_node = nodes[0];
     try testing.expectEqualStrings(
         "/bar.com/baz",
-        std.mem.span(link_node.payload.link.url),
+        link_node.link.url,
     );
     try testing.expectEqualStrings(
         "",
-        std.mem.span(link_node.payload.link.title),
+        link_node.link.title,
     );
 
-    try testing.expectEqual(1, link_node.payload.link.n_children);
+    try testing.expectEqual(1, link_node.link.children.len);
     try testing.expectEqual(
         ast.NodeType.image,
-        link_node.payload.link.children[0].tag,
+        @as(ast.NodeType, link_node.link.children[0].*),
     );
     try testing.expectEqualStrings(
         "/foo.jpg",
-        std.mem.span(link_node.payload.link.children[0].payload.image.url),
+        link_node.link.children[0].image.url,
     );
 }
 
@@ -5358,19 +5267,19 @@ test "link inside image" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.image, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.image, @as(ast.NodeType, nodes[0].*));
 
     try testing.expectEqualStrings(
         "/foo.jpg",
-        std.mem.span(nodes[0].payload.image.url),
+        nodes[0].image.url,
     );
     try testing.expectEqualStrings(
         "",
-        std.mem.span(nodes[0].payload.image.title),
+        nodes[0].image.title,
     );
     try testing.expectEqualStrings(
         "",
-        std.mem.span(nodes[0].payload.image.alt),
+        nodes[0].image.alt,
     );
 }
 
@@ -5390,24 +5299,24 @@ test "full reference link" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.link, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[0].*));
 
     const link_node = nodes[0];
     try testing.expectEqualStrings(
         "/bar",
-        std.mem.span(link_node.payload.link.url),
+        link_node.link.url,
     );
     try testing.expectEqualStrings(
         "bim",
-        std.mem.span(link_node.payload.link.title),
+        link_node.link.title,
     );
 
-    try testing.expectEqual(1, link_node.payload.link.n_children);
-    const text_node = link_node.payload.link.children[0];
-    try testing.expectEqual(ast.NodeType.text, text_node.tag);
+    try testing.expectEqual(1, link_node.link.children.len);
+    const text_node = link_node.link.children[0];
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, text_node.*));
     try testing.expectEqualStrings(
         "my text",
-        std.mem.span(text_node.payload.text.value),
+        text_node.text.value,
     );
 }
 
@@ -5427,35 +5336,35 @@ test "collapsed reference link" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.link, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[0].*));
 
     const link_node = nodes[0];
     try testing.expectEqualStrings(
         "/bar",
-        std.mem.span(link_node.payload.link.url),
+        link_node.link.url,
     );
     try testing.expectEqualStrings(
         "bim",
-        std.mem.span(link_node.payload.link.title),
+        link_node.link.title,
     );
 
-    try testing.expectEqual(2, link_node.payload.link.n_children);
+    try testing.expectEqual(2, link_node.link.children.len);
 
-    const text_node = link_node.payload.link.children[0];
-    try testing.expectEqual(ast.NodeType.text, text_node.tag);
+    const text_node = link_node.link.children[0];
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, text_node.*));
     try testing.expectEqualStrings(
         "my ",
-        std.mem.span(text_node.payload.text.value),
+        text_node.text.value,
     );
 
-    const emph_node = link_node.payload.link.children[1];
+    const emph_node = link_node.link.children[1];
     try testing.expectEqual(
         ast.NodeType.emphasis,
-        emph_node.tag,
+        @as(ast.NodeType, emph_node.*),
     );
     try testing.expectEqualStrings(
         "text",
-        std.mem.span(emph_node.payload.emphasis.children[0].payload.text.value),
+        emph_node.emphasis.children[0].text.value,
     );
 }
 
@@ -5475,35 +5384,35 @@ test "shortcut reference link" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.link, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[0].*));
 
     const link_node = nodes[0];
     try testing.expectEqualStrings(
         "/bar",
-        std.mem.span(link_node.payload.link.url),
+        link_node.link.url,
     );
     try testing.expectEqualStrings(
         "bim",
-        std.mem.span(link_node.payload.link.title),
+        link_node.link.title,
     );
 
-    try testing.expectEqual(2, link_node.payload.link.n_children);
+    try testing.expectEqual(2, link_node.link.children.len);
 
-    const text_node = link_node.payload.link.children[0];
-    try testing.expectEqual(ast.NodeType.text, text_node.tag);
+    const text_node = link_node.link.children[0];
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, text_node.*));
     try testing.expectEqualStrings(
         "my ",
-        std.mem.span(text_node.payload.text.value),
+        text_node.text.value,
     );
 
-    const emph_node = link_node.payload.link.children[1];
+    const emph_node = link_node.link.children[1];
     try testing.expectEqual(
         ast.NodeType.emphasis,
-        emph_node.tag,
+        @as(ast.NodeType, emph_node.*),
     );
     try testing.expectEqualStrings(
         "text",
-        std.mem.span(emph_node.payload.emphasis.children[0].payload.text.value),
+        emph_node.emphasis.children[0].text.value,
     );
 }
 
@@ -5523,20 +5432,20 @@ test "full reference image" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.image, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.image, @as(ast.NodeType, nodes[0].*));
 
     const img_node = nodes[0];
     try testing.expectEqualStrings(
         "/image.jpg",
-        std.mem.span(img_node.payload.image.url),
+        img_node.image.url,
     );
     try testing.expectEqualStrings(
         "bim",
-        std.mem.span(img_node.payload.image.title),
+        img_node.image.title,
     );
     try testing.expectEqualStrings(
         "my image description",
-        std.mem.span(img_node.payload.image.alt),
+        img_node.image.alt,
     );
 }
 
@@ -5556,20 +5465,20 @@ test "collapsed reference image" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.image, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.image, @as(ast.NodeType, nodes[0].*));
 
     const img_node = nodes[0];
     try testing.expectEqualStrings(
         "/image.jpg",
-        std.mem.span(img_node.payload.image.url),
+        img_node.image.url,
     );
     try testing.expectEqualStrings(
         "bim",
-        std.mem.span(img_node.payload.image.title),
+        img_node.image.title,
     );
     try testing.expectEqualStrings(
         "foo",
-        std.mem.span(img_node.payload.image.alt),
+        img_node.image.alt,
     );
 }
 
@@ -5589,20 +5498,20 @@ test "shortcut reference image" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.image, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.image, @as(ast.NodeType, nodes[0].*));
 
     const img_node = nodes[0];
     try testing.expectEqualStrings(
         "/image.jpg",
-        std.mem.span(img_node.payload.image.url),
+        img_node.image.url,
     );
     try testing.expectEqualStrings(
         "bim",
-        std.mem.span(img_node.payload.image.title),
+        img_node.image.title,
     );
     try testing.expectEqualStrings(
         "foo",
-        std.mem.span(img_node.payload.image.alt),
+        img_node.image.alt,
     );
 }
 
@@ -5632,16 +5541,16 @@ test "reference image precedence" {
 
     try testing.expectEqual(2, nodes.len);
 
-    try testing.expectEqual(ast.NodeType.text, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
     try testing.expectEqualStrings(
         "![foo]",
-        std.mem.span(nodes[0].payload.text.value),
+        nodes[0].text.value,
     );
 
-    try testing.expectEqual(ast.NodeType.link, nodes[1].tag);
+    try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[1].*));
     try testing.expectEqualStrings(
         "/url1",
-        std.mem.span(nodes[1].payload.link.url),
+        nodes[1].link.url,
     );
 }
 
@@ -5652,20 +5561,20 @@ test "image nested emphasis with nonsignificant brackets" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.image, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.image, @as(ast.NodeType, nodes[0].*));
 
     const img_node = nodes[0];
     try testing.expectEqualStrings(
         "/bar",
-        std.mem.span(img_node.payload.image.url),
+        img_node.image.url,
     );
     try testing.expectEqualStrings(
         "[[foo[]]]",
-        std.mem.span(img_node.payload.image.alt),
+        img_node.image.alt,
     );
     try testing.expectEqualStrings(
         "",
-        std.mem.span(img_node.payload.image.title),
+        img_node.image.title,
     );
 }
 
@@ -5676,20 +5585,20 @@ test "image emphasis precedence" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.image, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.image, @as(ast.NodeType, nodes[0].*));
 
     const img_node = nodes[0];
     try testing.expectEqualStrings(
         "baz*",
-        std.mem.span(img_node.payload.image.url),
+        img_node.image.url,
     );
     try testing.expectEqualStrings(
         "foo *bar",
-        std.mem.span(img_node.payload.image.alt),
+        img_node.image.alt,
     );
     try testing.expectEqualStrings(
         "",
-        std.mem.span(img_node.payload.image.title),
+        img_node.image.title,
     );
 }
 
@@ -5700,20 +5609,20 @@ test "hard line break" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(3, nodes.len);
-    try testing.expectEqual(ast.NodeType.text, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
     try testing.expectEqual(
         ast.NodeType.@"break",
-        nodes[1].tag,
+        @as(ast.NodeType, nodes[1].*),
     );
-    try testing.expectEqual(ast.NodeType.text, nodes[2].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
 
     try testing.expectEqualStrings(
         "foo bar",
-        std.mem.span(nodes[0].payload.text.value),
+        nodes[0].text.value,
     );
     try testing.expectEqualStrings(
         "bim bam",
-        std.mem.span(nodes[2].payload.text.value),
+        nodes[2].text.value,
     );
 }
 
@@ -5724,10 +5633,10 @@ test "soft line break" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.text, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
     try testing.expectEqualStrings(
         "foo bar\nbim bam",
-        std.mem.span(nodes[0].payload.text.value),
+        nodes[0].text.value,
     );
 }
 
@@ -5738,10 +5647,10 @@ test "html open tag" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.html, @as(ast.NodeType, nodes[0].*));
     try testing.expectEqualStrings(
         "<span>",
-        std.mem.span(nodes[0].payload.html.value),
+        nodes[0].html.value,
     );
 }
 
@@ -5752,10 +5661,10 @@ test "html open tag with empty element" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.html, @as(ast.NodeType, nodes[0].*));
     try testing.expectEqualStrings(
         "<foo/>",
-        std.mem.span(nodes[0].payload.html.value),
+        nodes[0].html.value,
     );
 }
 
@@ -5766,10 +5675,10 @@ test "html open tag with number in tag name" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.html, @as(ast.NodeType, nodes[0].*));
     try testing.expectEqualStrings(
         "<h2>",
-        std.mem.span(nodes[0].payload.html.value),
+        nodes[0].html.value,
     );
 }
 
@@ -5780,10 +5689,10 @@ test "html open tag unquoted attributes" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.html, @as(ast.NodeType, nodes[0].*));
     try testing.expectEqualStrings(
         "<span bim class=foobar>",
-        std.mem.span(nodes[0].payload.html.value),
+        nodes[0].html.value,
     );
 }
 
@@ -5794,10 +5703,10 @@ test "html open tag quoted attributes" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.html, @as(ast.NodeType, nodes[0].*));
     try testing.expectEqualStrings(
         "<span id=\"bim baz\" class='foo_bar'>",
-        std.mem.span(nodes[0].payload.html.value),
+        nodes[0].html.value,
     );
 }
 
@@ -5810,16 +5719,16 @@ test "html open tag quoted attribute escape" {
 
     try testing.expectEqual(2, nodes.len);
 
-    try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.html, @as(ast.NodeType, nodes[0].*));
     try testing.expectEqualStrings(
         "<span id=\"bim\\\" class='foo_bar\\'>",
-        std.mem.span(nodes[0].payload.html.value),
+        nodes[0].html.value,
     );
 
-    try testing.expectEqual(ast.NodeType.text, nodes[1].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[1].*));
     try testing.expectEqualStrings(
         " foo' \"bar\"",
-        std.mem.span(nodes[1].payload.html.value),
+        nodes[1].text.value,
     );
 }
 
@@ -5832,10 +5741,10 @@ test "html open tag quoted attribute escaped backtick" {
 
     try testing.expectEqual(1, nodes.len);
 
-    try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.html, @as(ast.NodeType, nodes[0].*));
     try testing.expectEqualStrings(
         "<span class='foo_\\`bar'>",
-        std.mem.span(nodes[0].payload.html.value),
+        nodes[0].html.value,
     );
 }
 
@@ -5847,16 +5756,16 @@ test "html open tag multiple" {
 
     try testing.expectEqual(2, nodes.len);
 
-    try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.html, @as(ast.NodeType, nodes[0].*));
     try testing.expectEqualStrings(
         "<foo />",
-        std.mem.span(nodes[0].payload.html.value),
+        nodes[0].html.value,
     );
 
-    try testing.expectEqual(ast.NodeType.html, nodes[1].tag);
+    try testing.expectEqual(ast.NodeType.html, @as(ast.NodeType, nodes[1].*));
     try testing.expectEqualStrings(
         "<bar />",
-        std.mem.span(nodes[1].payload.html.value),
+        nodes[1].html.value,
     );
 }
 
@@ -5868,16 +5777,16 @@ test "html close tag multiple" {
 
     try testing.expectEqual(2, nodes.len);
 
-    try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.html, @as(ast.NodeType, nodes[0].*));
     try testing.expectEqualStrings(
         "</foo>",
-        std.mem.span(nodes[0].payload.html.value),
+        nodes[0].html.value,
     );
 
-    try testing.expectEqual(ast.NodeType.html, nodes[1].tag);
+    try testing.expectEqual(ast.NodeType.html, @as(ast.NodeType, nodes[1].*));
     try testing.expectEqualStrings(
         "</bar>",
-        std.mem.span(nodes[1].payload.html.value),
+        nodes[1].html.value,
     );
 }
 
@@ -5889,16 +5798,16 @@ test "html tags with hyphens" {
 
     try testing.expectEqual(2, nodes.len);
 
-    try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.html, @as(ast.NodeType, nodes[0].*));
     try testing.expectEqualStrings(
         "<foo-bar bim-bam=zim-zap>",
-        std.mem.span(nodes[0].payload.html.value),
+        nodes[0].html.value,
     );
 
-    try testing.expectEqual(ast.NodeType.html, nodes[1].tag);
+    try testing.expectEqual(ast.NodeType.html, @as(ast.NodeType, nodes[1].*));
     try testing.expectEqualStrings(
         "</foo-bar>",
-        std.mem.span(nodes[1].payload.html.value),
+        nodes[1].html.value,
     );
 }
 
@@ -5909,10 +5818,10 @@ test "html comment" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.html, @as(ast.NodeType, nodes[0].*));
     try testing.expectEqualStrings(
         "<!-- I am a comment -->",
-        std.mem.span(nodes[0].payload.html.value),
+        nodes[0].html.value,
     );
 }
 
@@ -5923,10 +5832,10 @@ test "html/xml processing instruction" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.html, @as(ast.NodeType, nodes[0].*));
     try testing.expectEqualStrings(
         "<? foobar-bim zap:foo ?>",
-        std.mem.span(nodes[0].payload.html.value),
+        nodes[0].html.value,
     );
 }
 
@@ -5937,10 +5846,10 @@ test "html/xml declaration" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.html, @as(ast.NodeType, nodes[0].*));
     try testing.expectEqualStrings(
         "<!foobar-bim zap:foo >",
-        std.mem.span(nodes[0].payload.html.value),
+        nodes[0].html.value,
     );
 }
 
@@ -5951,10 +5860,10 @@ test "html CDATA section" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.html, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.html, @as(ast.NodeType, nodes[0].*));
     try testing.expectEqualStrings(
         "<![CDATA[ foo bar bim < & ]]>",
-        std.mem.span(nodes[0].payload.html.value),
+        nodes[0].html.value,
     );
 }
 
@@ -5964,15 +5873,15 @@ test "html within emphasis" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.emphasis, nodes[0].tag);
-    try testing.expectEqual(2, nodes[0].payload.emphasis.n_children);
+    try testing.expectEqual(ast.NodeType.emphasis, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqual(2, nodes[0].emphasis.children.len);
     try testing.expectEqual(
         ast.NodeType.html,
-        nodes[0].payload.emphasis.children[0].tag,
+        @as(ast.NodeType, nodes[0].emphasis.children[0].*),
     );
     try testing.expectEqual(
         ast.NodeType.html,
-        nodes[0].payload.emphasis.children[1].tag,
+        @as(ast.NodeType, nodes[0].emphasis.children[1].*),
     );
 }
 
@@ -5982,15 +5891,15 @@ test "html within strong" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.strong, nodes[0].tag);
-    try testing.expectEqual(2, nodes[0].payload.strong.n_children);
+    try testing.expectEqual(ast.NodeType.strong, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqual(2, nodes[0].strong.children.len);
     try testing.expectEqual(
         ast.NodeType.html,
-        nodes[0].payload.strong.children[0].tag,
+        @as(ast.NodeType, nodes[0].strong.children[0].*),
     );
     try testing.expectEqual(
         ast.NodeType.html,
-        nodes[0].payload.strong.children[1].tag,
+        @as(ast.NodeType, nodes[0].strong.children[1].*),
     );
 }
 
@@ -6000,19 +5909,19 @@ test "html within link" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.link, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.link, @as(ast.NodeType, nodes[0].*));
     try testing.expectEqualStrings(
         "foobar.com/url",
-        std.mem.span(nodes[0].payload.link.url),
+        nodes[0].link.url,
     );
-    try testing.expectEqual(2, nodes[0].payload.link.n_children);
+    try testing.expectEqual(2, nodes[0].link.children.len);
     try testing.expectEqual(
         ast.NodeType.html,
-        nodes[0].payload.link.children[0].tag,
+        @as(ast.NodeType, nodes[0].link.children[0].*),
     );
     try testing.expectEqual(
         ast.NodeType.html,
-        nodes[0].payload.link.children[1].tag,
+        @as(ast.NodeType, nodes[0].link.children[1].*),
     );
 }
 
@@ -6022,15 +5931,15 @@ test "unknown myst role" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.myst_role, nodes[0].tag);
-    try testing.expectEqual(0, nodes[0].payload.myst_role.n_children);
+    try testing.expectEqual(ast.NodeType.myst_role, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqual(0, nodes[0].myst_role.children.len);
     try testing.expectEqualStrings(
         "foo",
-        std.mem.span(nodes[0].payload.myst_role.name),
+        nodes[0].myst_role.name,
     );
     try testing.expectEqualStrings(
         "bar",
-        std.mem.span(nodes[0].payload.myst_role.value),
+        nodes[0].myst_role.value,
     );
 }
 
@@ -6041,10 +5950,10 @@ test "myst role with invalid name" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.myst_role_error, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.myst_role_error, @as(ast.NodeType, nodes[0].*));
     try testing.expectEqualStrings(
         "baz",
-        std.mem.span(nodes[0].payload.myst_role_error.value),
+        nodes[0].myst_role_error.value,
     );
 }
 
@@ -6055,15 +5964,15 @@ test "myst role with whitespace around name" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.myst_role, nodes[0].tag);
-    try testing.expectEqual(0, nodes[0].payload.myst_role.n_children);
+    try testing.expectEqual(ast.NodeType.myst_role, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqual(0, nodes[0].myst_role.children.len);
     try testing.expectEqualStrings(
         "foo",
-        std.mem.span(nodes[0].payload.myst_role.name),
+        nodes[0].myst_role.name,
     );
     try testing.expectEqualStrings(
         "bar",
-        std.mem.span(nodes[0].payload.myst_role.value),
+        nodes[0].myst_role.value,
     );
 }
 
@@ -6074,5 +5983,5 @@ test "myst role cannot have empty value" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.text, nodes[0].tag);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
 }

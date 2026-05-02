@@ -14,84 +14,68 @@ pub fn render(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!void {
 
 /// Renders output, returning true if anything was written.
 fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
-    switch (node.tag) {
-        .root => {
-            const n = node.payload.root;
-            const sliced = n.children[0..n.n_children];
-            for (sliced) |child| {
+    switch (node.*) {
+        .root => |n| {
+            for (n.children) |child| {
                 _ = try renderNode(child, out);
             }
         },
-        .block => {
-            const n = node.payload.block;
-            const sliced = n.children[0..n.n_children];
-            for (sliced) |child| {
+        .block => |n| {
+            for (n.children) |child| {
                 if (try renderNode(child, out)) {
                     try out.print("\n", .{});
                 }
             }
         },
-        .blockquote => {
-            const n = node.payload.blockquote;
+        .blockquote => |n| {
             try out.print("<blockquote>\n", .{});
-            const sliced = n.children[0..n.n_children];
-            for (sliced) |child| {
+            for (n.children) |child| {
                 if (try renderNode(child, out)) {
                     try out.print("\n", .{});
                 }
             }
             try out.print("</blockquote>", .{});
         },
-        .paragraph => {
-            const n = node.payload.paragraph;
+        .paragraph => |n| {
             try out.print("<p>", .{});
-            const sliced = n.children[0..n.n_children];
-            for (sliced) |child| {
+            for (n.children) |child| {
                 _ = try renderNode(child, out);
             }
             try out.print("</p>", .{});
         },
-        .heading => {
-            const n = node.payload.heading;
+        .heading => |n| {
             try out.print("<h{d}>", .{n.depth});
-            const sliced = n.children[0..n.n_children];
-            for (sliced) |child| {
+            for (n.children) |child| {
                 _ = try renderNode(child, out);
             }
             try out.print("</h{d}>", .{n.depth});
         },
-        .text => {
-            const n = node.payload.text;
-            try printHTMLEscapedContent(out, std.mem.span(n.value));
+        .text => |n| {
+            try printHTMLEscapedContent(out, n.value);
         },
-        .emphasis => {
-            const n = node.payload.emphasis;
+        .emphasis => |n| {
             try out.print("<em>", .{});
-            const sliced = n.children[0..n.n_children];
-            for (sliced) |child| {
+            for (n.children) |child| {
                 _ = try renderNode(child, out);
             }
             try out.print("</em>", .{});
         },
-        .strong => {
-            const n = node.payload.strong;
+        .strong => |n| {
             try out.print("<strong>", .{});
-            const sliced = n.children[0..n.n_children];
-            for (sliced) |child| {
+            for (n.children) |child| {
                 _ = try renderNode(child, out);
             }
             try out.print("</strong>", .{});
         },
-        .code => {
-            const n = node.payload.code;
-            const lang = std.mem.span(n.lang);
+        .code => |n| {
+            const lang = n.lang;
             if (lang.len > 0) {
                 try out.print("<pre><code class=\"language-{s}\">", .{lang});
             } else {
                 try out.print("<pre><code>", .{});
             }
 
-            const value = std.mem.span(n.value);
+            const value = n.value;
             try printHTMLEscapedContent(out, value);
             if (value.len > 0) {
                 try out.print("\n", .{});
@@ -105,19 +89,17 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
         .thematic_break => {
             try out.print("<hr />", .{});
         },
-        .inline_code => {
-            const n = node.payload.inline_code;
+        .inline_code => |n| {
             try out.print("<code>", .{});
-            try printHTMLEscapedContent(out, std.mem.span(n.value));
+            try printHTMLEscapedContent(out, n.value);
             try out.print("</code>", .{});
         },
-        .link => {
-            const n = node.payload.link;
+        .link => |n| {
             try out.print("<a href=\"", .{});
-            try printHTMLEscapedAttrValue(out, std.mem.span(n.url));
+            try printHTMLEscapedAttrValue(out, n.url);
             try out.print("\"", .{});
 
-            const title = std.mem.span(n.title);
+            const title = n.title;
             if (title.len > 0) {
                 try out.print(" title=\"", .{});
                 try printHTMLEscapedAttrValue(out, title);
@@ -126,24 +108,22 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
 
             try out.print(">", .{});
 
-            const sliced = n.children[0..n.n_children];
-            for (sliced) |child| {
+            for (n.children) |child| {
                 _ = try renderNode(child, out);
             }
 
             try out.print("</a>", .{});
         },
-        .image => {
-            const n = node.payload.image;
+        .image => |n| {
             try out.print("<img src=\"", .{});
-            try printHTMLEscapedAttrValue(out, std.mem.span(n.url));
+            try printHTMLEscapedAttrValue(out, n.url);
             try out.print("\" ", .{});
 
             try out.print("alt=\"", .{});
-            try printHTMLEscapedAttrValue(out, std.mem.span(n.alt));
+            try printHTMLEscapedAttrValue(out, n.alt);
             try out.print("\" ", .{});
 
-            const title = std.mem.span(n.title);
+            const title = n.title;
             if (title.len > 0) {
                 try out.print("title=\"", .{});
                 try printHTMLEscapedAttrValue(out, title);
@@ -152,88 +132,74 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
 
             try out.print("/>", .{});
         },
-        .html => {
+        .html => |n| {
             // Rendered verbatim, unescaped!
-            const n = node.payload.html;
             try out.print("{s}", .{n.value});
         },
         // Doesn't get rendered
         .definition => return false,
-        .container => {
-            const n = node.payload.container;
-            const kind = std.mem.span(n.kind);
+        .container => |n| {
+            const kind = n.kind;
             if (std.mem.eql(u8, kind, "figure")) {
                 try renderFigure(out, node);
             } else {
                 @panic("no HTML rendering implementation for  container kind");
             }
         },
-        .caption => {
-            const n = node.payload.caption;
-
+        .caption => |n| {
             _ = try out.write("<figcaption>\n");
-            const sliced = n.children[0..n.n_children];
-            for (sliced) |child| {
+            for (n.children) |child| {
                 _ = try out.write("  ");
                 _ = try renderNode(child, out);
                 _ = try out.write("\n");
             }
             _ = try out.write("</figcaption>");
         },
-        .myst_role => {
-            const n = node.payload.myst_role;
-            if (n.n_children == 0) {
+        .myst_role => |n| {
+            if (n.children.len == 0) {
                 // unknown role
                 try out.print("<span class=\"role unhandled\">", .{});
 
                 _ = try out.write("<code class=\"kind\">{");
-                try printHTMLEscapedContent(out, std.mem.span(n.name));
+                try printHTMLEscapedContent(out, n.name);
                 _ = try out.write("}</code>");
 
                 try out.print("<code>", .{});
-                try printHTMLEscapedContent(out, std.mem.span(n.value));
+                try printHTMLEscapedContent(out, n.value);
                 try out.print("</code>", .{});
 
                 try out.print("</span>", .{});
             } else {
                 // implemented role
-                const sliced = n.children[0..n.n_children];
-                for (sliced) |child| {
+                for (n.children) |child| {
                     _ = try renderNode(child, out);
                 }
             }
         },
-        .myst_role_error => {
-            const n = node.payload.myst_role_error;
-            try printHTMLEscapedContent(out, std.mem.span(n.value));
+        .myst_role_error => |n| {
+            try printHTMLEscapedContent(out, n.value);
         },
-        .subscript => {
-            const n = node.payload.subscript;
+        .subscript => |n| {
             _ = try out.write("<sub>");
 
-            const sliced = n.children[0..n.n_children];
-            for (sliced) |child| {
+            for (n.children) |child| {
                 _ = try renderNode(child, out);
             }
 
             _ = try out.write("</sub>");
         },
-        .superscript => {
-            const n = node.payload.superscript;
+        .superscript => |n| {
             _ = try out.write("<sup>");
 
-            const sliced = n.children[0..n.n_children];
-            for (sliced) |child| {
+            for (n.children) |child| {
                 _ = try renderNode(child, out);
             }
 
             _ = try out.write("</sup>");
         },
-        .abbreviation => {
-            const n = node.payload.abbreviation;
-
+        .abbreviation => |n| {
             _ = try out.write("<abbr");
-            const title = std.mem.span(n.title);
+            const title = n.title;
             if (title.len > 0) {
                 try out.print(" title=\"", .{});
                 try printHTMLEscapedAttrValue(out, title);
@@ -241,25 +207,23 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
             }
             _ = try out.write(">");
 
-            const sliced = n.children[0..n.n_children];
-            for (sliced) |child| {
+            for (n.children) |child| {
                 _ = try renderNode(child, out);
             }
 
             _ = try out.write("</abbr>");
         },
-        .myst_directive => {
-            const n = node.payload.myst_directive;
-            if (n.n_children == 0) {
+        .myst_directive => |n| {
+            if (n.children.len == 0) {
                 // unknown directive
                 _ = try out.write("<div class=\"directive unhandled\">\n");
 
                 _ = try out.write("  <p>");
                 _ = try out.write("<code class=\"kind\">{");
-                try printHTMLEscapedContent(out, std.mem.span(n.name));
+                try printHTMLEscapedContent(out, n.name);
                 _ = try out.write("}</code>");
 
-                const args = std.mem.span(n.args);
+                const args = n.args;
                 if (args.len > 0) {
                     _ = try out.write("<code class=\"args\">");
                     try printHTMLEscapedContent(out, args);
@@ -269,34 +233,27 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
                 _ = try out.write("</p>\n");
 
                 _ = try out.write("  <pre><code>");
-                try printHTMLEscapedContent(out, std.mem.span(n.value));
+                try printHTMLEscapedContent(out, n.value);
                 _ = try out.write("</code></pre>\n");
 
                 _ = try out.write("</div>");
             } else {
                 // implemented directive; this is just a wrapper
-                const sliced = n.children[0..n.n_children];
-                for (sliced) |child| {
+                for (n.children) |child| {
                     _ = try renderNode(child, out);
                 }
             }
         },
-        .myst_directive_error => {
-            const n = node.payload.myst_directive_error;
-
-            _ = try out.write("<div>");
-            const sliced = n.children[0..n.n_children];
-            for (sliced) |child| {
+        .myst_directive_error => |n| {
+            for (n.children) |child| {
                 _ = try renderNode(child, out);
             }
             _ = try out.write("</div>");
         },
-        .admonition => {
-            const n = node.payload.admonition;
-
+        .admonition => |n| {
             _ = try out.write("<aside class=\"admonition");
 
-            const kind = std.mem.span(n.kind);
+            const kind = n.kind;
             if (kind.len > 0) {
                 try out.print(" {s}", .{kind});
             }
@@ -304,29 +261,26 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
 
             // If we don't have a child title, we must render one ourselves.
             // But only if we aren't a simple admonition.
-            if (
-                (n.n_children == 0 or n.children[0].tag != .admonition_title)
-                and !std.mem.eql(u8, kind, "admonition")
-            ) {
+            const have_title = (
+                n.children.len == 0
+                or @as(ast.NodeType, n.children[0].*) != .admonition_title
+            );
+            if (have_title and !std.mem.eql(u8, kind, "admonition")) {
                 _ = try out.write("  ");
                 try renderAdmonitionTitle(out, kind);
                 _ = try out.write("\n");
             }
 
-            const sliced = n.children[0..n.n_children];
-            for (sliced) |child| {
+            for (n.children) |child| {
                 _ = try out.write("  ");
                 _ = try renderNode(child, out);
                 _ = try out.write("\n");
             }
             _ = try out.write("</aside>");
         },
-        .admonition_title => {
-            const n = node.payload.admonition_title;
-
+        .admonition_title => |n| {
             _ = try out.write("<p class=\"admonition-title\">");
-            const sliced = n.children[0..n.n_children];
-            for (sliced) |child| {
+            for (n.children) |child| {
                 _ = try renderNode(child, out);
             }
             _ = try out.write("</p>");
@@ -372,13 +326,10 @@ fn renderAdmonitionTitle(out: *Io.Writer, kind: []const u8) !void {
 }
 
 fn renderFigure(out: *Io.Writer, node: *ast.Node) !void {
-    std.debug.assert(node.tag == .container);
-
-    const n = node.payload.container;
     _ = try out.write("<figure class=\"numbered\">\n");
 
-    const sliced = n.children[0..n.n_children];
-    for (sliced) |child| {
+    const n = node.container;
+    for (n.children) |child| {
         _ = try renderNode(child, out);
     }
     _ = try out.write("</figure>");

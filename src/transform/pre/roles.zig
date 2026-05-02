@@ -9,13 +9,11 @@ pub fn transform(
     scratch: Allocator,
     original_node: *ast.Node,
 ) !*ast.Node {
-    switch (original_node.tag) {
-        .myst_role => {
-            const n = original_node.payload.myst_role;
-
+    switch (original_node.*) {
+        .myst_role => |n| {
             // Check to see if we have already transformed this node. If so,
             // abort. This ensures the transform is idempotent.
-            if (n.n_children > 0) {
+            if (n.children.len > 0) {
                 return original_node;
             }
 
@@ -23,14 +21,13 @@ pub fn transform(
                 alloc,
                 scratch,
                 original_node,
-                std.mem.span(n.name),
-                std.mem.span(n.value),
+                n.name,
+                n.value,
             );
         },
         inline .root, .block, .heading, .paragraph, .emphasis, .strong,
-        .link, .blockquote => |node_type| {
-            const n = @field(original_node.payload, @tagName(node_type));
-            for (0..n.n_children) |i| {
+        .link, .blockquote => |n| {
+            for (0..n.children.len) |i| {
                 n.children[i] = try transform(alloc, scratch, n.children[i]);
             }
             return original_node;
@@ -78,23 +75,17 @@ fn transformSubscript(
     errdefer alloc.free(sub_children);
 
     sub_node.* = .{
-        .tag = .subscript,
-        .payload = .{
-            .subscript = .{
-                .children = sub_children.ptr,
-                .n_children = @intCast(sub_children.len),
-            },
+        .subscript = .{
+            .children = sub_children,
         },
     };
 
     const role_children = try alloc.dupe(*ast.Node, &.{sub_node});
 
-    std.debug.assert(node.tag == .myst_role);
-    std.debug.assert(node.payload.myst_role.n_children == 0);
+    std.debug.assert(@as(ast.NodeType, node.*) == .myst_role);
+    std.debug.assert(node.myst_role.children.len == 0);
 
-    node.payload.myst_role.children = role_children.ptr;
-    node.payload.myst_role.n_children = @intCast(role_children.len);
-
+    node.myst_role.children = role_children;
     return node;
 }
 
@@ -114,23 +105,17 @@ fn transformSuperscript(
     errdefer alloc.free(sup_children);
 
     sup_node.* = .{
-        .tag = .superscript,
-        .payload = .{
-            .superscript = .{
-                .children = sup_children.ptr,
-                .n_children = @intCast(sup_children.len),
-            },
+        .superscript = .{
+            .children = sup_children,
         },
     };
 
     const role_children = try alloc.dupe(*ast.Node, &.{sup_node});
 
-    std.debug.assert(node.tag == .myst_role);
-    std.debug.assert(node.payload.myst_role.n_children == 0);
+    std.debug.assert(@as(ast.NodeType, node.*) == .myst_role);
+    std.debug.assert(node.myst_role.children.len == 0);
 
-    node.payload.myst_role.children = role_children.ptr;
-    node.payload.myst_role.n_children = @intCast(role_children.len);
-
+    node.myst_role.children = role_children;
     return node;
 }
 
@@ -194,24 +179,18 @@ fn transformAbbreviation(
     errdefer alloc.free(owned_abbr_title);
 
     abbr_node.* = .{
-        .tag = .abbreviation,
-        .payload = .{
-            .abbreviation = .{
-                .children = abbr_children.ptr,
-                .n_children = @intCast(abbr_children.len),
-                .title = owned_abbr_title,
-            },
+        .abbreviation = .{
+            .children = abbr_children,
+            .title = owned_abbr_title,
         },
     };
 
     const role_children = try alloc.dupe(*ast.Node, &.{abbr_node});
 
-    std.debug.assert(node.tag == .myst_role);
-    std.debug.assert(node.payload.myst_role.n_children == 0);
+    std.debug.assert(@as(ast.NodeType, node.*) == .myst_role);
+    std.debug.assert(node.myst_role.children.len == 0);
 
-    node.payload.myst_role.children = role_children.ptr;
-    node.payload.myst_role.n_children = @intCast(role_children.len);
-
+    node.myst_role.children = role_children;
     return node;
 }
 
@@ -223,14 +202,10 @@ const testing = std.testing;
 fn handleRole(name: []const u8, value: []const u8) !*ast.Node {
     const role_node = try testing.allocator.create(ast.Node);
     role_node.* = .{
-        .tag = .myst_role,
-        .payload = .{
-            .myst_role = .{
-                .name = try testing.allocator.dupeZ(u8, name),
-                .value = try testing.allocator.dupeZ(u8, value),
-                .children = &.{},
-                .n_children = 0,
-            },
+        .myst_role = .{
+            .name = try testing.allocator.dupeZ(u8, name),
+            .value = try testing.allocator.dupeZ(u8, value),
+            .children = &.{},
         },
     };
 
@@ -247,28 +222,28 @@ test "subscript short name" {
     const node = try handleRole("sub", "foo");
     defer node.deinit(testing.allocator);
 
-    try testing.expectEqual(ast.NodeType.myst_role, node.tag);
+    try testing.expectEqual(.myst_role, @as(ast.NodeType, node.*));
     try testing.expectEqualStrings(
         "sub",
-        std.mem.span(node.payload.myst_role.name),
+        node.myst_role.name,
     );
     try testing.expectEqualStrings(
         "foo",
-        std.mem.span(node.payload.myst_role.value),
+        node.myst_role.value,
     );
 
-    try testing.expectEqual(1, node.payload.myst_role.n_children);
+    try testing.expectEqual(1, node.myst_role.children.len);
 
-    const subscript_node = node.payload.myst_role.children[0];
-    try testing.expectEqual(ast.NodeType.subscript, subscript_node.tag);
+    const subscript_node = node.myst_role.children[0];
+    try testing.expectEqual(.subscript, @as(ast.NodeType, subscript_node.*));
 
-    try testing.expectEqual(1, subscript_node.payload.subscript.n_children);
+    try testing.expectEqual(1, subscript_node.subscript.children.len);
 
-    const text_node = subscript_node.payload.subscript.children[0];
-    try testing.expectEqual(ast.NodeType.text, text_node.tag);
+    const text_node = subscript_node.subscript.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
     try testing.expectEqualStrings(
         "foo",
-        std.mem.span(text_node.payload.text.value),
+        text_node.text.value,
     );
 }
 
@@ -276,28 +251,28 @@ test "subscript long name" {
     const node = try handleRole("subscript", "foo");
     defer node.deinit(testing.allocator);
 
-    try testing.expectEqual(ast.NodeType.myst_role, node.tag);
+    try testing.expectEqual(.myst_role, @as(ast.NodeType, node.*));
     try testing.expectEqualStrings(
         "subscript",
-        std.mem.span(node.payload.myst_role.name),
+        node.myst_role.name,
     );
     try testing.expectEqualStrings(
         "foo",
-        std.mem.span(node.payload.myst_role.value),
+        node.myst_role.value,
     );
 
-    try testing.expectEqual(1, node.payload.myst_role.n_children);
+    try testing.expectEqual(1, node.myst_role.children.len);
 
-    const subscript_node = node.payload.myst_role.children[0];
-    try testing.expectEqual(ast.NodeType.subscript, subscript_node.tag);
+    const subscript_node = node.myst_role.children[0];
+    try testing.expectEqual(.subscript, @as(ast.NodeType, subscript_node.*));
 
-    try testing.expectEqual(1, subscript_node.payload.subscript.n_children);
+    try testing.expectEqual(1, subscript_node.subscript.children.len);
 
-    const text_node = subscript_node.payload.subscript.children[0];
-    try testing.expectEqual(ast.NodeType.text, text_node.tag);
+    const text_node = subscript_node.subscript.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
     try testing.expectEqualStrings(
         "foo",
-        std.mem.span(text_node.payload.text.value),
+        text_node.text.value,
     );
 }
 
@@ -305,28 +280,28 @@ test "superscript short name" {
     const node = try handleRole("sup", "foo");
     defer node.deinit(testing.allocator);
 
-    try testing.expectEqual(ast.NodeType.myst_role, node.tag);
+    try testing.expectEqual(.myst_role, @as(ast.NodeType, node.*));
     try testing.expectEqualStrings(
         "sup",
-        std.mem.span(node.payload.myst_role.name),
+        node.myst_role.name,
     );
     try testing.expectEqualStrings(
         "foo",
-        std.mem.span(node.payload.myst_role.value),
+        node.myst_role.value,
     );
 
-    try testing.expectEqual(1, node.payload.myst_role.n_children);
+    try testing.expectEqual(1, node.myst_role.children.len);
 
-    const superscript_node = node.payload.myst_role.children[0];
-    try testing.expectEqual(ast.NodeType.superscript, superscript_node.tag);
+    const superscript_node = node.myst_role.children[0];
+    try testing.expectEqual(.superscript, @as(ast.NodeType, superscript_node.*));
 
-    try testing.expectEqual(1, superscript_node.payload.superscript.n_children);
+    try testing.expectEqual(1, superscript_node.superscript.children.len);
 
-    const text_node = superscript_node.payload.superscript.children[0];
-    try testing.expectEqual(ast.NodeType.text, text_node.tag);
+    const text_node = superscript_node.superscript.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
     try testing.expectEqualStrings(
         "foo",
-        std.mem.span(text_node.payload.text.value),
+        text_node.text.value,
     );
 }
 
@@ -334,28 +309,28 @@ test "superscript long name" {
     const node = try handleRole("superscript", "foo");
     defer node.deinit(testing.allocator);
 
-    try testing.expectEqual(ast.NodeType.myst_role, node.tag);
+    try testing.expectEqual(.myst_role, @as(ast.NodeType, node.*));
     try testing.expectEqualStrings(
         "superscript",
-        std.mem.span(node.payload.myst_role.name),
+        node.myst_role.name,
     );
     try testing.expectEqualStrings(
         "foo",
-        std.mem.span(node.payload.myst_role.value),
+        node.myst_role.value,
     );
 
-    try testing.expectEqual(1, node.payload.myst_role.n_children);
+    try testing.expectEqual(1, node.myst_role.children.len);
 
-    const superscript_node = node.payload.myst_role.children[0];
-    try testing.expectEqual(ast.NodeType.superscript, superscript_node.tag);
+    const superscript_node = node.myst_role.children[0];
+    try testing.expectEqual(.superscript, @as(ast.NodeType, superscript_node.*));
 
-    try testing.expectEqual(1, superscript_node.payload.superscript.n_children);
+    try testing.expectEqual(1, superscript_node.superscript.children.len);
 
-    const text_node = superscript_node.payload.superscript.children[0];
-    try testing.expectEqual(ast.NodeType.text, text_node.tag);
+    const text_node = superscript_node.superscript.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
     try testing.expectEqualStrings(
         "foo",
-        std.mem.span(text_node.payload.text.value),
+        text_node.text.value,
     );
 }
 
@@ -363,32 +338,32 @@ test "abbr" {
     const node = try handleRole("abbr", "MyST (Markedly Structured Text)");
     defer node.deinit(testing.allocator);
 
-    try testing.expectEqual(ast.NodeType.myst_role, node.tag);
+    try testing.expectEqual(.myst_role, @as(ast.NodeType, node.*));
     try testing.expectEqualStrings(
         "abbr",
-        std.mem.span(node.payload.myst_role.name),
+        node.myst_role.name,
     );
     try testing.expectEqualStrings(
         "MyST (Markedly Structured Text)",
-        std.mem.span(node.payload.myst_role.value),
+        node.myst_role.value,
     );
 
-    try testing.expectEqual(1, node.payload.myst_role.n_children);
+    try testing.expectEqual(1, node.myst_role.children.len);
 
-    const abbr_node = node.payload.myst_role.children[0];
-    try testing.expectEqual(ast.NodeType.abbreviation, abbr_node.tag);
+    const abbr_node = node.myst_role.children[0];
+    try testing.expectEqual(.abbreviation, @as(ast.NodeType, abbr_node.*));
     try testing.expectEqualStrings(
         "Markedly Structured Text",
-        std.mem.span(abbr_node.payload.abbreviation.title),
+        abbr_node.abbreviation.title,
     );
 
-    try testing.expectEqual(1, abbr_node.payload.abbreviation.n_children);
+    try testing.expectEqual(1, abbr_node.abbreviation.children.len);
 
-    const text_node = abbr_node.payload.abbreviation.children[0];
-    try testing.expectEqual(ast.NodeType.text, text_node.tag);
+    const text_node = abbr_node.abbreviation.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
     try testing.expectEqualStrings(
         "MyST",
-        std.mem.span(text_node.payload.text.value),
+        text_node.text.value,
     );
 }
 
@@ -396,32 +371,32 @@ test "bad abbr" {
     const node = try handleRole("abbr", "MyST (Markedly Structured Text");
     defer node.deinit(testing.allocator);
 
-    try testing.expectEqual(ast.NodeType.myst_role, node.tag);
+    try testing.expectEqual(.myst_role, @as(ast.NodeType, node.*));
     try testing.expectEqualStrings(
         "abbr",
-        std.mem.span(node.payload.myst_role.name),
+        node.myst_role.name,
     );
     try testing.expectEqualStrings(
         "MyST (Markedly Structured Text",
-        std.mem.span(node.payload.myst_role.value),
+        node.myst_role.value,
     );
 
-    try testing.expectEqual(1, node.payload.myst_role.n_children);
+    try testing.expectEqual(1, node.myst_role.children.len);
 
-    const abbr_node = node.payload.myst_role.children[0];
-    try testing.expectEqual(ast.NodeType.abbreviation, abbr_node.tag);
+    const abbr_node = node.myst_role.children[0];
+    try testing.expectEqual(.abbreviation, @as(ast.NodeType, abbr_node.*));
     try testing.expectEqualStrings(
         "",
-        std.mem.span(abbr_node.payload.abbreviation.title),
+        abbr_node.abbreviation.title,
     );
 
-    try testing.expectEqual(1, abbr_node.payload.abbreviation.n_children);
+    try testing.expectEqual(1, abbr_node.abbreviation.children.len);
 
-    const text_node = abbr_node.payload.abbreviation.children[0];
-    try testing.expectEqual(ast.NodeType.text, text_node.tag);
+    const text_node = abbr_node.abbreviation.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
     try testing.expectEqualStrings(
         "MyST (Markedly Structured Text",
-        std.mem.span(text_node.payload.text.value),
+        text_node.text.value,
     );
 }
 
@@ -429,7 +404,7 @@ test "role transform is idempotent" {
     const node = try handleRole("abbr", "MyST (Markedly Structured Text)");
     defer node.deinit(testing.allocator);
 
-    try testing.expectEqual(ast.NodeType.myst_role, node.tag);
+    try testing.expectEqual(.myst_role, @as(ast.NodeType, node.*));
 
     const retransformed_node = try transform(
         testing.allocator,
@@ -437,18 +412,18 @@ test "role transform is idempotent" {
         node,
     );
 
-    try testing.expectEqual(ast.NodeType.myst_role, retransformed_node.tag);
+    try testing.expectEqual(.myst_role, @as(ast.NodeType, retransformed_node.*));
 
     try testing.expectEqual(
-        node.payload.myst_role.n_children,
-        retransformed_node.payload.myst_role.n_children,
+        node.myst_role.children.len,
+        retransformed_node.myst_role.children.len,
     );
     try testing.expectEqualStrings(
-        std.mem.span(node.payload.myst_role.name),
-        std.mem.span(retransformed_node.payload.myst_role.name),
+        node.myst_role.name,
+        retransformed_node.myst_role.name,
     );
     try testing.expectEqualStrings(
-        std.mem.span(node.payload.myst_role.value),
-        std.mem.span(retransformed_node.payload.myst_role.value),
+        node.myst_role.value,
+        retransformed_node.myst_role.value,
     );
 }

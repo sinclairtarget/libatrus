@@ -220,7 +220,7 @@ test parse {
     const root = try parse(testing.allocator, &in, .{});
     defer root.deinit(testing.allocator);
 
-    try testing.expectEqual(.root, root.tag);
+    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
 }
 
 test renderHTML {

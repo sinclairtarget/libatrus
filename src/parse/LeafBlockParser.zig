@@ -123,7 +123,7 @@ pub fn parse(
         }
 
         if (try self.parseLinkReferenceDefinition(alloc, scratch)) |def| {
-            try link_defs.add(alloc, &def.payload.definition);
+            try link_defs.add(alloc, &def.definition);
             try children.append(def);
             continue;
         }
@@ -241,13 +241,9 @@ fn parseATXHeading(
 
     const node = try alloc.create(ast.Node);
     node.* = .{
-        .tag = .heading,
-        .payload = .{
-            .heading = .{
-                .children = children.ptr,
-                .n_children = @intCast(children.len),
-                .depth = @intCast(depth),
-            },
+        .heading = .{
+            .children = children,
+            .depth = @intCast(depth),
         },
     };
     did_parse = true;
@@ -333,13 +329,9 @@ fn parseSetextHeading(
 
     const node = try alloc.create(ast.Node);
     node.* = .{
-        .tag = .heading,
-        .payload = .{
-            .heading = .{
-                .children = children.ptr,
-                .n_children = @intCast(children.len),
-                .depth = depth,
-            },
+        .heading = .{
+            .children = children,
+            .depth = depth,
         },
     };
     did_parse = true;
@@ -372,12 +364,7 @@ fn parseThematicBreak(
     _ = try self.it.consume(scratch, &.{.newline});
 
     const node = try alloc.create(ast.Node);
-    node.* = .{
-        .tag = .thematic_break,
-        .payload = .{
-            .thematic_break = {},
-        },
-    };
+    node.* = .{ .thematic_break = {} };
     did_parse = true;
     return node;
 }
@@ -491,12 +478,9 @@ fn parseIndentedCode(
 
     const node = try alloc.create(ast.Node);
     node.* = .{
-        .tag = .code,
-        .payload = .{
-            .code = .{
-                .value = value.ptr,
-                .lang = "",
-            },
+        .code = .{
+            .value = value,
+            .lang = "",
         },
     };
     did_parse = true;
@@ -662,12 +646,9 @@ fn parseFencedCode(
 
     const node = try alloc.create(ast.Node);
     node.* = .{
-        .tag = .code,
-        .payload = .{
-            .code = .{
-                .value = value.ptr,
-                .lang = lang.ptr,
-            },
+        .code = .{
+            .value = value,
+            .lang = lang,
         },
     };
     did_parse = true;
@@ -808,13 +789,10 @@ fn parseLinkReferenceDefinition(
 
     const node = try alloc.create(ast.Node);
     node.* = .{
-        .tag = .definition,
-        .payload = .{
-            .definition = .{
-                .url = ownedUrl,
-                .label = label,
-                .title = title,
-            },
+        .definition = .{
+            .url = ownedUrl,
+            .label = label,
+            .title = title,
         },
     };
     did_parse = true;
@@ -1180,13 +1158,9 @@ fn parseMySTDirective(
 
         const error_node = try alloc.create(ast.Node);
         error_node.* = .{
-            .tag = .myst_directive_error,
-            .payload = .{
-                .myst_directive_error = .{
-                    .n_children = 0,
-                    .children = &.{},
-                    .message = owned_message,
-                },
+            .myst_directive_error = .{
+                .children = &.{},
+                .message = owned_message,
             },
         };
         return .{
@@ -1206,15 +1180,11 @@ fn parseMySTDirective(
 
     const node = try alloc.create(ast.Node);
     node.* = .{
-        .tag = .myst_directive,
-        .payload = .{
-            .myst_directive = .{
-                .n_children = 0,
-                .children = &.{},
-                .name = owned_name.ptr,
-                .args = owned_args.ptr,
-                .value = owned_value.ptr,
-            },
+        .myst_directive = .{
+            .children = &.{},
+            .name = owned_name,
+            .args = owned_args,
+            .value = owned_value,
         },
     };
     return .{
@@ -1332,12 +1302,8 @@ fn createParagraphNode(alloc: Allocator, text_content: []const u8) !*ast.Node {
 
     const paragraph_node = try alloc.create(ast.Node);
     paragraph_node.* = .{
-        .tag = .paragraph,
-        .payload = .{
-            .paragraph = .{
-                .children = children.ptr,
-                .n_children = @intCast(children.len),
-            },
+        .paragraph = .{
+            .children = children,
         },
     };
     return paragraph_node;
@@ -1414,23 +1380,23 @@ test "ATX heading and paragraphs" {
     try testing.expectEqual(4, nodes.len);
 
     const h1 = nodes[0];
-    try testing.expectEqual(.heading, h1.tag);
-    try testing.expectEqual(1, h1.payload.heading.depth);
-    const text_node = h1.payload.heading.children[0];
-    try testing.expectEqual(.text, text_node.tag);
+    try testing.expectEqual(.heading, @as(ast.NodeType, h1.*));
+    try testing.expectEqual(1, h1.heading.depth);
+    const text_node = h1.heading.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
     try testing.expectEqualStrings(
         "This is a heading",
-        std.mem.span(text_node.payload.text.value),
+        text_node.text.value,
     );
 
     const p1 = nodes[1];
-    try testing.expectEqual(.paragraph, p1.tag);
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p1.*));
 
     const p2 = nodes[2];
-    try testing.expectEqual(.paragraph, p2.tag);
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p2.*));
 
     const p3 = nodes[3];
-    try testing.expectEqual(.paragraph, p3.tag);
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p3.*));
 }
 
 test "ATX heading with leading whitespace" {
@@ -1454,12 +1420,12 @@ test "ATX heading with leading whitespace" {
     try testing.expectEqual(2, nodes.len);
 
     const h1 = nodes[0];
-    try testing.expectEqual(.heading, h1.tag);
-    try testing.expectEqual(3, h1.payload.heading.depth);
+    try testing.expectEqual(.heading, @as(ast.NodeType, h1.*));
+    try testing.expectEqual(3, h1.heading.depth);
 
     const h2 = nodes[1];
-    try testing.expectEqual(.heading, h2.tag);
-    try testing.expectEqual(1, h2.payload.heading.depth);
+    try testing.expectEqual(.heading, @as(ast.NodeType, h2.*));
+    try testing.expectEqual(1, h2.heading.depth);
 }
 
 test "ATX heading with trailing pounds" {
@@ -1479,13 +1445,13 @@ test "ATX heading with trailing pounds" {
     try testing.expectEqual(1, nodes.len);
 
     const h1 = nodes[0];
-    try testing.expectEqual(.heading, h1.tag);
-    try testing.expectEqual(2, h1.payload.heading.depth);
-    const text_node = h1.payload.heading.children[0];
-    try testing.expectEqual(.text, text_node.tag);
+    try testing.expectEqual(.heading, @as(ast.NodeType, h1.*));
+    try testing.expectEqual(2, h1.heading.depth);
+    const text_node = h1.heading.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
     try testing.expectEqualStrings(
         "foo",
-        std.mem.span(text_node.payload.text.value),
+        text_node.text.value,
     );
 }
 
@@ -1513,31 +1479,31 @@ test "setext headings" {
     try testing.expectEqual(3, nodes.len);
 
     const h1 = nodes[0];
-    try testing.expectEqual(.heading, h1.tag);
-    try testing.expectEqual(1, h1.payload.heading.depth);
+    try testing.expectEqual(.heading, @as(ast.NodeType, h1.*));
+    try testing.expectEqual(1, h1.heading.depth);
     {
-        const text_node = h1.payload.heading.children[0];
-        try testing.expectEqual(.text, text_node.tag);
+        const text_node = h1.heading.children[0];
+        try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
         try testing.expectEqualStrings(
             "foo",
-            std.mem.span(text_node.payload.text.value),
+            text_node.text.value,
         );
     }
 
     const h2 = nodes[1];
-    try testing.expectEqual(.heading, h2.tag);
-    try testing.expectEqual(2, h2.payload.heading.depth);
+    try testing.expectEqual(.heading, @as(ast.NodeType, h2.*));
+    try testing.expectEqual(2, h2.heading.depth);
     {
-        const text_node = h2.payload.heading.children[0];
-        try testing.expectEqual(.text, text_node.tag);
+        const text_node = h2.heading.children[0];
+        try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
         try testing.expectEqualStrings(
             "bar",
-            std.mem.span(text_node.payload.text.value),
+            text_node.text.value,
         );
     }
 
     const p = nodes[2];
-    try testing.expectEqual(.paragraph, p.tag);
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
 }
 
 test "indented setext headings" {
@@ -1563,26 +1529,26 @@ test "indented setext headings" {
     try testing.expectEqual(2, nodes.len);
 
     const h1 = nodes[0];
-    try testing.expectEqual(.heading, h1.tag);
-    try testing.expectEqual(1, h1.payload.heading.depth);
+    try testing.expectEqual(.heading, @as(ast.NodeType, h1.*));
+    try testing.expectEqual(1, h1.heading.depth);
     {
-        const text_node = h1.payload.heading.children[0];
-        try testing.expectEqual(.text, text_node.tag);
+        const text_node = h1.heading.children[0];
+        try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
         try testing.expectEqualStrings(
             "foo *bar*",
-            std.mem.span(text_node.payload.text.value),
+            text_node.text.value,
         );
     }
 
     const h2 = nodes[1];
-    try testing.expectEqual(.heading, h2.tag);
-    try testing.expectEqual(2, h2.payload.heading.depth);
+    try testing.expectEqual(.heading, @as(ast.NodeType, h2.*));
+    try testing.expectEqual(2, h2.heading.depth);
     {
-        const text_node = h2.payload.heading.children[0];
-        try testing.expectEqual(.text, text_node.tag);
+        const text_node = h2.heading.children[0];
+        try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
         try testing.expectEqualStrings(
             "bim _bam_",
-            std.mem.span(text_node.payload.text.value),
+            text_node.text.value,
         );
     }
 }
@@ -1609,11 +1575,11 @@ test "paragraph can contain punctuation" {
     try testing.expectEqual(2, nodes.len);
 
     const h = nodes[0];
-    try testing.expectEqual(.heading, h.tag);
-    try testing.expectEqual(1, h.payload.heading.n_children);
+    try testing.expectEqual(.heading, @as(ast.NodeType, h.*));
+    try testing.expectEqual(1, h.heading.children.len);
 
     const p = nodes[1];
-    try testing.expectEqual(.paragraph, p.tag);
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
 }
 
 test "link reference definition" {
@@ -1642,15 +1608,15 @@ test "link reference definition" {
     // Link should get parsed as a paragraph by the block parser; the inline
     // parser will later turn it into a link.
     const p = nodes[0];
-    try testing.expectEqual(.paragraph, p.tag);
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
 
     try testing.expectEqual(1, link_defs.count());
 
     const maybe_definition = try link_defs.get(testing.allocator, "foo");
     const definition = try util.testing.expectNonNull(maybe_definition);
-    try testing.expectEqualStrings("foo", std.mem.span(definition.label));
-    try testing.expectEqualStrings("/bar", std.mem.span(definition.url));
-    try testing.expectEqualStrings("baz bot", std.mem.span(definition.title));
+    try testing.expectEqualStrings("foo", definition.label);
+    try testing.expectEqualStrings("/bar", definition.url);
+    try testing.expectEqualStrings("baz bot", definition.title);
 }
 
 test "empty code fence" {
@@ -1674,12 +1640,12 @@ test "empty code fence" {
     try testing.expectEqual(1, nodes.len);
 
     const code_node = nodes[0];
-    try testing.expectEqual(.code, code_node.tag);
+    try testing.expectEqual(.code, @as(ast.NodeType, code_node.*));
     try testing.expectEqualStrings(
         "",
-        std.mem.span(code_node.payload.code.value),
+        code_node.code.value,
     );
-    try testing.expectEqualStrings("", std.mem.span(code_node.payload.code.lang));
+    try testing.expectEqualStrings("", code_node.code.lang);
 }
 
 test "code fence with info string" {
@@ -1705,14 +1671,14 @@ test "code fence with info string" {
     try testing.expectEqual(1, nodes.len);
 
     const code_node = nodes[0];
-    try testing.expectEqual(.code, code_node.tag);
+    try testing.expectEqual(.code, @as(ast.NodeType, code_node.*));
     try testing.expectEqualStrings(
         "def foo():\n    pass",
-        std.mem.span(code_node.payload.code.value),
+        code_node.code.value,
     );
     try testing.expectEqualStrings(
         "python",
-        std.mem.span(code_node.payload.code.lang),
+        code_node.code.lang,
     );
 }
 
@@ -1739,14 +1705,14 @@ test "code fence with indentation" {
     try testing.expectEqual(1, nodes.len);
 
     const code_node = nodes[0];
-    try testing.expectEqual(.code, code_node.tag);
+    try testing.expectEqual(.code, @as(ast.NodeType, code_node.*));
     try testing.expectEqualStrings(
         "def foo():\n    pass",
-        std.mem.span(code_node.payload.code.value),
+        code_node.code.value,
     );
     try testing.expectEqualStrings(
         "python",
-        std.mem.span(code_node.payload.code.lang),
+        code_node.code.lang,
     );
 }
 
@@ -1773,14 +1739,14 @@ test "tilde code fence" {
     try testing.expectEqual(1, nodes.len);
 
     const code_node = nodes[0];
-    try testing.expectEqual(.code, code_node.tag);
+    try testing.expectEqual(.code, @as(ast.NodeType, code_node.*));
     try testing.expectEqualStrings(
         "def foo():\n    pass",
-        std.mem.span(code_node.payload.code.value),
+        code_node.code.value,
     );
     try testing.expectEqualStrings(
         "python",
-        std.mem.span(code_node.payload.code.lang),
+        code_node.code.lang,
     );
 }
 
@@ -1806,14 +1772,14 @@ test "backtick MyST directive" {
     try testing.expectEqual(1, nodes.len);
 
     const directive_node = nodes[0];
-    try testing.expectEqual(.myst_directive, directive_node.tag);
+    try testing.expectEqual(.myst_directive, @as(ast.NodeType, directive_node.*));
     try testing.expectEqualStrings(
         "foo",
-        std.mem.span(directive_node.payload.myst_directive.name),
+        directive_node.myst_directive.name,
     );
     try testing.expectEqualStrings(
         "Hi, this is my directive.",
-        std.mem.span(directive_node.payload.myst_directive.value),
+        directive_node.myst_directive.value,
     );
 }
 
@@ -1839,14 +1805,14 @@ test "colon MyST directive" {
     try testing.expectEqual(1, nodes.len);
 
     const directive_node = nodes[0];
-    try testing.expectEqual(.myst_directive, directive_node.tag);
+    try testing.expectEqual(.myst_directive, @as(ast.NodeType, directive_node.*));
     try testing.expectEqualStrings(
         "foo",
-        std.mem.span(directive_node.payload.myst_directive.name),
+        directive_node.myst_directive.name,
     );
     try testing.expectEqualStrings(
         "Hi, this is my directive.",
-        std.mem.span(directive_node.payload.myst_directive.value),
+        directive_node.myst_directive.value,
     );
 }
 
@@ -1873,14 +1839,14 @@ test "MyST directive with indentation" {
     try testing.expectEqual(1, nodes.len);
 
     const directive_node = nodes[0];
-    try testing.expectEqual(.myst_directive, directive_node.tag);
+    try testing.expectEqual(.myst_directive, @as(ast.NodeType, directive_node.*));
     try testing.expectEqualStrings(
         "foo",
-        std.mem.span(directive_node.payload.myst_directive.name),
+        directive_node.myst_directive.name,
     );
     try testing.expectEqualStrings(
         "def foo():\n    pass",
-        std.mem.span(directive_node.payload.myst_directive.value),
+        directive_node.myst_directive.value,
     );
 }
 
@@ -1919,10 +1885,10 @@ test "MyST directive with nested blocks" {
     try testing.expectEqual(1, nodes.len);
 
     const directive_node = nodes[0];
-    try testing.expectEqual(.myst_directive, directive_node.tag);
+    try testing.expectEqual(.myst_directive, @as(ast.NodeType, directive_node.*));
     try testing.expectEqualStrings(
         "foo",
-        std.mem.span(directive_node.payload.myst_directive.name),
+        directive_node.myst_directive.name,
     );
     try testing.expectEqualStrings(
         \\# Bar
@@ -1937,7 +1903,7 @@ test "MyST directive with nested blocks" {
         \\bim
         \\```
         ,
-        std.mem.span(directive_node.payload.myst_directive.value),
+        directive_node.myst_directive.value,
     );
 }
 
@@ -1963,9 +1929,9 @@ test "MyST directive with invalid name" {
     try testing.expectEqual(1, nodes.len);
 
     const error_node = nodes[0];
-    try testing.expectEqual(.myst_directive_error, error_node.tag);
+    try testing.expectEqual(.myst_directive_error, @as(ast.NodeType, error_node.*));
     try testing.expect(
-        std.mem.span(error_node.payload.myst_directive_error.message).len > 0
+        error_node.myst_directive_error.message.len > 0
     );
 }
 
@@ -1991,14 +1957,14 @@ test "MyST directive with whitespace around name" {
     try testing.expectEqual(1, nodes.len);
 
     const directive_node = nodes[0];
-    try testing.expectEqual(.myst_directive, directive_node.tag);
+    try testing.expectEqual(.myst_directive, @as(ast.NodeType, directive_node.*));
     try testing.expectEqualStrings(
         "foo",
-        std.mem.span(directive_node.payload.myst_directive.name),
+        directive_node.myst_directive.name,
     );
     try testing.expectEqualStrings(
         "Hi, this is my directive.",
-        std.mem.span(directive_node.payload.myst_directive.value),
+        directive_node.myst_directive.value,
     );
 }
 
@@ -2024,18 +1990,18 @@ test "MyST directive with args" {
     try testing.expectEqual(1, nodes.len);
 
     const directive_node = nodes[0];
-    try testing.expectEqual(.myst_directive, directive_node.tag);
+    try testing.expectEqual(.myst_directive, @as(ast.NodeType, directive_node.*));
     try testing.expectEqualStrings(
         "foo",
-        std.mem.span(directive_node.payload.myst_directive.name),
+        directive_node.myst_directive.name,
     );
     try testing.expectEqualStrings(
         "bar baz",
-        std.mem.span(directive_node.payload.myst_directive.args),
+        directive_node.myst_directive.args,
     );
     try testing.expectEqualStrings(
         "Hi, this is my directive.",
-        std.mem.span(directive_node.payload.myst_directive.value),
+        directive_node.myst_directive.value,
     );
 }
 
@@ -2059,7 +2025,7 @@ test "MyST directive with closing backtick fence on same line not allowed" {
     try testing.expectEqual(1, nodes.len);
 
     const p_node = nodes[0];
-    try testing.expectEqual(.paragraph, p_node.tag);
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node.*));
 }
 
 fn parseBlocksTokens(
@@ -2113,14 +2079,14 @@ test "close token in paragraph" {
     try testing.expectEqual(1, nodes.len);
 
     const p = nodes[0];
-    try testing.expectEqual(.paragraph, p.tag);
-    try testing.expectEqual(1, p.payload.paragraph.n_children);
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
+    try testing.expectEqual(1, p.paragraph.children.len);
 
-    const txt = p.payload.paragraph.children[0];
-    try testing.expectEqual(.text, txt.tag);
+    const txt = p.paragraph.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, txt.*));
     try testing.expectEqualStrings(
         "foo\nbar",
-        std.mem.span(txt.payload.text.value),
+        txt.text.value,
     );
 }
 
@@ -2156,12 +2122,12 @@ test "close token before thematic break" {
     try testing.expectEqual(1, nodes.len);
 
     const p = nodes[0];
-    try testing.expectEqual(.paragraph, p.tag);
-    try testing.expectEqual(1, p.payload.paragraph.n_children);
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
+    try testing.expectEqual(1, p.paragraph.children.len);
 
-    const txt = p.payload.paragraph.children[0];
-    try testing.expectEqual(.text, txt.tag);
-    try testing.expectEqualStrings("foo", std.mem.span(txt.payload.text.value));
+    const txt = p.paragraph.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, txt.*));
+    try testing.expectEqualStrings("foo", txt.text.value);
 }
 
 // !! DIFFERENT FROM REFERENCE MYST PARSER !!
@@ -2200,12 +2166,12 @@ test "close token in setext heading" {
     try testing.expectEqual(1, nodes.len);
 
     const p = nodes[0];
-    try testing.expectEqual(.paragraph, p.tag);
-    try testing.expectEqual(1, p.payload.paragraph.n_children);
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
+    try testing.expectEqual(1, p.paragraph.children.len);
 
-    const txt = p.payload.paragraph.children[0];
-    try testing.expectEqual(.text, txt.tag);
-    try testing.expectEqualStrings("foo", std.mem.span(txt.payload.text.value));
+    const txt = p.paragraph.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, txt.*));
+    try testing.expectEqualStrings("foo", txt.text.value);
 }
 
 // This is a case where the parser has to detect the close token in the body of
@@ -2250,12 +2216,12 @@ test "close token after atx heading" {
     try testing.expectEqual(1, nodes.len);
 
     const h = nodes[0];
-    try testing.expectEqual(.heading, h.tag);
-    try testing.expectEqual(1, h.payload.heading.n_children);
+    try testing.expectEqual(.heading, @as(ast.NodeType, h.*));
+    try testing.expectEqual(1, h.heading.children.len);
 
-    const txt = h.payload.heading.children[0];
-    try testing.expectEqual(.text, txt.tag);
-    try testing.expectEqualStrings("foo", std.mem.span(txt.payload.text.value));
+    const txt = h.heading.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, txt.*));
+    try testing.expectEqualStrings("foo", txt.text.value);
 }
 
 test "close token in MyST directive" {
@@ -2296,9 +2262,9 @@ test "close token in MyST directive" {
     try testing.expectEqual(1, nodes.len);
 
     const directive_node = nodes[0];
-    try testing.expectEqual(.myst_directive, directive_node.tag);
+    try testing.expectEqual(.myst_directive, @as(ast.NodeType, directive_node.*));
     try testing.expectEqualStrings(
         "bar",
-        std.mem.span(directive_node.payload.myst_directive.value),
+        directive_node.myst_directive.value,
     );
 }

@@ -12,29 +12,26 @@ pub fn transform(
     scratch: Allocator,
     original_node: *ast.Node,
 ) !*ast.Node {
-    switch (original_node.tag) {
+    switch (original_node.*) {
         inline .block, .heading, .paragraph, .emphasis, .strong, .link,
-        .blockquote, .myst_directive => |node_type| {
-            const n = @field(original_node.payload, @tagName(node_type));
-            for (0..n.n_children) |i| {
+        .blockquote, .myst_directive => |n| {
+            for (0..n.children.len) |i| {
                 n.children[i] = try transform(alloc, scratch, n.children[i]);
             }
             return original_node;
         },
-        .root => {
-            const n = original_node.payload.root;
-            for (0..n.n_children) |i| {
+        .root => |n| {
+            for (0..n.children.len) |i| {
                 n.children[i] = try transform(alloc, scratch, n.children[i]);
             }
             return try transformRoot(alloc, scratch, original_node);
         },
-        .container => {
-            const n = original_node.payload.container;
-            for (0..n.n_children) |i| {
+        .container => |n| {
+            for (0..n.children.len) |i| {
                 n.children[i] = try transform(alloc, scratch, n.children[i]);
             }
 
-            if (std.mem.eql(u8, "figure", std.mem.span(n.kind))) {
+            if (std.mem.eql(u8, "figure", n.kind)) {
                 return try transformFigure(alloc, scratch, original_node);
             }
 
@@ -56,19 +53,14 @@ fn transformRoot(
     errdefer block.deinit(alloc);
 
     block.* = .{
-        .tag = .block,
-        .payload = .{
-            .block = .{
-                .children = node.payload.root.children,
-                .n_children = node.payload.root.n_children,
-            },
+        .block = .{
+            .children = node.root.children,
         },
     };
 
     var root_children = try alloc.alloc(*ast.Node, 1);
     root_children[0] = block;
-    node.payload.root.children = root_children.ptr;
-    node.payload.root.n_children = 1;
+    node.root.children = root_children;
     return node;
 }
 
@@ -83,10 +75,9 @@ fn transformFigure(
 ) !*ast.Node {
     _ = scratch;
 
-    const n = node.payload.container;
-    const sliced = n.children[0..n.n_children];
-    const caption_child, const index = for (sliced, 0..) |child, i| {
-        if (child.tag != .image) {
+    const n = node.container;
+    const caption_child, const index = for (n.children, 0..) |child, i| {
+        if (@as(ast.NodeType, child.*) != .image) {
             break .{child, i};
         }
     } else return node; // nothing to do
@@ -98,12 +89,8 @@ fn transformFigure(
     errdefer alloc.free(owned_children);
 
     caption_node.* = .{
-        .tag = .caption,
-        .payload = .{
-            .caption = .{
-                .children = owned_children.ptr,
-                .n_children = @intCast(owned_children.len),
-            },
+        .caption = .{
+            .children = owned_children,
         },
     };
 

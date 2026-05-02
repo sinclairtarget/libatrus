@@ -51,7 +51,7 @@ pub const LinkDefMap = struct {
         alloc: Allocator,
         def: *ast.LinkDefinition,
     ) Error!void {
-        const key = try normalize(alloc, std.mem.span(def.label));
+        const key = try normalize(alloc, def.label);
         errdefer alloc.free(key);
 
         const result = try self.backing_map.getOrPut(alloc, key);
@@ -155,8 +155,8 @@ test "can map single link def" {
     const val = try util.testing.expectNonNull(
         try map.get(testing.allocator, "bim"),
     );
-    try testing.expectEqualStrings("/foo", std.mem.span(val.url));
-    try testing.expectEqualStrings("bar", std.mem.span(val.title));
+    try testing.expectEqualStrings("/foo", val.url);
+    try testing.expectEqualStrings("bar", val.title);
 }
 
 test "first link def takes precedence" {
@@ -180,8 +180,8 @@ test "first link def takes precedence" {
     const val = try util.testing.expectNonNull(
         try map.get(testing.allocator, "bim"),
     );
-    try testing.expectEqualStrings("/foo", std.mem.span(val.url));
-    try testing.expectEqualStrings("bar", std.mem.span(val.title));
+    try testing.expectEqualStrings("/foo", val.url);
+    try testing.expectEqualStrings("bar", val.title);
 }
 
 test "match is case-insensitive" {
@@ -199,8 +199,8 @@ test "match is case-insensitive" {
     const val = try util.testing.expectNonNull(
         try map.get(testing.allocator, "Bim"),
     );
-    try testing.expectEqualStrings("/foo", std.mem.span(val.url));
-    try testing.expectEqualStrings("bar", std.mem.span(val.title));
+    try testing.expectEqualStrings("/foo", val.url);
+    try testing.expectEqualStrings("bar", val.title);
 }
 
 test "leading and trailing whitespace is stripped from label" {

@@ -12,11 +12,8 @@ pub fn createTextNode(alloc: Allocator, value: []const u8) !*ast.Node {
 
     const node = try alloc.create(ast.Node);
     node.* = .{
-        .tag = .text,
-        .payload = .{
-            .text = .{
-                .value = copy,
-            },
+        .text = .{
+            .value = copy,
         },
     };
     return node;
