@@ -10,22 +10,27 @@ const ast = @import("../ast.zig");
 
 /// Write node as alt text to writer.
 pub fn write(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
-    switch (node.*) {
-        inline .root, .block, .blockquote, .paragraph, .emphasis, .strong,
-        .heading, .link, .subscript, .superscript, .abbreviation, .container,
-        .caption, .myst_directive, .myst_directive_error, .admonition,
-        .admonition_title => |n| {
-            for (n.children) |child| {
-                try write(out, child);
+    switch (node.hasChildren()) {
+        .yes => |branch_node| {
+            switch (branch_node) {
+                inline else => |n| {
+                    for (n.children) |child| {
+                        try write(out, child);
+                    }
+                },
             }
         },
-        inline .text, .code, .inline_code, .html, .myst_role,
-        .myst_role_error => |n| {
-            _ = try out.write(n.value);
+        .no => |leaf_node| {
+            switch (leaf_node) {
+                inline .text, .code, .inline_code, .html,
+                .myst_role_error => |n| {
+                    _ = try out.write(n.value);
+                },
+                .image => |n| {
+                    _ = try out.write(n.alt);
+                },
+                .@"break", .thematic_break, .definition => {},
+            }
         },
-        .image => |n| {
-            _ = try out.write(n.alt);
-        },
-        .@"break", .thematic_break, .definition => {},
     }
 }

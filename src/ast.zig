@@ -75,6 +75,33 @@ pub const Node = union(NodeType) {
     admonition: Admonition,
     admonition_title: Wrapper,
 
+    pub fn restrict(
+        self: Node,
+        comptime RestrictionEnum: type,
+        comptime choice: RestrictionEnum,
+    ) RestrictedNode(RestrictionEnum, choice) {
+        switch (self) {
+            inline else => |n, tag| {
+                if (comptime RestrictionEnum.fromNodeType(tag) != choice) {
+                    @panic("wrong node type for restriction choice");
+                }
+
+                return @unionInit(
+                    RestrictedNode(RestrictionEnum, choice),
+                    @tagName(tag),
+                    n,
+                );
+            },
+        }
+    }
+
+    pub fn hasChildren(self: Node) HasChildrenRestriction {
+        return switch (HasChildren.fromNodeType(self)) {
+            .yes => .{ .yes = self.restrict(HasChildren, .yes) },
+            .no  => .{ .no = self.restrict(HasChildren, .no) },
+        };
+    }
+
     pub fn deinit(self: *Node, alloc: Allocator) void {
         switch (self.*) {
             .thematic_break, .@"break" => {}, // no cleanup needed
@@ -252,4 +279,90 @@ fn freeChildren(alloc: Allocator, children: []*Node) void {
         child.deinit(alloc);
     }
     alloc.free(children);
+}
+
+// ----------------------------------------------------------------------------
+// Fancy-Pants Comptime Union Subsets
+// ----------------------------------------------------------------------------
+const HasChildren = enum {
+    yes,
+    no,
+
+    /// Maps node types onto a value in the HasChildren enum.
+    ///
+    /// In other words, answers whether a type of node has children.
+    fn fromNodeType(node_type: NodeType) HasChildren {
+        return switch (node_type) {
+            .root, .block, .heading, .paragraph, .emphasis, .strong, .link,
+            .blockquote, .container, .caption, .myst_role, .subscript,
+            .superscript, .abbreviation, .myst_directive,
+            .myst_directive_error, .admonition, .admonition_title => .yes,
+            else => .no,
+        };
+    }
+};
+
+pub const HasChildrenRestriction = union(HasChildren) {
+    yes: RestrictedNode(HasChildren, .yes),
+    no: RestrictedNode(HasChildren, .no),
+};
+
+// Creates an enum containing only the subset of node types matching the given
+// restriction choice.
+fn RestrictedNodeType(
+    comptime RestrictionEnum: type,
+    comptime choice: RestrictionEnum,
+) type {
+    @setEvalBranchQuota(5000);
+
+    const e_info = @typeInfo(NodeType);
+    const all_fields = e_info.@"enum".fields;
+
+    var i: usize = 0;
+    var fields: [all_fields.len]std.builtin.Type.EnumField = undefined;
+    for (all_fields) |field| {
+        const node = @unionInit(Node, field.name, undefined);
+        if (RestrictionEnum.fromNodeType(node) == choice) {
+            fields[i] = field;
+            i += 1;
+        }
+    }
+
+    return @Type(.{ .@"enum" = .{
+        .tag_type = e_info.@"enum".tag_type,
+        .fields = fields[0..i],
+        .decls = &.{},
+        .is_exhaustive = true,
+    } });
+}
+
+// Creates a union containing only the subset of node types matching the given
+// restriction choice.
+pub fn RestrictedNode(
+    comptime RestrictionEnum: type,
+    comptime choice: RestrictionEnum,
+) type {
+    @setEvalBranchQuota(5000);
+
+    const all_fields = @typeInfo(Node).@"union".fields;
+
+    var i: usize = 0;
+    var fields: [all_fields.len]std.builtin.Type.UnionField = undefined;
+    for (all_fields) |field| {
+        const node = @unionInit(Node, field.name, undefined);
+        if (RestrictionEnum.fromNodeType(node) == choice) {
+            fields[i] = field;
+            i += 1;
+        }
+    }
+
+    // Build union.
+    return @Type(.{
+        .@"union" = .{
+            .layout = .auto,
+            .tag_type = RestrictedNodeType(RestrictionEnum, choice),
+            .fields = fields[0..i],
+            .decls = &.{},
+        },
+    });
 }
