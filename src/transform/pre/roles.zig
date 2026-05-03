@@ -9,30 +9,35 @@ pub fn transform(
     scratch: Allocator,
     original_node: *ast.Node,
 ) !*ast.Node {
-    switch (original_node.*) {
-        .myst_role => |n| {
-            // Check to see if we have already transformed this node. If so,
-            // abort. This ensures the transform is idempotent.
-            if (n.children.len > 0) {
-                return original_node;
-            }
+    switch (original_node.hasChildren()) {
+        .yes => |branch_node| switch (branch_node) {
+            .myst_role => |n| {
+                // Check to see if we have already transformed this node. If
+                // so, abort. This ensures the transform is idempotent.
+                if (n.children.len > 0) {
+                    return original_node;
+                }
 
-            return try transformBuiltin(
-                alloc,
-                scratch,
-                original_node,
-                n.name,
-                n.value,
-            );
+                return try transformBuiltin(
+                    alloc,
+                    scratch,
+                    original_node,
+                    n.name,
+                    n.value,
+                );
+            },
+            inline else => |n| {
+                for (0..n.children.len) |i| {
+                    n.children[i] = try transform(
+                        alloc,
+                        scratch,
+                        n.children[i],
+                    );
+                }
+                return original_node;
+            },
         },
-        inline .root, .block, .heading, .paragraph, .emphasis, .strong,
-        .link, .blockquote => |n| {
-            for (0..n.children.len) |i| {
-                n.children[i] = try transform(alloc, scratch, n.children[i]);
-            }
-            return original_node;
-        },
-        else => return original_node,
+        .no => return original_node, // Nothing to do.
     }
 }
 

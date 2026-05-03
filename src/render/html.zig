@@ -245,6 +245,7 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
             }
         },
         .myst_directive_error => |n| {
+            _ = try out.write("<div>");
             for (n.children) |child| {
                 _ = try renderNode(child, out);
             }

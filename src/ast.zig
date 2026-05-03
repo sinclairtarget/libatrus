@@ -75,6 +75,8 @@ pub const Node = union(NodeType) {
     admonition: Admonition,
     admonition_title: Wrapper,
 
+    /// Returns a "restricted node," i.e. one that has been type-narrowed to a
+    /// subset of all possible nodes types.
     pub fn restrict(
         self: Node,
         comptime RestrictionEnum: type,
@@ -95,6 +97,8 @@ pub const Node = union(NodeType) {
         }
     }
 
+    /// Returns a union bisecting nodes into those that have children and those
+    /// that don't.
     pub fn hasChildren(self: Node) HasChildrenRestriction {
         return switch (HasChildren.fromNodeType(self)) {
             .yes => .{ .yes = self.restrict(HasChildren, .yes) },
@@ -302,6 +306,7 @@ const HasChildren = enum {
     }
 };
 
+// Bisects nodes into those that have children and those that don't.
 pub const HasChildrenRestriction = union(HasChildren) {
     yes: RestrictedNode(HasChildren, .yes),
     no: RestrictedNode(HasChildren, .no),
@@ -313,7 +318,7 @@ fn RestrictedNodeType(
     comptime RestrictionEnum: type,
     comptime choice: RestrictionEnum,
 ) type {
-    @setEvalBranchQuota(5000);
+    @setEvalBranchQuota(10000);
 
     const e_info = @typeInfo(NodeType);
     const all_fields = e_info.@"enum".fields;
@@ -342,7 +347,7 @@ pub fn RestrictedNode(
     comptime RestrictionEnum: type,
     comptime choice: RestrictionEnum,
 ) type {
-    @setEvalBranchQuota(5000);
+    @setEvalBranchQuota(10000);
 
     const all_fields = @typeInfo(Node).@"union".fields;
 
@@ -356,7 +361,6 @@ pub fn RestrictedNode(
         }
     }
 
-    // Build union.
     return @Type(.{
         .@"union" = .{
             .layout = .auto,

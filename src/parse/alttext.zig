@@ -11,26 +11,22 @@ const ast = @import("../ast.zig");
 /// Write node as alt text to writer.
 pub fn write(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
     switch (node.hasChildren()) {
-        .yes => |branch_node| {
-            switch (branch_node) {
-                inline else => |n| {
-                    for (n.children) |child| {
-                        try write(out, child);
-                    }
-                },
-            }
+        .yes => |branch_node| switch (branch_node) {
+            inline else => |n| {
+                for (n.children) |child| {
+                    try write(out, child);
+                }
+            },
         },
-        .no => |leaf_node| {
-            switch (leaf_node) {
-                inline .text, .code, .inline_code, .html,
-                .myst_role_error => |n| {
-                    _ = try out.write(n.value);
-                },
-                .image => |n| {
-                    _ = try out.write(n.alt);
-                },
-                .@"break", .thematic_break, .definition => {},
-            }
+        .no => |leaf_node| switch (leaf_node) {
+            inline .text, .code, .inline_code, .html,
+            .myst_role_error => |n| {
+                _ = try out.write(n.value);
+            },
+            .image => |n| {
+                _ = try out.write(n.alt);
+            },
+            .@"break", .thematic_break, .definition => {},
         },
     }
 }
