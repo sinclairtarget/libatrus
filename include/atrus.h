@@ -242,28 +242,28 @@ struct atrus_node {
         struct atrus_node_heading               heading;
         struct atrus_node_wrapper               paragraph;
         struct atrus_node_text                  text;
-//        struct atrus_node_code                  code;
-//        // thematic_break (void) omitted
-//        // break          (void) omitted
-//        struct atrus_node_wrapper               emphasis;
-//        struct atrus_node_wrapper               strong;
-//        struct atrus_node_text                  inline_code;
-//        struct atrus_node_link                  link;
-//        struct atrus_node_link_definition       definition;
-//        struct atrus_node_image                 image;
-//        struct atrus_node_wrapper               blockquote;
-//        struct atrus_node_text                  html;
-//        struct atrus_node_container             container;
-//        struct atrus_node_container             caption;
-//        struct atrus_node_myst_role             myst_role;
-//        struct atrus_node_myst_role_error       myst_role_error;
-//        struct atrus_node_wrapper               subscript;
-//        struct atrus_node_wrapper               superscript;
-//        struct atrus_node_abbreviation          abbreviation;
-//        struct atrus_node_myst_directive        myst_directive;
-//        struct atrus_node_myst_directive_error  myst_directive_error;
-//        struct atrus_node_admonition            admonition;
-//        struct atrus_node_wrapper               admonition_title;
+        struct atrus_node_code                  code;
+        // thematic_break (void) omitted
+        // break          (void) omitted
+        struct atrus_node_wrapper               emphasis;
+        struct atrus_node_wrapper               strong;
+        struct atrus_node_text                  inline_code;
+        struct atrus_node_link                  link;
+        struct atrus_node_link_definition       definition;
+        struct atrus_node_image                 image;
+        struct atrus_node_wrapper               blockquote;
+        struct atrus_node_text                  html;
+        struct atrus_node_container             container;
+        struct atrus_node_wrapper               caption;
+        struct atrus_node_myst_role             myst_role;
+        struct atrus_node_myst_role_error       myst_role_error;
+        struct atrus_node_wrapper               subscript;
+        struct atrus_node_wrapper               superscript;
+        struct atrus_node_abbreviation          abbreviation;
+        struct atrus_node_myst_directive        myst_directive;
+        struct atrus_node_myst_directive_error  myst_directive_error;
+        struct atrus_node_admonition            admonition;
+        struct atrus_node_wrapper               admonition_title;
     } payload;
     atrus_node_type_t tag;
 };

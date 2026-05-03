@@ -247,6 +247,410 @@ const Text = extern struct {
     }
 };
 
+const Code = extern struct {
+    value: [*:0]const u8,
+    lang: [*:0]const u8,
+
+    fn init(alloc: Allocator, code: *atrus.ast.Code) !Code {
+        const value = try alloc.dupeZ(u8, code.value);
+        const lang = try alloc.dupeZ(u8, code.lang);
+        return .{
+            .value = value.ptr,
+            .lang = lang.ptr,
+        };
+    }
+
+    fn adopt(self: *Code, alloc: Allocator) !atrus.ast.Code {
+        const value = std.mem.span(self.value);
+        const lang = std.mem.span(self.lang);
+        return .{
+            .value = try alloc.dupeZ(u8, value),
+            .lang = try alloc.dupeZ(u8, lang),
+        };
+    }
+
+    fn deinit(self: *Code, alloc: Allocator) void {
+        alloc.free(std.mem.span(self.value));
+        alloc.free(std.mem.span(self.lang));
+    }
+};
+
+const Link = extern struct {
+    children: [*]*ExposedNode,
+    children_len: c_uint,
+    url: [*:0]const u8,
+    title: [*:0]const u8,
+
+    fn init(alloc: Allocator, link: *atrus.ast.Link) !Link {
+        const new_children = try exposeChildren(alloc, link.children);
+        const url = try alloc.dupeZ(u8, link.url);
+        const title = try alloc.dupeZ(u8, link.title);
+        return .{
+            .children = new_children,
+            .children_len = @intCast(link.children.len),
+            .url = url.ptr,
+            .title = title.ptr,
+        };
+    }
+
+    fn adopt(self: *Link, alloc: Allocator) !atrus.ast.Link {
+        const new_children = try adoptChildren(
+            alloc,
+            self.children,
+            self.children_len,
+        );
+        const url = std.mem.span(self.url);
+        const title = std.mem.span(self.title);
+        return .{
+            .children = new_children,
+            .url = try alloc.dupeZ(u8, url),
+            .title = try alloc.dupeZ(u8, title),
+        };
+    }
+
+    fn deinit(self: *Link, alloc: Allocator) void {
+        freeChildren(alloc, self.children, self.children_len);
+        alloc.free(std.mem.span(self.url));
+        alloc.free(std.mem.span(self.title));
+    }
+};
+
+const LinkDefinition = extern struct {
+    url: [*:0]const u8,
+    title: [*:0]const u8,
+    label: [*:0]const u8,
+
+    fn init(
+        alloc: Allocator,
+        link_def: *atrus.ast.LinkDefinition,
+    ) !LinkDefinition {
+        const url = try alloc.dupeZ(u8, link_def.url);
+        const title = try alloc.dupeZ(u8, link_def.title);
+        const label = try alloc.dupeZ(u8, link_def.label);
+        return .{
+            .url = url.ptr,
+            .title = title.ptr,
+            .label = label.ptr,
+        };
+    }
+
+    fn adopt(
+        self: *LinkDefinition,
+        alloc: Allocator,
+    ) !atrus.ast.LinkDefinition {
+        const url = std.mem.span(self.url);
+        const title = std.mem.span(self.title);
+        const label = std.mem.span(self.label);
+        return .{
+            .url = try alloc.dupeZ(u8, url),
+            .title = try alloc.dupeZ(u8, title),
+            .label = try alloc.dupeZ(u8, label),
+        };
+    }
+
+    fn deinit(self: *LinkDefinition, alloc: Allocator) void {
+        alloc.free(std.mem.span(self.url));
+        alloc.free(std.mem.span(self.title));
+        alloc.free(std.mem.span(self.label));
+    }
+};
+
+const Image = extern struct {
+    url: [*:0]const u8,
+    title: [*:0]const u8,
+    alt: [*:0]const u8,
+
+    fn init(alloc: Allocator, image: *atrus.ast.Image) !Image {
+        const url = try alloc.dupeZ(u8, image.url);
+        const title = try alloc.dupeZ(u8, image.title);
+        const alt = try alloc.dupeZ(u8, image.alt);
+        return .{
+            .url = url.ptr,
+            .title = title.ptr,
+            .alt = alt.ptr,
+        };
+    }
+
+    fn adopt(self: *Image, alloc: Allocator) !atrus.ast.Image {
+        const url = std.mem.span(self.url);
+        const title = std.mem.span(self.title);
+        const alt = std.mem.span(self.alt);
+        return .{
+            .url = try alloc.dupeZ(u8, url),
+            .title = try alloc.dupeZ(u8, title),
+            .alt = try alloc.dupeZ(u8, alt),
+        };
+    }
+
+    fn deinit(self: *Image, alloc: Allocator) void {
+        alloc.free(std.mem.span(self.url));
+        alloc.free(std.mem.span(self.title));
+        alloc.free(std.mem.span(self.alt));
+    }
+};
+
+const Container = extern struct {
+    children: [*]*ExposedNode,
+    children_len: c_uint,
+    kind: [*:0]const u8,
+
+    fn init(alloc: Allocator, container: *atrus.ast.Container) !Container {
+        const new_children = try exposeChildren(alloc, container.children);
+        const kind = try alloc.dupeZ(u8, container.kind);
+        return .{
+            .children = new_children,
+            .children_len = @intCast(container.children.len),
+            .kind = kind.ptr,
+        };
+    }
+
+    fn adopt(self: *Container, alloc: Allocator) !atrus.ast.Container {
+        const new_children = try adoptChildren(
+            alloc,
+            self.children,
+            self.children_len,
+        );
+        const kind = std.mem.span(self.kind);
+        return .{
+            .children = new_children,
+            .kind = try alloc.dupeZ(u8, kind),
+        };
+    }
+
+    fn deinit(self: *Container, alloc: Allocator) void {
+        freeChildren(alloc, self.children, self.children_len);
+        alloc.free(std.mem.span(self.kind));
+    }
+};
+
+const MySTRole = extern struct {
+    children: [*]*ExposedNode,
+    children_len: c_uint,
+    name: [*:0]const u8,
+    value: [*:0]const u8,
+
+    fn init(alloc: Allocator, myst_role: *atrus.ast.MySTRole) !MySTRole {
+        const new_children = try exposeChildren(alloc, myst_role.children);
+        const name = try alloc.dupeZ(u8, myst_role.name);
+        const value = try alloc.dupeZ(u8, myst_role.value);
+        return .{
+            .children = new_children,
+            .children_len = @intCast(myst_role.children.len),
+            .name = name.ptr,
+            .value = value.ptr,
+        };
+    }
+
+    fn adopt(self: *MySTRole, alloc: Allocator) !atrus.ast.MySTRole {
+        const new_children = try adoptChildren(
+            alloc,
+            self.children,
+            self.children_len,
+        );
+        const name = std.mem.span(self.name);
+        const value = std.mem.span(self.value);
+        return .{
+            .children = new_children,
+            .name = try alloc.dupeZ(u8, name),
+            .value = try alloc.dupeZ(u8, value),
+        };
+    }
+
+    fn deinit(self: *MySTRole, alloc: Allocator) void {
+        freeChildren(alloc, self.children, self.children_len);
+        alloc.free(std.mem.span(self.name));
+        alloc.free(std.mem.span(self.value));
+    }
+};
+
+const MySTRoleError = extern struct {
+    value: [*:0]const u8,
+
+    fn init(
+        alloc: Allocator,
+        myst_role_error: *atrus.ast.MySTRoleError,
+    ) !MySTRoleError {
+        const value = try alloc.dupeZ(u8, myst_role_error.value);
+        return .{
+            .value = value.ptr,
+        };
+    }
+
+    fn adopt(self: *MySTRoleError, alloc: Allocator) !atrus.ast.MySTRoleError {
+        const value = std.mem.span(self.value);
+        return .{
+            .value = try alloc.dupeZ(u8, value),
+        };
+    }
+
+    fn deinit(self: *MySTRoleError, alloc: Allocator) void {
+        alloc.free(std.mem.span(self.value));
+    }
+};
+
+const Abbreviation = extern struct {
+    children: [*]*ExposedNode,
+    children_len: c_uint,
+    title: [*:0]const u8,
+
+    fn init(alloc: Allocator, abbrev: *atrus.ast.Abbreviation) !Abbreviation {
+        const new_children = try exposeChildren(alloc, abbrev.children);
+        const title = try alloc.dupeZ(u8, abbrev.title);
+        return .{
+            .children = new_children,
+            .children_len = @intCast(abbrev.children.len),
+            .title = title.ptr,
+        };
+    }
+
+    fn adopt(self: *Abbreviation, alloc: Allocator) !atrus.ast.Abbreviation {
+        const new_children = try adoptChildren(
+            alloc,
+            self.children,
+            self.children_len,
+        );
+        const title = std.mem.span(self.title);
+        return .{
+            .children = new_children,
+            .title = try alloc.dupeZ(u8, title),
+        };
+    }
+
+    fn deinit(self: *Abbreviation, alloc: Allocator) void {
+        freeChildren(alloc, self.children, self.children_len);
+        alloc.free(std.mem.span(self.title));
+    }
+};
+
+const MySTDirective = extern struct {
+    children: [*]*ExposedNode,
+    children_len: c_uint,
+    name: [*:0]const u8,
+    args: [*:0]const u8,
+    value: [*:0]const u8,
+
+    fn init(
+        alloc: Allocator,
+        myst_directive: *atrus.ast.MySTDirective,
+    ) !MySTDirective {
+        const new_children = try exposeChildren(
+            alloc,
+            myst_directive.children,
+        );
+        const name = try alloc.dupeZ(u8, myst_directive.name);
+        const args = try alloc.dupeZ(u8, myst_directive.args);
+        const value = try alloc.dupeZ(u8, myst_directive.value);
+        return .{
+            .children = new_children,
+            .children_len = @intCast(myst_directive.children.len),
+            .name = name.ptr,
+            .args = args.ptr,
+            .value = value.ptr,
+        };
+    }
+
+    fn adopt(self: *MySTDirective, alloc: Allocator) !atrus.ast.MySTDirective {
+        const new_children = try adoptChildren(
+            alloc,
+            self.children,
+            self.children_len,
+        );
+        const name = std.mem.span(self.name);
+        const args = std.mem.span(self.args);
+        const value = std.mem.span(self.value);
+        return .{
+            .children = new_children,
+            .name = try alloc.dupeZ(u8, name),
+            .args = try alloc.dupeZ(u8, args),
+            .value = try alloc.dupeZ(u8, value),
+        };
+    }
+
+    fn deinit(self: *MySTDirective, alloc: Allocator) void {
+        freeChildren(alloc, self.children, self.children_len);
+        alloc.free(std.mem.span(self.name));
+        alloc.free(std.mem.span(self.args));
+        alloc.free(std.mem.span(self.value));
+    }
+};
+
+const MySTDirectiveError = extern struct {
+    children: [*]*ExposedNode,
+    children_len: c_uint,
+    message: [*:0]const u8,
+
+    fn init(
+        alloc: Allocator,
+        directive_error: *atrus.ast.MySTDirectiveError,
+    ) !MySTDirectiveError {
+        const new_children = try exposeChildren(
+            alloc,
+            directive_error.children,
+        );
+        const message = try alloc.dupeZ(u8, directive_error.message);
+        return .{
+            .children = new_children,
+            .children_len = @intCast(directive_error.children.len),
+            .message = message.ptr,
+        };
+    }
+
+    fn adopt(
+        self: *MySTDirectiveError,
+        alloc: Allocator,
+    ) !atrus.ast.MySTDirectiveError {
+        const new_children = try adoptChildren(
+            alloc,
+            self.children,
+            self.children_len,
+        );
+        const message = std.mem.span(self.message);
+        return .{
+            .children = new_children,
+            .message = try alloc.dupeZ(u8, message),
+        };
+    }
+
+    fn deinit(self: *MySTDirectiveError, alloc: Allocator) void {
+        freeChildren(alloc, self.children, self.children_len);
+        alloc.free(std.mem.span(self.message));
+    }
+};
+
+const Admonition = extern struct {
+    children: [*]*ExposedNode,
+    children_len: c_uint,
+    kind: [*:0]const u8,
+
+    fn init(alloc: Allocator, admonition: *atrus.ast.Admonition) !Admonition {
+        const new_children = try exposeChildren(alloc, admonition.children);
+        const kind = try alloc.dupeZ(u8, admonition.kind);
+        return .{
+            .children = new_children,
+            .children_len = @intCast(admonition.children.len),
+            .kind = kind.ptr,
+        };
+    }
+
+    fn adopt(self: *Admonition, alloc: Allocator) !atrus.ast.Admonition {
+        const new_children = try adoptChildren(
+            alloc,
+            self.children,
+            self.children_len,
+        );
+        const kind = std.mem.span(self.kind);
+        return .{
+            .children = new_children,
+            .kind = try alloc.dupeZ(u8, kind),
+        };
+    }
+
+    fn deinit(self: *Admonition, alloc: Allocator) void {
+        freeChildren(alloc, self.children, self.children_len);
+        alloc.free(std.mem.span(self.kind));
+    }
+};
+
 fn exposeChildren(
     alloc: Allocator,
     children: []*atrus.ast.Node,
@@ -288,6 +692,28 @@ const ExposedNode = extern struct {
         heading: Heading,
         paragraph: Wrapper,
         text: Text,
+        code: Code,
+        thematic_break: void,
+        @"break": void,
+        emphasis: Wrapper,
+        strong: Wrapper,
+        inline_code: Text,
+        link: Link,
+        definition: LinkDefinition,
+        image: Image,
+        blockquote: Wrapper,
+        html: Text,
+        container: Container,
+        caption: Wrapper,
+        myst_role: MySTRole,
+        myst_role_error: MySTRoleError,
+        subscript: Wrapper,
+        superscript: Wrapper,
+        abbreviation: Abbreviation,
+        myst_directive: MySTDirective,
+        myst_directive_error: MySTDirectiveError,
+        admonition: Admonition,
+        admonition_title: Wrapper,
     },
     tag: atrus.ast.NodeType,
 
@@ -296,26 +722,23 @@ const ExposedNode = extern struct {
         alloc: Allocator,
         node: *atrus.ast.Node,
     ) Allocator.Error!ExposedNode {
-        // TODO: Use comptime to make this less verbose.
         return .{
             .tag = node.*,
             .payload = switch (node.*) {
-                .root => |*n| .{
-                    .root = try Root.init(alloc, n),
+                inline .@"break", .thematic_break => |_, tag| blk: {
+                    const PayloadUnion = @FieldType(ExposedNode, "payload");
+                    break :blk @unionInit(PayloadUnion, @tagName(tag), void{});
                 },
-                .block => |*n| .{
-                    .block = try Wrapper.init(alloc, n),
+                inline else => |*n, tag| blk: {
+                    const PayloadUnion = @FieldType(ExposedNode, "payload");
+                    const Payload = @FieldType(PayloadUnion, @tagName(tag));
+                    const payload = try Payload.init(alloc, n);
+                    break :blk @unionInit(
+                        PayloadUnion,
+                        @tagName(tag),
+                        payload,
+                    );
                 },
-                .paragraph => |*n| .{
-                    .paragraph = try Wrapper.init(alloc, n),
-                },
-                .heading => |*n| .{
-                    .heading = try Heading.init(alloc, n),
-                },
-                .text => |*n| .{
-                    .text = try Text.init(alloc, n),
-                },
-                else => @panic("unimplemented node type"),
             },
         };
     }
@@ -324,7 +747,12 @@ const ExposedNode = extern struct {
     fn adopt(self: *ExposedNode, alloc: Allocator) !*atrus.ast.Node {
         const adopted_node = try alloc.create(atrus.ast.Node);
         adopted_node.* = switch (self.tag) {
-            inline .root, .block, .heading, .paragraph, .text => |tag| blk: {
+            inline .@"break", .thematic_break => |tag| @unionInit(
+                atrus.ast.Node,
+                @tagName(tag),
+                void{},
+            ),
+            inline else => |tag| blk: {
                 const exposed_payload = &@field(self.payload, @tagName(tag));
                 const adopted_payload = try exposed_payload.adopt(alloc);
                 break :blk @unionInit(
@@ -333,18 +761,17 @@ const ExposedNode = extern struct {
                     adopted_payload,
                 );
             },
-            else => @panic("unimplemented node type"),
         };
         return adopted_node;
     }
 
     fn deinit(self: *ExposedNode, alloc: Allocator) void {
         switch (self.tag) {
-            inline .root, .block, .heading, .paragraph, .text => |tag| {
+            .@"break", .thematic_break => {},
+            inline else => |tag| {
                 const n = &@field(self.payload, @tagName(tag));
                 n.deinit(alloc);
             },
-            else => @panic("unimplemented node type"),
         }
 
         alloc.destroy(self);
