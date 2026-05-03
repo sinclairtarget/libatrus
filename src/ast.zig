@@ -12,7 +12,7 @@ const Allocator = std.mem.Allocator;
 
 /// All available MyST node types.
 ///
-/// This enum is also used by C-ABI-compatible AST, hence the backing type.
+/// This enum is also used by the C-ABI-compatible AST, hence the backing type.
 pub const NodeType = enum(c_uint) {
     root = 0,
     block = 1,
@@ -78,8 +78,8 @@ pub const Node = union(NodeType) {
     /// Returns a "restricted node," i.e. one that has been type-narrowed to a
     /// subset of all possible nodes types.
     ///
-    /// The returned union should be considered a "view" on the union payload
-    /// of the node and not a node itself.
+    /// The returned union should be considered a view on the union payload of
+    /// the node and not a node itself.
     pub fn restrict(
         self: *Node,
         comptime RestrictionEnum: type,
