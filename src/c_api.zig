@@ -63,6 +63,10 @@ export fn atrus_parse(
     return 0;
 }
 
+export fn atrus_name(node: *atrus.ast.Node) [*:0]const u8 {
+    return node.name().ptr;
+}
+
 export fn atrus_free(root: *atrus.ast.Node) void {
     root.deinit(c_alloc);
 }

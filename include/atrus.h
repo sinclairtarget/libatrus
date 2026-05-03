@@ -64,6 +64,11 @@ atrus_parse_error_t atrus_parse(
 );
 
 /*
+ * Retuns the camel-cased type name for the given node.
+ */
+const char* atrus_name(struct atrus_node_opaque* node);
+
+/*
  * Frees the given AST recursively.
  */
 void atrus_free(struct atrus_node_opaque* root);

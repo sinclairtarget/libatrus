@@ -21,7 +21,6 @@ int main() {
     fprintf(stderr, "%s\n", atrus_version);
 
     // Test parsing
-    fprintf(stderr, "Parsing...\n");
     char* md = "# Heading\nThis is a paragraph.\n";
     struct atrus_parse_opts parse_options = {
         .parse_level = ATRUS_POST_PARSE_LEVEL,
@@ -33,27 +32,27 @@ int main() {
         exit(1);
     }
 
+    // Test getting node type name
+    const char* node_type_name = atrus_name(node);
+    printf("node type name: \"%s\"\n", node_type_name);
+
     // Test AST traversal
-    fprintf(stderr, "Calling atrus_expose()...\n");
     struct atrus_node* exposed_node;
     if (atrus_expose(node, &exposed_node) < 0) {
         fprintf(stderr, "Failed to call atrus_expose().\n");
         exit(1);
     }
 
-    fprintf(stderr, "Beginning AST traversal...\n");
     print_heading_text(exposed_node);
 
     // Test atrus_adopt(). Not strictly necessary in this example since we
     // didn't modify the AST.
-    fprintf(stderr, "Calling atrus_adopt()...\n");
     if (atrus_adopt(exposed_node, &node) < 0) {
         fprintf(stderr, "Failed to call atrus_adopt().\n");
         exit(1);
     }
 
     // Test rendering (JSON)
-    fprintf(stderr, "Beginning JSON rendering...\n");
     char* out;
     struct atrus_json_opts render_options = {
         .whitespace = ATRUS_JSON_INDENT_2,
@@ -68,7 +67,6 @@ int main() {
     free(out);
 
     // Test rendering (HTML)
-    fprintf(stderr, "Beginning HTML rendering...\n");
     len = atrus_render_html(node, &out);
     if (len == -1) {
         fprintf(stderr, "Failed to render HTML.\n");
@@ -82,7 +80,6 @@ int main() {
 
     // Parse input again to create a second AST. We do this just to test
     // atrus_free_exposed().
-    fprintf(stderr, "Testing atrus_free_exposed()...\n");
     err = atrus_parse(md, &node, &parse_options);
     if (err != ATRUS_PARSE_SUCCESS) {
         fprintf(stderr, "Failed to parse. Got error: %d.\n", err);
