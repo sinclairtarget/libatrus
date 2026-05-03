@@ -77,13 +77,16 @@ pub const Node = union(NodeType) {
 
     /// Returns a "restricted node," i.e. one that has been type-narrowed to a
     /// subset of all possible nodes types.
+    ///
+    /// The returned union should be considered a "view" on the union payload
+    /// of the node and not a node itself.
     pub fn restrict(
-        self: Node,
+        self: *Node,
         comptime RestrictionEnum: type,
         comptime choice: RestrictionEnum,
     ) RestrictedNode(RestrictionEnum, choice) {
-        switch (self) {
-            inline else => |n, tag| {
+        switch (self.*) {
+            inline else => |*n, tag| {
                 if (comptime RestrictionEnum.fromNodeType(tag) != choice) {
                     @panic("wrong node type for restriction choice");
                 }
@@ -99,8 +102,8 @@ pub const Node = union(NodeType) {
 
     /// Returns a union bisecting nodes into those that have children and those
     /// that don't.
-    pub fn hasChildren(self: Node) HasChildrenRestriction {
-        return switch (HasChildren.fromNodeType(self)) {
+    pub fn hasChildren(self: *Node) HasChildrenRestriction {
+        return switch (HasChildren.fromNodeType(self.*)) {
             .yes => .{ .yes = self.restrict(HasChildren, .yes) },
             .no  => .{ .no = self.restrict(HasChildren, .no) },
         };
@@ -359,6 +362,8 @@ fn RestrictedNodeType(
 
 // Creates a union containing only the subset of node types matching the given
 // restriction choice.
+//
+// The union payloads are pointers to the original payloads in the node union.
 pub fn RestrictedNode(
     comptime RestrictionEnum: type,
     comptime choice: RestrictionEnum,
@@ -372,7 +377,11 @@ pub fn RestrictedNode(
     for (all_fields) |field| {
         const node = @unionInit(Node, field.name, undefined);
         if (RestrictionEnum.fromNodeType(node) == choice) {
-            fields[i] = field;
+            fields[i] = .{
+                .name = field.name,
+                .type = *field.type,
+                .alignment = field.alignment,
+            };
             i += 1;
         }
     }
