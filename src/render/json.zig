@@ -6,11 +6,11 @@ const Stringify = std.json.Stringify;
 
 const ast = @import("../ast.zig");
 
-pub const Options = extern struct {
-    whitespace: enum(c_uint) {
-        minified = 0,
-        indent_2 = 1,
-        indent_4 = 2,
+pub const Options = struct {
+    whitespace: enum {
+        minified,
+        indent_2,
+        indent_4,
     } = .minified,
 };
 

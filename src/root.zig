@@ -41,21 +41,21 @@ pub const ParseError = error{
     UnrecognizedBlockToken,
 } || InlineParser.Error || Allocator.Error || Io.Writer.Error;
 
-pub const ParseOptions = extern struct {
-    parse_level: enum(c_uint) {
+pub const ParseOptions = struct {
+    parse_level: enum {
         /// Only parse blocks, not inline content. This is only really useful
         /// for debugging.
-        block = 0,
+        block,
         /// Parse blocks and inline content into a "raw" MyST AST. A "raw" AST
         /// is hot out of the parser and has not yet been transformed in any
         /// way; in particular, builtin directives and roles are not
         /// implemented. This is also only really useful for debugging.
-        raw = 1,
+        raw,
         /// Parse MyST Markdown into an unresolved MyST AST. The structure of
         /// this AST conforms exactly to the MyST specification. Choose this
         /// option if you want a maximally portable AST for interop with other
         /// MyST tooling, or want to skip the post-processing transforms.
-        pre = 2,
+        pre,
         /// Parse blocks and inline content into a "resolved" MyST AST. A
         /// "resolved" AST is the result of running several post-processing
         /// transforms on the AST, including transforms to simplify the AST and
@@ -65,7 +65,7 @@ pub const ParseOptions = extern struct {
         /// If you want more control over which post-processing transforms are
         /// done, use the `.pre` parse level and call `atrus.transform()` on
         /// the returned AST.
-        post = 3,
+        post,
     } = .post,
 };
 
