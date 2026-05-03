@@ -106,6 +106,22 @@ pub const Node = union(NodeType) {
         };
     }
 
+    /// Returns the type name as a string.
+    ///
+    /// The MyST spec uses camel case for type names.
+    pub fn name(self: Node) [:0]const u8 {
+        return switch (self) {
+            .thematic_break => "thematicBreak",
+            .inline_code => "inlineCode",
+            .myst_role => "mystRole",
+            .myst_role_error => "mystRoleError",
+            .myst_directive => "mystDirective",
+            .myst_directive_error => "mystDirectiveError",
+            .admonition_title => "admonitionTitle",
+            else => @tagName(self),
+        };
+    }
+
     pub fn deinit(self: *Node, alloc: Allocator) void {
         switch (self.*) {
             .thematic_break, .@"break" => {}, // no cleanup needed

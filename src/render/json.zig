@@ -45,17 +45,7 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
 
     try stringify.beginObject();
     try stringify.objectField("type");
-
-    switch (node.*) {
-        .thematic_break => try stringify.write("thematicBreak"),
-        .inline_code => try stringify.write("inlineCode"),
-        .myst_role => try stringify.write("mystRole"),
-        .myst_role_error => try stringify.write("mystRoleError"),
-        .myst_directive => try stringify.write("mystDirective"),
-        .myst_directive_error => try stringify.write("mystDirectiveError"),
-        .admonition_title => try stringify.write("admonitionTitle"),
-        else => try stringify.write(@tagName(node.*)),
-    }
+    try stringify.write(node.name());
 
     switch (node.hasChildren()) {
         .yes => |branch_node| switch (branch_node) {
