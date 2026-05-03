@@ -135,6 +135,26 @@ pub const Node = union(NodeType) {
 
         alloc.destroy(self);
     }
+
+    /// Cleans up the AST, but only frees memory used for the tree itself,
+    /// leaving any strings owned by the tree alone.
+    ///
+    /// This is only used by the C API.
+    pub fn deinitTreeOnly(self: *Node, alloc: Allocator) void {
+        switch (self.hasChildren()) {
+            .yes => |branch_node| switch (branch_node) {
+                inline else => |n| {
+                    for (n.children) |child| {
+                        child.deinitTreeOnly(alloc);
+                    }
+                    alloc.free(n.children);
+                },
+            },
+            .no => {},
+        }
+
+        alloc.destroy(self);
+    }
 };
 
 pub const Root = struct {
@@ -307,14 +327,14 @@ fn freeChildren(alloc: Allocator, children: []*Node) void {
 // ----------------------------------------------------------------------------
 // Fancy-Pants Comptime Union Subsets
 // ----------------------------------------------------------------------------
-const HasChildren = enum {
+pub const HasChildren = enum {
     yes,
     no,
 
     /// Maps node types onto a value in the HasChildren enum.
     ///
     /// In other words, answers whether a type of node has children.
-    fn fromNodeType(node_type: NodeType) HasChildren {
+    pub fn fromNodeType(node_type: NodeType) HasChildren {
         return switch (node_type) {
             .root, .block, .heading, .paragraph, .emphasis, .strong, .link,
             .blockquote, .container, .caption, .myst_role, .subscript,
@@ -326,7 +346,7 @@ const HasChildren = enum {
 };
 
 // Bisects nodes into those that have children and those that don't.
-pub const HasChildrenRestriction = union(HasChildren) {
+const HasChildrenRestriction = union(HasChildren) {
     yes: RestrictedNode(HasChildren, .yes),
     no: RestrictedNode(HasChildren, .no),
 };

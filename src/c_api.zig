@@ -233,16 +233,16 @@ const Text = extern struct {
     value: [*:0]const u8,
 
     fn init(alloc: Allocator, text: *atrus.ast.Text) !Text {
-        const value = try alloc.dupeZ(u8, text.value);
+        _ = alloc;
         return .{
-            .value = value.ptr,
+            .value = text.value.ptr,
         };
     }
 
     fn adopt(self: *Text, alloc: Allocator) !atrus.ast.Text {
-        const value = std.mem.span(self.value);
+        _ = alloc;
         return .{
-            .value = try alloc.dupeZ(u8, value),
+            .value = std.mem.span(self.value),
         };
     }
 
@@ -256,20 +256,18 @@ const Code = extern struct {
     lang: [*:0]const u8,
 
     fn init(alloc: Allocator, code: *atrus.ast.Code) !Code {
-        const value = try alloc.dupeZ(u8, code.value);
-        const lang = try alloc.dupeZ(u8, code.lang);
+        _ = alloc;
         return .{
-            .value = value.ptr,
-            .lang = lang.ptr,
+            .value = code.value.ptr,
+            .lang = code.lang.ptr,
         };
     }
 
     fn adopt(self: *Code, alloc: Allocator) !atrus.ast.Code {
-        const value = std.mem.span(self.value);
-        const lang = std.mem.span(self.lang);
+        _ = alloc;
         return .{
-            .value = try alloc.dupeZ(u8, value),
-            .lang = try alloc.dupeZ(u8, lang),
+            .value = std.mem.span(self.value),
+            .lang = std.mem.span(self.lang),
         };
     }
 
@@ -287,13 +285,11 @@ const Link = extern struct {
 
     fn init(alloc: Allocator, link: *atrus.ast.Link) !Link {
         const new_children = try exposeChildren(alloc, link.children);
-        const url = try alloc.dupeZ(u8, link.url);
-        const title = try alloc.dupeZ(u8, link.title);
         return .{
             .children = new_children,
             .children_len = @intCast(link.children.len),
-            .url = url.ptr,
-            .title = title.ptr,
+            .url = link.url.ptr,
+            .title = link.title.ptr,
         };
     }
 
@@ -303,12 +299,10 @@ const Link = extern struct {
             self.children,
             self.children_len,
         );
-        const url = std.mem.span(self.url);
-        const title = std.mem.span(self.title);
         return .{
             .children = new_children,
-            .url = try alloc.dupeZ(u8, url),
-            .title = try alloc.dupeZ(u8, title),
+            .url = std.mem.span(self.url),
+            .title = std.mem.span(self.title),
         };
     }
 
@@ -328,13 +322,11 @@ const LinkDefinition = extern struct {
         alloc: Allocator,
         link_def: *atrus.ast.LinkDefinition,
     ) !LinkDefinition {
-        const url = try alloc.dupeZ(u8, link_def.url);
-        const title = try alloc.dupeZ(u8, link_def.title);
-        const label = try alloc.dupeZ(u8, link_def.label);
+        _ = alloc;
         return .{
-            .url = url.ptr,
-            .title = title.ptr,
-            .label = label.ptr,
+            .url = link_def.url.ptr,
+            .title = link_def.title.ptr,
+            .label = link_def.label.ptr,
         };
     }
 
@@ -342,13 +334,11 @@ const LinkDefinition = extern struct {
         self: *LinkDefinition,
         alloc: Allocator,
     ) !atrus.ast.LinkDefinition {
-        const url = std.mem.span(self.url);
-        const title = std.mem.span(self.title);
-        const label = std.mem.span(self.label);
+        _ = alloc;
         return .{
-            .url = try alloc.dupeZ(u8, url),
-            .title = try alloc.dupeZ(u8, title),
-            .label = try alloc.dupeZ(u8, label),
+            .url = std.mem.span(self.url),
+            .title = std.mem.span(self.title),
+            .label = std.mem.span(self.label),
         };
     }
 
@@ -365,24 +355,20 @@ const Image = extern struct {
     alt: [*:0]const u8,
 
     fn init(alloc: Allocator, image: *atrus.ast.Image) !Image {
-        const url = try alloc.dupeZ(u8, image.url);
-        const title = try alloc.dupeZ(u8, image.title);
-        const alt = try alloc.dupeZ(u8, image.alt);
+        _ = alloc;
         return .{
-            .url = url.ptr,
-            .title = title.ptr,
-            .alt = alt.ptr,
+            .url = image.url.ptr,
+            .title = image.title.ptr,
+            .alt = image.alt.ptr,
         };
     }
 
     fn adopt(self: *Image, alloc: Allocator) !atrus.ast.Image {
-        const url = std.mem.span(self.url);
-        const title = std.mem.span(self.title);
-        const alt = std.mem.span(self.alt);
+        _ = alloc;
         return .{
-            .url = try alloc.dupeZ(u8, url),
-            .title = try alloc.dupeZ(u8, title),
-            .alt = try alloc.dupeZ(u8, alt),
+            .url = std.mem.span(self.url),
+            .title = std.mem.span(self.title),
+            .alt = std.mem.span(self.alt),
         };
     }
 
@@ -400,11 +386,10 @@ const Container = extern struct {
 
     fn init(alloc: Allocator, container: *atrus.ast.Container) !Container {
         const new_children = try exposeChildren(alloc, container.children);
-        const kind = try alloc.dupeZ(u8, container.kind);
         return .{
             .children = new_children,
             .children_len = @intCast(container.children.len),
-            .kind = kind.ptr,
+            .kind = container.kind.ptr,
         };
     }
 
@@ -414,10 +399,9 @@ const Container = extern struct {
             self.children,
             self.children_len,
         );
-        const kind = std.mem.span(self.kind);
         return .{
             .children = new_children,
-            .kind = try alloc.dupeZ(u8, kind),
+            .kind = std.mem.span(self.kind),
         };
     }
 
@@ -435,13 +419,11 @@ const MySTRole = extern struct {
 
     fn init(alloc: Allocator, myst_role: *atrus.ast.MySTRole) !MySTRole {
         const new_children = try exposeChildren(alloc, myst_role.children);
-        const name = try alloc.dupeZ(u8, myst_role.name);
-        const value = try alloc.dupeZ(u8, myst_role.value);
         return .{
             .children = new_children,
             .children_len = @intCast(myst_role.children.len),
-            .name = name.ptr,
-            .value = value.ptr,
+            .name = myst_role.name.ptr,
+            .value = myst_role.value.ptr,
         };
     }
 
@@ -451,12 +433,10 @@ const MySTRole = extern struct {
             self.children,
             self.children_len,
         );
-        const name = std.mem.span(self.name);
-        const value = std.mem.span(self.value);
         return .{
             .children = new_children,
-            .name = try alloc.dupeZ(u8, name),
-            .value = try alloc.dupeZ(u8, value),
+            .name = std.mem.span(self.name),
+            .value = std.mem.span(self.value),
         };
     }
 
@@ -474,16 +454,16 @@ const MySTRoleError = extern struct {
         alloc: Allocator,
         myst_role_error: *atrus.ast.MySTRoleError,
     ) !MySTRoleError {
-        const value = try alloc.dupeZ(u8, myst_role_error.value);
+        _ = alloc;
         return .{
-            .value = value.ptr,
+            .value = myst_role_error.value.ptr,
         };
     }
 
     fn adopt(self: *MySTRoleError, alloc: Allocator) !atrus.ast.MySTRoleError {
-        const value = std.mem.span(self.value);
+        _ = alloc;
         return .{
-            .value = try alloc.dupeZ(u8, value),
+            .value = std.mem.span(self.value),
         };
     }
 
@@ -499,11 +479,10 @@ const Abbreviation = extern struct {
 
     fn init(alloc: Allocator, abbrev: *atrus.ast.Abbreviation) !Abbreviation {
         const new_children = try exposeChildren(alloc, abbrev.children);
-        const title = try alloc.dupeZ(u8, abbrev.title);
         return .{
             .children = new_children,
             .children_len = @intCast(abbrev.children.len),
-            .title = title.ptr,
+            .title = abbrev.title.ptr,
         };
     }
 
@@ -513,10 +492,9 @@ const Abbreviation = extern struct {
             self.children,
             self.children_len,
         );
-        const title = std.mem.span(self.title);
         return .{
             .children = new_children,
-            .title = try alloc.dupeZ(u8, title),
+            .title = std.mem.span(self.title),
         };
     }
 
@@ -541,15 +519,12 @@ const MySTDirective = extern struct {
             alloc,
             myst_directive.children,
         );
-        const name = try alloc.dupeZ(u8, myst_directive.name);
-        const args = try alloc.dupeZ(u8, myst_directive.args);
-        const value = try alloc.dupeZ(u8, myst_directive.value);
         return .{
             .children = new_children,
             .children_len = @intCast(myst_directive.children.len),
-            .name = name.ptr,
-            .args = args.ptr,
-            .value = value.ptr,
+            .name = myst_directive.name.ptr,
+            .args = myst_directive.args.ptr,
+            .value = myst_directive.value.ptr,
         };
     }
 
@@ -559,14 +534,11 @@ const MySTDirective = extern struct {
             self.children,
             self.children_len,
         );
-        const name = std.mem.span(self.name);
-        const args = std.mem.span(self.args);
-        const value = std.mem.span(self.value);
         return .{
             .children = new_children,
-            .name = try alloc.dupeZ(u8, name),
-            .args = try alloc.dupeZ(u8, args),
-            .value = try alloc.dupeZ(u8, value),
+            .name = std.mem.span(self.name),
+            .args = std.mem.span(self.args),
+            .value = std.mem.span(self.value),
         };
     }
 
@@ -591,11 +563,10 @@ const MySTDirectiveError = extern struct {
             alloc,
             directive_error.children,
         );
-        const message = try alloc.dupeZ(u8, directive_error.message);
         return .{
             .children = new_children,
             .children_len = @intCast(directive_error.children.len),
-            .message = message.ptr,
+            .message = directive_error.message.ptr,
         };
     }
 
@@ -608,10 +579,9 @@ const MySTDirectiveError = extern struct {
             self.children,
             self.children_len,
         );
-        const message = std.mem.span(self.message);
         return .{
             .children = new_children,
-            .message = try alloc.dupeZ(u8, message),
+            .message = std.mem.span(self.message),
         };
     }
 
@@ -628,11 +598,10 @@ const Admonition = extern struct {
 
     fn init(alloc: Allocator, admonition: *atrus.ast.Admonition) !Admonition {
         const new_children = try exposeChildren(alloc, admonition.children);
-        const kind = try alloc.dupeZ(u8, admonition.kind);
         return .{
             .children = new_children,
             .children_len = @intCast(admonition.children.len),
-            .kind = kind.ptr,
+            .kind = admonition.kind.ptr,
         };
     }
 
@@ -642,10 +611,9 @@ const Admonition = extern struct {
             self.children,
             self.children_len,
         );
-        const kind = std.mem.span(self.kind);
         return .{
             .children = new_children,
-            .kind = try alloc.dupeZ(u8, kind),
+            .kind = std.mem.span(self.kind),
         };
     }
 
@@ -780,12 +748,31 @@ const ExposedNode = extern struct {
 
         alloc.destroy(self);
     }
+
+    /// Cleans up the AST, but only frees memory used for the tree itself,
+    /// leaving any strings owned by the tree alone.
+    fn deinitTreeOnly(self: *ExposedNode, alloc: Allocator) void {
+        switch (self.tag) {
+            inline else => |tag| {
+                if (comptime atrus.ast.HasChildren.fromNodeType(tag) == .yes) {
+                    const n = @field(self.payload, @tagName(tag));
+                    const sliced = n.children[0..n.children_len];
+                    for (sliced) |child| {
+                        child.deinitTreeOnly(alloc);
+                    }
+                    alloc.free(sliced);
+                }
+            }
+        }
+
+        alloc.destroy(self);
+    }
 };
 
 // TODO: Error return values.
 export fn atrus_expose(node: *atrus.ast.Node, out: **ExposedNode) c_int {
     // Free old AST.
-    defer node.deinit(c_alloc);
+    defer node.deinitTreeOnly(c_alloc);
 
     const exposed_node = c_alloc.create(ExposedNode) catch {
         return -1;
@@ -801,7 +788,7 @@ export fn atrus_expose(node: *atrus.ast.Node, out: **ExposedNode) c_int {
 // TODO: Error return values.
 export fn atrus_adopt(node: *ExposedNode, out: **atrus.ast.Node) c_int {
     // Free old AST.
-    defer node.deinit(c_alloc);
+    defer node.deinitTreeOnly(c_alloc);
 
     out.* = node.adopt(c_alloc) catch {
         return -1;
