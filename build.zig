@@ -42,6 +42,8 @@ pub fn build(b: *std.Build) void {
     );
 
     // atrus module
+    // Using "addModule()" here adds the package to the package module set,
+    // making it available to anyone consuming libatrus as a Zig package.
     const atrus_module = b.addModule("atrus", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
