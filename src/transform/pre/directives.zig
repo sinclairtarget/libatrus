@@ -252,6 +252,7 @@ fn transformCode(
         .code = .{
             .lang = owned_lang,
             .value = owned_value,
+            .show_line_numbers = true, // TODO: Remove when we support options
         },
     };
 
@@ -424,4 +425,8 @@ test "simple code block" {
         "def foo():\n    pass",
         code_node.code.value,
     );
+
+    // For now, expect show_line_numbers to always be true.
+    // TODO: Remove when we implement directive options.
+    try testing.expectEqual(true, code_node.code.show_line_numbers);
 }

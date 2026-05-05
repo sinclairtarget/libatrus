@@ -150,6 +150,11 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
                 try stringify.write(n.lang);
                 try stringify.objectField("value");
                 try stringify.write(n.value);
+
+                if (n.show_line_numbers) {
+                    try stringify.objectField("showLineNumbers");
+                    try stringify.write(n.show_line_numbers);
+                }
             },
             .image => |n| {
                 try stringify.objectField("url");

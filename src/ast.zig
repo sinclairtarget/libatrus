@@ -193,6 +193,7 @@ pub const Text = struct {
 pub const Code = struct {
     value: [:0]const u8,
     lang: [:0]const u8,
+    show_line_numbers: bool = false,
 
     pub fn deinit(self: *Code, alloc: Allocator) void {
         alloc.free(self.value);
