@@ -76,6 +76,10 @@ fn transformBuiltin(
         return try transformFigure(alloc, node, args, value);
     }
 
+    if (std.mem.eql(u8, name, "code")) {
+        return try transformCode(alloc, node, args, value);
+    }
+
     return node;
 }
 
@@ -163,12 +167,7 @@ fn transformAdmonition(
         },
     };
 
-    const directive_children = try alloc.dupe(*ast.Node, &.{admonition_node});
-
-    std.debug.assert(@as(ast.NodeType, node.*) == .myst_directive);
-    std.debug.assert(node.myst_directive.children.len == 0);
-
-    node.myst_directive.children = directive_children;
+    try setDirectiveChild(alloc, node, admonition_node);
     return node;
 }
 
@@ -232,14 +231,42 @@ fn transformFigure(
         },
     };
 
-    const directive_children = try alloc.dupe(*ast.Node, &.{container_node});
-
-    std.debug.assert(@as(ast.NodeType, node.*) == .myst_directive);
-    std.debug.assert(node.myst_directive.children.len == 0);
-
-    node.myst_directive.children = directive_children;
-
+    try setDirectiveChild(alloc, node, container_node);
     return node;
+}
+
+fn transformCode(
+    alloc: Allocator,
+    node: *ast.Node,
+    args: []const u8,
+    value: []const u8,
+) !*ast.Node {
+    const owned_lang = try alloc.dupeZ(u8, args);
+    errdefer alloc.free(owned_lang);
+
+    const owned_value = try alloc.dupeZ(u8, value);
+    errdefer alloc.free(owned_value);
+
+    const code_node = try alloc.create(ast.Node);
+    code_node.* = .{
+        .code = .{
+            .lang = owned_lang,
+            .value = owned_value,
+        },
+    };
+
+    try setDirectiveChild(alloc, node, code_node);
+    return node;
+}
+
+fn setDirectiveChild(
+    alloc: Allocator,
+    directive_node: *ast.Node,
+    new_child_node: *ast.Node,
+) !void {
+    std.debug.assert(directive_node.myst_directive.children.len == 0);
+    const directive_children = try alloc.dupe(*ast.Node, &.{new_child_node});
+    directive_node.myst_directive.children = directive_children;
 }
 
 // ----------------------------------------------------------------------------
@@ -376,5 +403,25 @@ test "simple figure" {
     try testing.expectEqualStrings(
         "This is a picture of my cat!",
         text_node.text.value,
+    );
+}
+
+test "simple code block" {
+    const node = try handleDirective(
+        "code",
+        "python",
+        "def foo():\n    pass",
+    );
+    defer node.deinit(testing.allocator);
+
+    try testing.expectEqual(.myst_directive, @as(ast.NodeType, node.*));
+    try testing.expectEqual(1, node.myst_directive.children.len);
+
+    const code_node = node.myst_directive.children[0];
+    try testing.expectEqual(.code, @as(ast.NodeType, code_node.*));
+    try testing.expectEqualStrings("python", code_node.code.lang);
+    try testing.expectEqualStrings(
+        "def foo():\n    pass",
+        code_node.code.value,
     );
 }
