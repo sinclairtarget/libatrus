@@ -28,7 +28,6 @@ const cmark = @import("../cmark/cmark.zig");
 const escape = @import("escape.zig");
 const LinkDefMap = @import("link_defs.zig").LinkDefMap;
 const link_label_max_chars = @import("link_defs.zig").label_max_chars;
-const logger = @import("../logging.zig").logger;
 const NodeList = @import("NodeList.zig");
 const myst = @import("../myst/myst.zig");
 const TokenIterator = @import("../lex/iterator.zig").TokenIterator;
@@ -130,7 +129,6 @@ pub fn parse(
 
         // blank lines
         if (try self.it.consume(scratch, &.{.newline}) != null) {
-            logParseAttempt("blank line", true);
             try children.flush(); // Blank lines close paragraphs
             continue;
         }
@@ -175,7 +173,6 @@ fn parseATXHeading(
     var did_parse = false;
     const checkpoint_index = self.it.checkpoint();
     defer {
-        logParseAttempt("parseATXHeading()", did_parse);
         if (!did_parse) {
             self.it.backtrack(checkpoint_index);
         }
@@ -264,7 +261,6 @@ fn parseSetextHeading(
     var did_parse = false;
     const checkpoint_index = self.it.checkpoint();
     defer {
-        logParseAttempt("parseSetextHeading()", did_parse);
         if (!did_parse) {
             self.it.backtrack(checkpoint_index);
         }
@@ -344,7 +340,6 @@ fn parseThematicBreak(
     scratch: Allocator,
 ) !?*ast.Node {
     var did_parse = false;
-    defer logParseAttempt("parseThematicBreak()", did_parse);
 
     const token = try self.it.peek(scratch) orelse return null;
     switch (token.token_type) {
@@ -383,7 +378,6 @@ fn parseIndentedCode(
     scratch: Allocator,
 ) !EndingParseResult {
     var did_parse = false;
-    defer logParseAttempt("parseIndentedCode()", did_parse);
 
     const fail: EndingParseResult = .{ .maybe_node = null };
 
@@ -693,7 +687,6 @@ fn parseLinkReferenceDefinition(
     var did_parse = false;
     const checkpoint_index = self.it.checkpoint();
     defer {
-        logParseAttempt("parseLinkReferenceDefinition()", did_parse);
         if (!did_parse) {
             self.it.backtrack(checkpoint_index);
         }
@@ -1319,14 +1312,6 @@ fn resolveText(scratch: Allocator, token: BlockToken) ![]const u8 {
         else => token.lexeme,
     };
     return value;
-}
-
-fn logParseAttempt(comptime name: []const u8, did_parse: bool) void {
-    if (did_parse) {
-        logger.debug("LeafBlockParser.{s} SUCCESS", .{name});
-    } else {
-        logger.debug("LeafBlockParser.{s} FAIL", .{name});
-    }
 }
 
 // ----------------------------------------------------------------------------
