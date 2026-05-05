@@ -26,6 +26,8 @@
 #ifndef ATRUS_H
 #define ATRUS_H
 
+#include <stdbool.h>
+
 extern const char* const atrus_version;
 
 // ----------------------------------------------------------------------------
@@ -176,6 +178,7 @@ struct atrus_node_text {
 struct atrus_node_code {
     const char* value;
     const char* lang;
+    bool show_line_numbers;
 };
 
 struct atrus_node_link {

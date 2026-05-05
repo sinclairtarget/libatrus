@@ -254,12 +254,14 @@ const Text = extern struct {
 const Code = extern struct {
     value: [*:0]const u8,
     lang: [*:0]const u8,
+    show_line_numbers: bool,
 
     fn init(alloc: Allocator, code: *atrus.ast.Code) !Code {
         _ = alloc;
         return .{
             .value = code.value.ptr,
             .lang = code.lang.ptr,
+            .show_line_numbers = code.show_line_numbers,
         };
     }
 
@@ -268,6 +270,7 @@ const Code = extern struct {
         return .{
             .value = std.mem.span(self.value),
             .lang = std.mem.span(self.lang),
+            .show_line_numbers = self.show_line_numbers,
         };
     }
 
