@@ -63,6 +63,7 @@ export fn atrus_parse(
     return 0;
 }
 
+// TODO: This should take an ast.NodeType instead
 export fn atrus_name(node: *atrus.ast.Node) [*:0]const u8 {
     return node.name().ptr;
 }
