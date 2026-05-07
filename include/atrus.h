@@ -66,11 +66,6 @@ atrus_parse_error_t atrus_parse(
 );
 
 /*
- * Retuns the camel-cased type name for the given node.
- */
-const char* atrus_name(struct atrus_node_opaque* node);
-
-/*
  * Frees the given AST recursively.
  */
 void atrus_free(struct atrus_node_opaque* root);
@@ -289,6 +284,11 @@ struct atrus_node {
  * pass it back to libatrus with `atrus_adopt()`.
  */
 int atrus_expose(struct atrus_node_opaque* root, struct atrus_node** out);
+
+/*
+ * Returns the camel-cased type name for the given node type.
+ */
+const char* atrus_name(atrus_node_type_t node_type);
 
 /*
  * Given a pointer to an exposed AST, converts the AST back to libatrus'

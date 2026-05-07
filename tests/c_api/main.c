@@ -32,10 +32,6 @@ int main() {
         exit(1);
     }
 
-    // Test getting node type name
-    const char* node_type_name = atrus_name(node);
-    printf("node type name: \"%s\"\n", node_type_name);
-
     // Test AST traversal
     struct atrus_node* exposed_node;
     if (atrus_expose(node, &exposed_node) < 0) {
@@ -44,6 +40,10 @@ int main() {
     }
 
     print_heading_text(exposed_node);
+
+    // Test getting node type name
+    const char* node_type_name = atrus_name(exposed_node->tag);
+    printf("node type name: \"%s\"\n", node_type_name);
 
     // Test atrus_adopt(). Not strictly necessary in this example since we
     // didn't modify the AST.

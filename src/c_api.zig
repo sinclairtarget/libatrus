@@ -63,11 +63,6 @@ export fn atrus_parse(
     return 0;
 }
 
-// TODO: This should take an ast.NodeType instead
-export fn atrus_name(node: *atrus.ast.Node) [*:0]const u8 {
-    return node.name().ptr;
-}
-
 export fn atrus_free(root: *atrus.ast.Node) void {
     root.deinit(c_alloc);
 }
@@ -787,6 +782,10 @@ export fn atrus_expose(node: *atrus.ast.Node, out: **ExposedNode) c_int {
 
     out.* = exposed_node;
     return 0;
+}
+
+export fn atrus_name(node_type: atrus.ast.NodeType) [*:0]const u8 {
+    return node_type.name();
 }
 
 // TODO: Error return values.

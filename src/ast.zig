@@ -43,6 +43,19 @@ pub const NodeType = enum(c_uint) {
     myst_directive_error = 22,
     admonition = 23,
     admonition_title = 24,
+
+    pub fn name(self: NodeType) [:0]const u8 {
+        return switch (self) {
+            .thematic_break => "thematicBreak",
+            .inline_code => "inlineCode",
+            .myst_role => "mystRole",
+            .myst_role_error => "mystRoleError",
+            .myst_directive => "mystDirective",
+            .myst_directive_error => "mystDirectiveError",
+            .admonition_title => "admonitionTitle",
+            else => @tagName(self),
+        };
+    }
 };
 
 /// A MyST AST node.
@@ -113,16 +126,7 @@ pub const Node = union(NodeType) {
     ///
     /// The MyST spec uses camel case for type names.
     pub fn name(self: Node) [:0]const u8 {
-        return switch (self) {
-            .thematic_break => "thematicBreak",
-            .inline_code => "inlineCode",
-            .myst_role => "mystRole",
-            .myst_role_error => "mystRoleError",
-            .myst_directive => "mystDirective",
-            .myst_directive_error => "mystDirectiveError",
-            .admonition_title => "admonitionTitle",
-            else => @tagName(self),
-        };
+        return @as(NodeType, self).name();
     }
 
     pub fn deinit(self: *Node, alloc: Allocator) void {
