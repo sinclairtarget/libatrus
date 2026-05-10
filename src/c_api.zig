@@ -761,7 +761,7 @@ const ExposedNode = extern struct {
                     }
                     alloc.free(sliced);
                 }
-            }
+            },
         }
 
         alloc.destroy(self);

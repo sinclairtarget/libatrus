@@ -95,7 +95,9 @@ pub fn parse(
     defer link_defs.deinit(alloc);
 
     // first pass; parse into blocks
-    var timer = time.Timer.start() catch { @panic("timer unsupported"); };
+    var timer = time.Timer.start() catch {
+        @panic("timer unsupported");
+    };
     logger.debug("Beginning block parsing...", .{});
     var block_tokenizer = BlockTokenizer.init(line_reader);
     var iterator = block_tokenizer.iterator();
@@ -169,7 +171,9 @@ pub fn transform(
     defer arena.deinit();
     const scratch = arena.allocator();
 
-    var timer = time.Timer.start() catch { @panic("timer unsupported"); };
+    var timer = time.Timer.start() catch {
+        @panic("timer unsupported");
+    };
     logger.debug("Beginning post transforms...", .{});
     const transformed = try transform_.post.transform(alloc, scratch, root);
     logger.debug("Done in {D}.", .{timer.read()});

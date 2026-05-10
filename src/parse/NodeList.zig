@@ -1,5 +1,5 @@
-//! An ArrayList of AST nodes with special handling for text nodes (to ensure we
-//! don't end up with sibling text nodes).
+//! An ArrayList of AST nodes with special handling for text nodes (to ensure
+//! we don't end up with sibling text nodes).
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -75,8 +75,8 @@ pub fn toOwnedSlice(self: *Self) ![]*ast.Node {
     return try self.list.toOwnedSlice(self.allocator);
 }
 
-/// Appends a text node with any text content accumulated since we last appended
-/// a node.
+/// Appends a text node with any text content accumulated since we last
+/// appended a node.
 fn checkAppendCollected(self: *Self) !void {
     if (!self.hasUnflushed()) {
         return;

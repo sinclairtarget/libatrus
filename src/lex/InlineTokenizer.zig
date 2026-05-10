@@ -33,7 +33,7 @@ pub const Error = error{
 /// Overall state for the tokenizer.
 const TopLevelState = enum {
     normal,
-    punct,      // Last token ended in punctuation
+    punct, // Last token ended in punctuation
     whitespace, // Last token ended in whitespace
 };
 
@@ -185,23 +185,23 @@ fn matchSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
         InlineTokenType,
         TopLevelState,
     } = switch (self.in[self.i]) {
-            '\n' => .{ .newline, .whitespace },
-            '['  => .{ .l_square_bracket, .punct },
-            ']'  => .{ .r_square_bracket, .punct },
-            '<'  => .{ .l_angle_bracket, .punct },
-            '>'  => .{ .r_angle_bracket, .punct },
-            '('  => .{ .l_paren, .punct },
-            ')'  => .{ .r_paren, .punct },
-            '\'' => .{ .single_quote, .punct },
-            '"'  => .{ .double_quote, .punct },
-            '!'  => .{ .exclamation_mark, .punct },
-            '='  => .{ .equals, .punct },
-            '/'  => .{ .slash, .punct },
-            '-'  => .{ .hyphen, .punct },
-            '?'  => .{ .question_mark, .punct },
-            '{'  => .{ .l_brace, .punct },
-            '}'  => .{ .r_brace, .punct },
-            else => return null,
+        '\n' => .{ .newline, .whitespace },
+        '[' => .{ .l_square_bracket, .punct },
+        ']' => .{ .r_square_bracket, .punct },
+        '<' => .{ .l_angle_bracket, .punct },
+        '>' => .{ .r_angle_bracket, .punct },
+        '(' => .{ .l_paren, .punct },
+        ')' => .{ .r_paren, .punct },
+        '\'' => .{ .single_quote, .punct },
+        '"' => .{ .double_quote, .punct },
+        '!' => .{ .exclamation_mark, .punct },
+        '=' => .{ .equals, .punct },
+        '/' => .{ .slash, .punct },
+        '-' => .{ .hyphen, .punct },
+        '?' => .{ .question_mark, .punct },
+        '{' => .{ .l_brace, .punct },
+        '}' => .{ .r_brace, .punct },
+        else => return null,
     };
 
     const token_type, const next_state = result;
@@ -209,7 +209,7 @@ fn matchSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
         scratch,
         token_type,
         .default,
-        self.in[self.i..self.i + 1],
+        self.in[self.i .. self.i + 1],
     );
     return .{
         .tokens = tokens,
@@ -232,9 +232,9 @@ fn matchEscapedTokens(self: Self, scratch: Allocator) !?TokenizeResult {
 
     const token_type: InlineTokenType = switch (self.in[lookahead_i]) {
         '\'' => .escaped_single_quote,
-        '"'  => .escaped_double_quote,
-        '>'  => .escaped_r_angle_bracket,
-        '`'  => .escaped_backtick,
+        '"' => .escaped_double_quote,
+        '>' => .escaped_r_angle_bracket,
+        '`' => .escaped_backtick,
         else => return null,
     };
     lookahead_i += 1;
@@ -533,8 +533,20 @@ fn matchDelimStarRun(
                     lookahead_i += 1;
                     continue :fsm .r_delim_run;
                 },
-                ' ', '\t', '\n', '_', '!'...'%', '\''...')', '+'...'/',
-                ':'...'@', '[', ']', '^', '`', '}'...'~' => {
+                ' ',
+                '\t',
+                '\n',
+                '_',
+                '!'...'%',
+                '\''...')',
+                '+'...'/',
+                ':'...'@',
+                '[',
+                ']',
+                '^',
+                '`',
+                '}'...'~',
+                => {
                     // Following punctuation (or whitespace) means this can't
                     // be left-delimiting
                     break :fsm .r_delim_star;
@@ -553,15 +565,24 @@ fn matchDelimStarRun(
                     continue :fsm .r_delim_punct_run;
                 },
                 ' ', '\t', '\n' => break :fsm .r_delim_star,
-                '_', '!'...'%', '\''...')', '+'...'/', ':'...'@', '[', ']', '^',
-                '`', '}'...'~' => {
+                '_',
+                '!'...'%',
+                '\''...')',
+                '+'...'/',
+                ':'...'@',
+                '[',
+                ']',
+                '^',
+                '`',
+                '}'...'~',
+                => {
                     break :fsm .lr_delim_star;
                 },
                 else => {
                     // Since this run started after punctuation, if it is not
                     // followed by punctuation it cannot be right-delimiting
                     break :fsm .l_delim_star;
-                }
+                },
             }
         },
     };
@@ -620,7 +641,7 @@ fn matchDelimUnderRun(
                         evaluateDelimUnderscoreContext(
                             self.in[self.i..lookahead_i],
                             false,
-                            util.strings.isPunctuation(&.{ b }),
+                            util.strings.isPunctuation(&.{b}),
                         ),
                     };
                 },
@@ -643,8 +664,20 @@ fn matchDelimUnderRun(
                     lookahead_i += 1;
                     continue :fsm .r_delim_run;
                 },
-                ' ', '\t', '\n', '*', '!'...'%', '\''...')', '+'...'/',
-                ':'...'@', '[', ']', '^', '`', '}'...'~' => |b| {
+                ' ',
+                '\t',
+                '\n',
+                '*',
+                '!'...'%',
+                '\''...')',
+                '+'...'/',
+                ':'...'@',
+                '[',
+                ']',
+                '^',
+                '`',
+                '}'...'~',
+                => |b| {
                     // Following punctuation (or whitespace) means this can't
                     // be left-delimiting
                     break :fsm .{
@@ -695,8 +728,17 @@ fn matchDelimUnderRun(
                         ),
                     };
                 },
-                '*', '!'...'%', '\''...')', '+'...'/', ':'...'@', '[', ']', '^',
-                '`', '}'...'~' => {
+                '*',
+                '!'...'%',
+                '\''...')',
+                '+'...'/',
+                ':'...'@',
+                '[',
+                ']',
+                '^',
+                '`',
+                '}'...'~',
+                => {
                     break :fsm .{
                         .lr_delim_underscore,
                         evaluateDelimUnderscoreContext(
@@ -717,7 +759,7 @@ fn matchDelimUnderRun(
                             util.strings.isPunctuation(&.{b}),
                         ),
                     };
-                }
+                },
             }
         },
     };
@@ -856,8 +898,22 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
             // Allow the first character to be something that later we will
             // break on.
             switch (self.in[lookahead_i]) {
-                '&', '`', '[', ']', '<', '>', '(', ')', '\'', '"', '!',
-                '=', '/', '-', '?' => {
+                '&',
+                '`',
+                '[',
+                ']',
+                '<',
+                '>',
+                '(',
+                ')',
+                '\'',
+                '"',
+                '!',
+                '=',
+                '/',
+                '-',
+                '?',
+                => {
                     lookahead_i += 1;
                     continue :fsm .punct;
                 },
@@ -880,8 +936,30 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
             }
 
             switch (self.in[lookahead_i]) {
-                '\n', ' ', '\t', '&', '`', '[', ']', '<', '>', '(', ')', '*',
-                '_', '\'', '"', '!', '\\', '=', '/', '-', '?', '{', '}' => {
+                '\n',
+                ' ',
+                '\t',
+                '&',
+                '`',
+                '[',
+                ']',
+                '<',
+                '>',
+                '(',
+                ')',
+                '*',
+                '_',
+                '\'',
+                '"',
+                '!',
+                '\\',
+                '=',
+                '/',
+                '-',
+                '?',
+                '{',
+                '}',
+                => {
                     break :fsm .normal;
                 },
                 '#'...'%', '+', ',', '.', ':', ';', '@', '^', '|', '~' => {
@@ -903,13 +981,32 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
                     // cannot be escaped
                     break :fsm .normal;
                 },
-                '`', '\'', '"', '>' => @panic(
-                    "escaped backtick, quote, or right angle bracket " ++
-                    "should have been matched already as escaped token"
-                ),
-                '&', '[', ']', '<', '(', ')', '*', '_',
-                '!', '#'...'%', '+'...'/', ':', ';', '=', '?', '@', '^',
-                '|', '~' => {
+                '`',
+                '\'',
+                '"',
+                '>',
+                => @panic("escaped backtick, quote, or right angle bracket " ++
+                    "should have been matched already as escaped token"),
+                '&',
+                '[',
+                ']',
+                '<',
+                '(',
+                ')',
+                '*',
+                '_',
+                '!',
+                '#'...'%',
+                '+'...'/',
+                ':',
+                ';',
+                '=',
+                '?',
+                '@',
+                '^',
+                '|',
+                '~',
+                => {
                     lookahead_i += 1; // skip escaped character
                     continue :fsm .punct;
                 },
@@ -928,11 +1025,42 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
             }
 
             switch (self.in[lookahead_i]) {
-                '\n', ' ', '\t' ,'&', '`', '[', ']', '<', '>', '(', ')', '*',
-                '_', '\'', '"', '!', '=', '/', '-', '?', '{', '}' => {
+                '\n',
+                ' ',
+                '\t',
+                '&',
+                '`',
+                '[',
+                ']',
+                '<',
+                '>',
+                '(',
+                ')',
+                '*',
+                '_',
+                '\'',
+                '"',
+                '!',
+                '=',
+                '/',
+                '-',
+                '?',
+                '{',
+                '}',
+                => {
                     break :fsm .punct;
                 },
-                '#'...'%', '+', ',', '.', ':', ';', '@', '^', '|', '~' => {
+                '#'...'%',
+                '+',
+                ',',
+                '.',
+                ':',
+                ';',
+                '@',
+                '^',
+                '|',
+                '~',
+                => {
                     lookahead_i += 1;
                     continue :fsm .punct;
                 },
@@ -987,11 +1115,9 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
 }
 
 fn evaluateDelimStarContext(range: []const u8) Context {
-    return .{
-        .delim_star = .{
-            .run_len = @intCast(range.len),
-        }
-    };
+    return .{ .delim_star = .{
+        .run_len = @intCast(range.len),
+    } };
 }
 
 fn evaluateDelimUnderscoreContext(
@@ -999,13 +1125,11 @@ fn evaluateDelimUnderscoreContext(
     preceded_by_punct: bool,
     followed_by_punct: bool,
 ) Context {
-    return .{
-        .delim_underscore = .{
-            .run_len = @intCast(range.len),
-            .preceded_by_punct = preceded_by_punct,
-            .followed_by_punct = followed_by_punct,
-        }
-    };
+    return .{ .delim_underscore = .{
+        .run_len = @intCast(range.len),
+        .preceded_by_punct = preceded_by_punct,
+        .followed_by_punct = followed_by_punct,
+    } };
 }
 
 /// Creates a slice of inline tokens of the specified type.
@@ -1043,7 +1167,8 @@ fn evaluateTokens(
         .escaped_single_quote,
         .escaped_double_quote,
         .escaped_r_angle_bracket,
-        .escaped_backtick => {
+        .escaped_backtick,
+        => {
             try tokens.append(scratch, InlineToken{
                 .token_type = token_type,
             });
@@ -1053,7 +1178,8 @@ fn evaluateTokens(
         .lr_delim_star,
         .l_delim_underscore,
         .r_delim_underscore,
-        .lr_delim_underscore => {
+        .lr_delim_underscore,
+        => {
             for (0..range.len) |_| {
                 try tokens.append(scratch, InlineToken{
                     .token_type = token_type,
@@ -1067,7 +1193,8 @@ fn evaluateTokens(
         .backtick,
         .whitespace,
         .hard_break,
-        .text => {
+        .text,
+        => {
             try tokens.append(scratch, InlineToken{
                 .token_type = token_type,
                 .lexeme = try scratch.dupe(u8, range),
@@ -1247,7 +1374,7 @@ test "regular text" {
 
 test "backtick run" {
     const line = "``foobar``";
-    try expectEqualTokens(&.{.backtick, .text, .backtick}, line);
+    try expectEqualTokens(&.{ .backtick, .text, .backtick }, line);
 }
 
 test "quotes" {
@@ -1265,17 +1392,17 @@ test "quotes" {
 
 test "exclamation mark" {
     const line = "Hello!";
-    try expectEqualTokens(&.{.text, .exclamation_mark}, line);
+    try expectEqualTokens(&.{ .text, .exclamation_mark }, line);
 }
 
 test "hard line break" {
     const line = "hello  \n friend";
-    try expectEqualTokens(&.{.text, .hard_break, .text}, line);
+    try expectEqualTokens(&.{ .text, .hard_break, .text }, line);
 }
 
 test "hard line break with backslash" {
     const line = "hello\\\n friend";
-    try expectEqualTokens(&.{.text, .hard_break, .text}, line);
+    try expectEqualTokens(&.{ .text, .hard_break, .text }, line);
 }
 
 // We want to make sure that the "=" and "/" get tokenized as a separate token.

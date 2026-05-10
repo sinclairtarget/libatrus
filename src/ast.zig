@@ -21,15 +21,15 @@ pub const NodeType = enum(c_uint) {
     text = 4,
     code = 5,
     thematic_break = 6,
-    @"break" = 7,       // line break
+    @"break" = 7, // line break
     emphasis = 8,
     strong = 9,
     inline_code = 10,
     link = 11,
-    definition = 12,    // link definition
+    definition = 12, // link definition
     image = 13,
     blockquote = 14,
-    html = 15,          // either an HTML block or a single inline HTML tag
+    html = 15, // either an HTML block or a single inline HTML tag
     container = 25,
     caption = 26,
     // built-in roles
@@ -118,7 +118,7 @@ pub const Node = union(NodeType) {
     pub fn hasChildren(self: *Node) HasChildrenRestriction {
         return switch (HasChildren.fromNodeType(self.*)) {
             .yes => .{ .yes = self.restrict(HasChildren, .yes) },
-            .no  => .{ .no = self.restrict(HasChildren, .no) },
+            .no => .{ .no = self.restrict(HasChildren, .no) },
         };
     }
 
@@ -179,7 +179,7 @@ pub const Wrapper = struct {
 
 pub const Heading = struct {
     children: []*Node,
-    depth: u8,          // Headings cannot be deeper than six levels
+    depth: u8, // Headings cannot be deeper than six levels
 
     pub fn deinit(self: *Heading, alloc: Allocator) void {
         freeChildren(alloc, self.children);
@@ -341,10 +341,25 @@ pub const HasChildren = enum {
     /// In other words, answers whether a type of node has children.
     pub fn fromNodeType(node_type: NodeType) HasChildren {
         return switch (node_type) {
-            .root, .block, .heading, .paragraph, .emphasis, .strong, .link,
-            .blockquote, .container, .caption, .myst_role, .subscript,
-            .superscript, .abbreviation, .myst_directive,
-            .myst_directive_error, .admonition, .admonition_title => .yes,
+            .root,
+            .block,
+            .heading,
+            .paragraph,
+            .emphasis,
+            .strong,
+            .link,
+            .blockquote,
+            .container,
+            .caption,
+            .myst_role,
+            .subscript,
+            .superscript,
+            .abbreviation,
+            .myst_directive,
+            .myst_directive_error,
+            .admonition,
+            .admonition_title,
+            => .yes,
             else => .no,
         };
     }

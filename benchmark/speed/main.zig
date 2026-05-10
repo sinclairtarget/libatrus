@@ -52,7 +52,7 @@ fn run_atrus(
 ) !void {
     const result = Child.run(.{
         .allocator = alloc,
-        .argv = &.{config.exec_path, input_file_path},
+        .argv = &.{ config.exec_path, input_file_path },
     }) catch |err| {
         std.debug.print("Got {any} trying to run subprocess.\n", .{err});
         return error.RunFailed;

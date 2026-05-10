@@ -49,7 +49,7 @@ pub fn whitespaceIndentLen(s: []const u8) usize {
     var len: usize = 0;
     for (s) |byte| {
         switch (byte) {
-            ' '  => len += 1,
+            ' ' => len += 1,
             '\t' => len += 4,
             else => unreachable,
         }

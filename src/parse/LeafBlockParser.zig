@@ -220,7 +220,7 @@ fn parseATXHeading(
             else => {
                 _ = try inner.writer.write(current.lexeme);
                 _ = try self.it.consume(scratch, &.{current.token_type});
-            }
+            },
         }
     } else @panic(util.safety.loop_bound_panic_msg);
 
@@ -232,7 +232,7 @@ fn parseATXHeading(
             break :blk &.{};
         }
         const text_node = try util.nodes.createTextNode(alloc, trimmed_inner);
-        break :blk try alloc.dupe(*ast.Node, &.{ text_node });
+        break :blk try alloc.dupe(*ast.Node, &.{text_node});
     };
     errdefer alloc.free(children);
 
@@ -289,9 +289,16 @@ fn parseSetextHeading(
         .maybe_close => {
             const token = try self.it.peek(scratch) orelse break :fsm;
             switch (token.token_type) {
-                .newline, .pound, .rule_star, .rule_underline,
-                .rule_dash_with_whitespace, .rule_dash, .rule_equals,
-                .backtick_fence, .tilde_fence => {
+                .newline,
+                .pound,
+                .rule_star,
+                .rule_underline,
+                .rule_dash_with_whitespace,
+                .rule_dash,
+                .rule_equals,
+                .backtick_fence,
+                .tilde_fence,
+                => {
                     // These tokens can interrupt a paragraph. The text before
                     // the underline in a setext heading would otherwise be
                     // parsed as a paragraph.
@@ -300,7 +307,7 @@ fn parseSetextHeading(
                 .close => return null,
                 else => continue :fsm .open,
             }
-        }
+        },
     }
 
     const depth: u8 = blk: {
@@ -319,7 +326,7 @@ fn parseSetextHeading(
             break :blk &.{};
         }
         const text_node = try util.nodes.createTextNode(alloc, trimmed_inner);
-        break :blk try alloc.dupe(*ast.Node, &.{ text_node });
+        break :blk try alloc.dupe(*ast.Node, &.{text_node});
     };
     errdefer alloc.free(children);
 
@@ -384,10 +391,9 @@ fn parseIndentedCode(
     // Block has to start with an indent.
     // Consume token later; this is just a check for an easy bail condition.
     const block_start = try self.it.peek(scratch) orelse return fail;
-    if (
-        block_start.token_type != .whitespace
-        or util.strings.whitespaceIndentLen(block_start.lexeme) < 4
-    ) {
+    if (block_start.token_type != .whitespace or
+        util.strings.whitespaceIndentLen(block_start.lexeme) < 4)
+    {
         return fail;
     }
 
@@ -508,7 +514,7 @@ fn parseFencedCode(
 
     const open_fence = try self.it.consume(
         scratch,
-        &.{.backtick_fence, .tilde_fence},
+        &.{ .backtick_fence, .tilde_fence },
     ) orelse return fail;
 
     const info_lang = blk: {
@@ -520,10 +526,9 @@ fn parseFencedCode(
             scratch,
             &.{.text},
         ) orelse break :blk "";
-        if (
-            open_fence.token_type == .backtick_fence
-            and std.mem.count(u8, text.lexeme, "`") > 0
-        ) {
+        if (open_fence.token_type == .backtick_fence and
+            std.mem.count(u8, text.lexeme, "`") > 0)
+        {
             return fail;
         }
 
@@ -531,10 +536,9 @@ fn parseFencedCode(
         while (try self.it.peek(scratch)) |next| {
             switch (next.token_type) {
                 .text => {
-                    if (
-                        open_fence.token_type == .backtick_fence
-                        and std.mem.count(u8, next.lexeme, "`") > 0
-                    ) {
+                    if (open_fence.token_type == .backtick_fence and
+                        std.mem.count(u8, next.lexeme, "`") > 0)
+                    {
                         return fail;
                     }
                     _ = try self.it.consume(scratch, &.{.text});
@@ -598,7 +602,7 @@ fn parseFencedCode(
             else => |t| {
                 _ = try self.it.consume(scratch, &.{t});
                 _ = try content.writer.write(line_start_token.lexeme);
-            }
+            },
         }
 
         // Trailing tokens in line
@@ -695,7 +699,8 @@ fn parseLinkReferenceDefinition(
     // consume allowed leading whitespace
     _ = try self.consumeOptionalLeadingWhitespace(scratch);
 
-    const scanned_label = try self.scanLinkDefLabel(scratch) orelse return null;
+    const scanned_label = try self.scanLinkDefLabel(scratch) orelse
+        return null;
     _ = try self.it.consume(scratch, &.{.colon}) orelse return null;
 
     // whitespace allowed and up to one newline
@@ -867,12 +872,28 @@ fn scanLinkDefDestination(self: *Self, scratch: Allocator) !?[]const u8 {
                 .r_angle_bracket => break,
                 // None of these tokens should really be possible here, since
                 // they can only be matched at the beginning of a line.
-                .rule_star, .rule_underline, .rule_dash_with_whitespace,
-                .rule_dash, .rule_equals, .backtick_fence, .tilde_fence,
-                .colon_fence => return null,
-                .text, .pound, .whitespace, .colon, .l_square_bracket,
-                .r_square_bracket, .l_paren, .r_paren, .l_brace, .r_brace,
-                .double_quote, .single_quote => |t| {
+                .rule_star,
+                .rule_underline,
+                .rule_dash_with_whitespace,
+                .rule_dash,
+                .rule_equals,
+                .backtick_fence,
+                .tilde_fence,
+                .colon_fence,
+                => return null,
+                .text,
+                .pound,
+                .whitespace,
+                .colon,
+                .l_square_bracket,
+                .r_square_bracket,
+                .l_paren,
+                .r_paren,
+                .l_brace,
+                .r_brace,
+                .double_quote,
+                .single_quote,
+                => |t| {
                     _ = try self.it.consume(scratch, &.{t});
                     const value = try resolveText(scratch, token);
                     _ = try running_text.writer.write(value);
@@ -905,12 +926,27 @@ fn scanLinkDefDestination(self: *Self, scratch: Allocator) !?[]const u8 {
                     _ = try running_text.writer.write(token.lexeme);
                 },
                 .newline, .whitespace => break,
-                .rule_star, .rule_underline, .rule_dash_with_whitespace,
-                .rule_dash, .rule_equals, .backtick_fence, .tilde_fence,
-                .colon_fence => return null,
-                .text, .pound, .colon, .l_square_bracket, .r_square_bracket,
-                .l_angle_bracket, .r_angle_bracket, .l_brace, .r_brace,
-                .double_quote, .single_quote => |t| {
+                .rule_star,
+                .rule_underline,
+                .rule_dash_with_whitespace,
+                .rule_dash,
+                .rule_equals,
+                .backtick_fence,
+                .tilde_fence,
+                .colon_fence,
+                => return null,
+                .text,
+                .pound,
+                .colon,
+                .l_square_bracket,
+                .r_square_bracket,
+                .l_angle_bracket,
+                .r_angle_bracket,
+                .l_brace,
+                .r_brace,
+                .double_quote,
+                .single_quote,
+                => |t| {
                     _ = try self.it.consume(scratch, &.{t});
                     if (util.strings.containsAsciiControl(token.lexeme)) {
                         return null;
@@ -949,7 +985,7 @@ fn scanLinkDefTitle(self: *Self, scratch: Allocator) !?[]const u8 {
 
     const open = try self.it.consume(
         scratch,
-        &.{.l_paren, .single_quote, .double_quote},
+        &.{ .l_paren, .single_quote, .double_quote },
     ) orelse return "";
 
     const open_t = open.token_type;
@@ -1018,7 +1054,7 @@ fn parseMySTDirective(
 
     const open_fence = try self.it.consume(
         scratch,
-        &.{.backtick_fence, .colon_fence},
+        &.{ .backtick_fence, .colon_fence },
     ) orelse return fail;
 
     _ = try self.it.consume(scratch, &.{.l_brace}) orelse return fail;
@@ -1233,9 +1269,16 @@ fn scanParagraphText(self: *Self, scratch: Allocator) !EndingScanResult {
         .maybe_close => {
             const token = try self.it.peek(scratch) orelse break :fsm;
             switch (token.token_type) {
-                .newline, .pound, .rule_star, .rule_underline,
-                .rule_dash_with_whitespace, .rule_dash, .rule_equals,
-                .backtick_fence, .tilde_fence => {
+                .newline,
+                .pound,
+                .rule_star,
+                .rule_underline,
+                .rule_dash_with_whitespace,
+                .rule_dash,
+                .rule_equals,
+                .backtick_fence,
+                .tilde_fence,
+                => {
                     // These tokens can interrupt a paragraph.
                     break :fsm;
                 },
@@ -1887,7 +1930,7 @@ test "MyST directive with nested blocks" {
         \\```{bar}
         \\bim
         \\```
-        ,
+    ,
         directive_node.myst_directive.value,
     );
 }
@@ -1915,9 +1958,7 @@ test "MyST directive with invalid name" {
 
     const error_node = nodes[0];
     try testing.expectEqual(.myst_directive_error, @as(ast.NodeType, error_node.*));
-    try testing.expect(
-        error_node.myst_directive_error.message.len > 0
-    );
+    try testing.expect(error_node.myst_directive_error.message.len > 0);
 }
 
 test "MyST directive with whitespace around name" {

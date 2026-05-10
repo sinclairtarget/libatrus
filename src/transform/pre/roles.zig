@@ -53,9 +53,7 @@ fn transformBuiltin(
 
     if (std.mem.eql(u8, name, "sub") or std.mem.eql(u8, name, "subscript")) {
         return try transformSubscript(alloc, node, value);
-    } else if (
-        std.mem.eql(u8, name, "sup") or std.mem.eql(u8, name, "superscript")
-    ) {
+    } else if (std.mem.eql(u8, name, "sup") or std.mem.eql(u8, name, "superscript")) {
         return try transformSuperscript(alloc, node, value);
     } else if (std.mem.eql(u8, name, "abbr")) {
         return try transformAbbreviation(alloc, node, value);
@@ -139,9 +137,7 @@ fn transformAbbreviation(
 ) !*ast.Node {
     // Search from back to get last occurence
     const open_i = std.mem.lastIndexOfScalar(u8, value, '(') orelse 0;
-    const close_i = open_i + (
-        std.mem.indexOfScalar(u8, value[open_i..], ')') orelse 0
-    );
+    const close_i = open_i + (std.mem.indexOfScalar(u8, value[open_i..], ')') orelse 0);
 
     const abbr_title = blk: {
         if (open_i == 0) {
@@ -159,7 +155,7 @@ fn transformAbbreviation(
             break :blk "";
         }
 
-        break :blk std.mem.trim(u8, value[open_i + 1..close_i], " \t");
+        break :blk std.mem.trim(u8, value[open_i + 1 .. close_i], " \t");
     };
 
     const abbr_value = blk: {

@@ -3,10 +3,7 @@ const Allocator = std.mem.Allocator;
 const Io = std.Io;
 const Uri = std.Uri;
 
-pub const Error = (
-    Allocator.Error
-    || Io.Writer.Error
-);
+pub const Error = (Allocator.Error || Io.Writer.Error);
 
 /// Normalizes URIs that will be used as attribute values (vs. textual
 /// content).
@@ -27,13 +24,14 @@ pub fn normalize(
     errdefer w.deinit();
 
     var include_scheme = true;
-    const uri = blk: {  // parse URI, be as forgiving as we can
+    const uri = blk: { // parse URI, be as forgiving as we can
         if (Uri.parse(raw)) |uri| {
             break :blk uri;
         } else |err| switch (err) {
             Uri.ParseError.InvalidFormat,
             Uri.ParseError.InvalidPort,
-            Uri.ParseError.UnexpectedCharacter => {},
+            Uri.ParseError.UnexpectedCharacter,
+            => {},
         }
 
         include_scheme = false;
@@ -43,7 +41,8 @@ pub fn normalize(
         } else |err| switch (err) {
             Uri.ParseError.InvalidFormat,
             Uri.ParseError.InvalidPort,
-            Uri.ParseError.UnexpectedCharacter => {},
+            Uri.ParseError.UnexpectedCharacter,
+            => {},
         }
 
         break :blk Uri{

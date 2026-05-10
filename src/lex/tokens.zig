@@ -5,7 +5,7 @@ const Io = std.Io;
 /// Tokens recognized by the block parsers.
 pub const BlockTokenType = enum {
     text,
-    pound,                  // one or more consecutive '#' symbols
+    pound, // one or more consecutive '#' symbols
     newline,
     whitespace,
     rule_star,
@@ -24,10 +24,10 @@ pub const BlockTokenType = enum {
     r_brace,
     single_quote,
     double_quote,
-    backtick_fence,         // three or more consecutive '`' symbols
-    tilde_fence,            // three or more consecutive '~' symbols
-    colon_fence,            // three or more consecutive ':' symbols
-    close,                  // special token inserted by container block parser
+    backtick_fence, // three or more consecutive '`' symbols
+    tilde_fence, // three or more consecutive '~' symbols
+    colon_fence, // three or more consecutive ':' symbols
+    close, // special token inserted by container block parser
 };
 
 /// Tokens recognized by the inline parser.
@@ -45,10 +45,10 @@ pub const InlineTokenType = enum {
     l_brace,
     r_brace,
     exclamation_mark,
-    question_mark,               // used only for HTML parsing
-    equals,                      // used only for HTML parsing
-    slash,                       // used only for HTML parsing
-    hyphen,                      // used only for HTML parsing
+    question_mark, // used only for HTML parsing
+    equals, // used only for HTML parsing
+    slash, // used only for HTML parsing
+    hyphen, // used only for HTML parsing
     // --- single-character delimiters ---
     // These get matched as a run of multiple characters but then emitted as
     // single-character tokens.
@@ -59,13 +59,13 @@ pub const InlineTokenType = enum {
     r_delim_underscore,
     lr_delim_underscore,
     // --- multi-character tokens ---
-    backtick,                    // one or more consecutive backticks
-    whitespace,                  // run of spaces/tabs (NOT unicode whitespace)
+    backtick, // one or more consecutive backticks
+    whitespace, // run of spaces/tabs (NOT unicode whitespace)
     text,
     decimal_character_reference,
     hexadecimal_character_reference,
     entity_reference,
-    hard_break,                  // char sequence that could be parsed as break
+    hard_break, // char sequence that could be parsed as break
     // --- escaped tokens ---
     // Escaping is sometimes not allowed. See InlineTokenizer.
     // We need escaped versions of only these tokens because where
@@ -111,7 +111,10 @@ pub fn Token(comptime TokenType: type) type {
 
         pub fn format(self: Self, w: *Io.Writer) !void {
             var buf: [128]u8 = undefined;
-            const name = std.ascii.upperString(&buf, @tagName(self.token_type));
+            const name = std.ascii.upperString(
+                &buf,
+                @tagName(self.token_type),
+            );
 
             if (self.lexeme.len > 0) {
                 try w.print("{s} \"{s}\"", .{ name, self.lexeme });

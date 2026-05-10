@@ -28,8 +28,8 @@ const Test = struct {
     // Run test case.
     //
     // We parse the myst, rendering the AST as JSON to a buffer. Then we parse
-    // that AST as a dynamic JSON value and compare it to the dynamic JSON value
-    // for the AST we loaded from the spec test cases.
+    // that AST as a dynamic JSON value and compare it to the dynamic JSON
+    // value for the AST we loaded from the spec test cases.
     //
     // If there is an expected HTML rendering we test that too.
     pub fn func(

@@ -56,19 +56,7 @@ fn transformBuiltin(
 ) !*ast.Node {
     _ = scratch;
 
-    if (
-        std.mem.eql(u8, name, "admonition")
-        or std.mem.eql(u8, name, "attention")
-        or std.mem.eql(u8, name, "caution")
-        or std.mem.eql(u8, name, "danger")
-        or std.mem.eql(u8, name, "error")
-        or std.mem.eql(u8, name, "hint")
-        or std.mem.eql(u8, name, "important")
-        or std.mem.eql(u8, name, "note")
-        or std.mem.eql(u8, name, "seealso")
-        or std.mem.eql(u8, name, "tip")
-        or std.mem.eql(u8, name, "warning")
-    ) {
+    if (std.mem.eql(u8, name, "admonition") or std.mem.eql(u8, name, "attention") or std.mem.eql(u8, name, "caution") or std.mem.eql(u8, name, "danger") or std.mem.eql(u8, name, "error") or std.mem.eql(u8, name, "hint") or std.mem.eql(u8, name, "important") or std.mem.eql(u8, name, "note") or std.mem.eql(u8, name, "seealso") or std.mem.eql(u8, name, "tip") or std.mem.eql(u8, name, "warning")) {
         return try transformAdmonition(alloc, node, name, args, value);
     }
 
@@ -139,7 +127,7 @@ fn transformAdmonition(
 
     // Parse directive contents as nested MyST Markdown document!
     var reader = Io.Reader.fixed(value);
-    const root = try atrus.parse(alloc, &reader, .{.parse_level = .pre});
+    const root = try atrus.parse(alloc, &reader, .{ .parse_level = .pre });
     defer {
         alloc.free(root.root.children);
         alloc.destroy(root); // we don't need the root node
@@ -209,7 +197,7 @@ fn transformFigure(
 
     // Parse directive contents as nested MyST Markdown document!
     var reader = Io.Reader.fixed(value);
-    const root = try atrus.parse(alloc, &reader, .{.parse_level = .pre});
+    const root = try atrus.parse(alloc, &reader, .{ .parse_level = .pre });
     defer {
         alloc.free(root.root.children);
         alloc.destroy(root); // we don't need the root node

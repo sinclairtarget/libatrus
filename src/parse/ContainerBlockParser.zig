@@ -142,10 +142,9 @@ const OpenRoot = struct {
                 };
             },
             .whitespace => {
-                if (
-                    util.strings.whitespaceIndentLen(token.lexeme) >= 4
-                    or !interruptible
-                ) {
+                if (util.strings.whitespaceIndentLen(token.lexeme) >= 4 or
+                    !interruptible)
+                {
                     break :swtch;
                 }
 
@@ -214,7 +213,7 @@ const OpenBlockquote = struct {
         const maybe_next_token = try it.peekAhead(scratch, 2);
         if (maybe_next_token) |next_token| {
             if (next_token.token_type == .r_angle_bracket) {
-                 // Up to 3 leading spaces allowed before first '>'
+                // Up to 3 leading spaces allowed before first '>'
                 _ = try consumeWhitespaceUpTo(scratch, it, 3);
             }
         }
@@ -240,8 +239,8 @@ const OpenBlockquote = struct {
                         };
                     }
 
-                    // Another level of blockquote! We backtrack and let the new
-                    // blockquote container parse the whole line.
+                    // Another level of blockquote! We backtrack and let the
+                    // new blockquote container parse the whole line.
                     it.backtrack(checkpoint_index);
                     return .{
                         .token = null,
@@ -322,7 +321,8 @@ const OpenBlockquote = struct {
 // Set to true to print tokens sent to leaf block parser.
 const debug_stream = false;
 
-it: *TokenIterator(BlockTokenType), // Iterator that the container block parser consumes
+// Iterator that the container block parser consumes
+it: *TokenIterator(BlockTokenType),
 container_stack: ArrayList(OpenContainer),
 line_state: LineState,
 maybe_staged_token: ?BlockToken,
@@ -676,7 +676,7 @@ test "whitespace blockquote" {
             \\This is a paragraph inside the blockquote.
             \\So is this line.
             \\And this line.
-            ,
+        ,
             bq_txt.text.value,
         );
     }

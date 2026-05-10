@@ -38,7 +38,7 @@ const TokenizeResult = struct {
 
 reader: LineReader,
 line: []const u8,
-i: usize,                // current index into line
+i: usize, // current index into line
 
 const Self = @This();
 
@@ -111,16 +111,16 @@ fn tokenize(self: *Self, scratch: Allocator) !BlockToken {
 
 fn matchSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
     const token_type: BlockTokenType = switch (self.line[self.i]) {
-        '['  => .l_square_bracket,
-        ']'  => .r_square_bracket,
-        '<'  => .l_angle_bracket,
-        '>'  => .r_angle_bracket,
-        '('  => .l_paren,
-        ')'  => .r_paren,
-        '{'  => .l_brace,
-        '}'  => .r_brace,
-        ':'  => .colon,
-        '"'  => .double_quote,
+        '[' => .l_square_bracket,
+        ']' => .r_square_bracket,
+        '<' => .l_angle_bracket,
+        '>' => .r_angle_bracket,
+        '(' => .l_paren,
+        ')' => .r_paren,
+        '{' => .l_brace,
+        '}' => .r_brace,
+        ':' => .colon,
+        '"' => .double_quote,
         '\'' => .single_quote,
         else => return null,
     };
@@ -229,10 +229,9 @@ fn matchRule(self: Self, scratch: Allocator) !?TokenizeResult {
                 continue :fsm .normal;
             } else if (self.line[lookahead_i] == '\n') {
                 break :fsm;
-            } else if (
-                self.line[lookahead_i] == ' '
-                or self.line[lookahead_i] == '\t'
-            ) {
+            } else if (self.line[lookahead_i] == ' ' or
+                self.line[lookahead_i] == '\t')
+            {
                 lookahead_i += 1;
                 continue :fsm .whitespace;
             } else {
@@ -247,10 +246,9 @@ fn matchRule(self: Self, scratch: Allocator) !?TokenizeResult {
                 continue :fsm .normal;
             } else if (self.line[lookahead_i] == '\n') {
                 break :fsm;
-            } else if (
-                self.line[lookahead_i] == ' '
-                or self.line[lookahead_i] == '\t'
-            ) {
+            } else if (self.line[lookahead_i] == ' ' or
+                self.line[lookahead_i] == '\t')
+            {
                 lookahead_i += 1;
                 continue :fsm .whitespace;
             } else {
@@ -423,8 +421,21 @@ fn matchText(self: Self, scratch: Allocator) !TokenizeResult {
         },
         .text => {
             switch (self.line[lookahead_i]) {
-                '"', '\'', '<', '>', '[', ']', '{', '}', ':', '`', '~', '\n',
-                ' ', '\t' => break :fsm,
+                '"',
+                '\'',
+                '<',
+                '>',
+                '[',
+                ']',
+                '{',
+                '}',
+                ':',
+                '`',
+                '~',
+                '\n',
+                ' ',
+                '\t',
+                => break :fsm,
                 '\\' => {
                     lookahead_i += 1;
                     continue :fsm .escaped;
@@ -519,21 +530,22 @@ test "pound paragraph" {
     ;
 
     try expectEqualTokens(&.{
-        .pound, .whitespace, .text, .newline,
-        .pound, .whitespace, .text, .newline,
-        .text, .whitespace, .text, .whitespace, .text, .whitespace,
-            .text, .newline,
-        .text, .whitespace, .text, .whitespace, .text, .whitespace,
-            .text, .newline,
-        .newline,
-        .text, .whitespace, .text, .whitespace, .text, .whitespace,
-            .text, .whitespace, .text, .newline,
-        .text, .whitespace, .text, .whitespace, .double_quote, .text,
-            .double_quote, .whitespace, .text, .whitespace, .l_paren,
-            .l_square_bracket, .r_square_bracket, .l_angle_bracket,
-            .r_angle_bracket, .r_paren, .whitespace, .text, .whitespace,
-            .text, .whitespace, .text, .whitespace, .text, .whitespace, .text,
-            .newline,
+        .pound,           .whitespace,      .text,             .newline,
+        .pound,           .whitespace,      .text,             .newline,
+        .text,            .whitespace,      .text,             .whitespace,
+        .text,            .whitespace,      .text,             .newline,
+        .text,            .whitespace,      .text,             .whitespace,
+        .text,            .whitespace,      .text,             .newline,
+        .newline,         .text,            .whitespace,       .text,
+        .whitespace,      .text,            .whitespace,       .text,
+        .whitespace,      .text,            .newline,          .text,
+        .whitespace,      .text,            .whitespace,       .double_quote,
+        .text,            .double_quote,    .whitespace,       .text,
+        .whitespace,      .l_paren,         .l_square_bracket, .r_square_bracket,
+        .l_angle_bracket, .r_angle_bracket, .r_paren,          .whitespace,
+        .text,            .whitespace,      .text,             .whitespace,
+        .text,            .whitespace,      .text,             .whitespace,
+        .text,            .newline,
     }, md);
 }
 
@@ -551,13 +563,13 @@ test "rule" {
     ;
 
     try expectEqualTokens(&.{
-        .rule_star, .newline,
-        .rule_dash, .newline,
-        .rule_underline, .newline,
-        .rule_dash, .newline,
-        .rule_dash, .newline,
-        .rule_dash, .newline,
-        .rule_equals, .newline,
+        .rule_star,                 .newline,
+        .rule_dash,                 .newline,
+        .rule_underline,            .newline,
+        .rule_dash,                 .newline,
+        .rule_dash,                 .newline,
+        .rule_dash,                 .newline,
+        .rule_equals,               .newline,
         .rule_dash_with_whitespace, .newline,
     }, md);
 }
@@ -565,17 +577,17 @@ test "rule" {
 test "rule with trailing whitespace" {
     const md = "   ---   \n";
 
-    try expectEqualTokens(&.{.rule_dash, .newline}, md);
+    try expectEqualTokens(&.{ .rule_dash, .newline }, md);
 }
 
 test "indent" {
     // In Zig, can't use \t in multiline string literal :(
     const md = "    a simple\n      space-indented block\n\n\ttab indent\n";
     try expectEqualTokens(&.{
-        .whitespace, .text, .whitespace, .text, .newline,
-        .whitespace, .text, .whitespace, .text, .newline,
+        .whitespace, .text,       .whitespace, .text,       .newline,
+        .whitespace, .text,       .whitespace, .text,       .newline,
+        .newline,    .whitespace, .text,       .whitespace, .text,
         .newline,
-        .whitespace, .text, .whitespace, .text, .newline,
     }, md);
 }
 

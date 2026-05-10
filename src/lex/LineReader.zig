@@ -17,7 +17,7 @@ const State = enum {
 };
 
 in: *Io.Reader,
-buf: []u8,        // Scratch memory holding the modified next line
+buf: []u8, // Scratch memory holding the modified next line
 
 const Self = @This();
 

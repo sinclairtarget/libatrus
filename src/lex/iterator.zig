@@ -4,7 +4,7 @@ const ArrayList = std.ArrayList;
 
 const Token = @import("tokens.zig").Token;
 
-pub const Error = error {
+pub const Error = error{
     LineTooLong,
     ReadFailed,
     WriteFailed,
@@ -25,7 +25,7 @@ pub fn TokenIterator(comptime TokenType: type) type {
 
         pub fn init(
             ctx: *anyopaque,
-            nextFn: *const fn(*anyopaque, Allocator) Error!?Token(TokenType),
+            nextFn: *const fn (*anyopaque, Allocator) Error!?Token(TokenType),
         ) Self {
             return .{
                 .ctx = ctx,

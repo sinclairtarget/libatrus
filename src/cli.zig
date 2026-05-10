@@ -101,12 +101,14 @@ pub fn parseArgs(
 
     const args = try std.process.argsAlloc(args_arena_impl.allocator());
     if (args.len < 2) {
-        return .{.parse, .{}};
+        return .{ .parse, .{} };
     }
 
     if (std.mem.eql(u8, args[1], "--version")) {
         return .{ .print_version, Options{} };
-    } else if (std.mem.eql(u8, args[1], "-h") or std.mem.eql(u8, args[1], "--help")) {
+    } else if (std.mem.eql(u8, args[1], "-h") or
+        std.mem.eql(u8, args[1], "--help"))
+    {
         return .{ .help, Options{} };
     }
 
@@ -124,7 +126,9 @@ pub fn parseArgs(
             parse_level = .raw;
         } else if (std.mem.eql(u8, arg, "--pre")) {
             parse_level = .pre;
-        } else if (builtin.mode == .Debug and std.mem.eql(u8, arg, "--tokens")) {
+        } else if (builtin.mode == .Debug and
+            std.mem.eql(u8, arg, "--tokens"))
+        {
             action = .tokenize;
         } else {
             filepath_or_input = try arena.dupe(u8, arg);

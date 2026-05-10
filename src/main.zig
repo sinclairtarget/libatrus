@@ -86,14 +86,16 @@ pub fn main() !void {
             };
 
             var reader = Io.Reader.fixed(myst);
-            const ast = try atrus.parse(gpa, &reader, .{
-                .parse_level = switch (options.parse_level) {
+            const ast = try atrus.parse(
+                gpa,
+                &reader,
+                .{ .parse_level = switch (options.parse_level) {
                     .block => .block,
                     .raw => .raw,
                     .pre => .pre,
                     .post => .post,
-                }
-            });
+                } },
+            );
             defer ast.deinit(gpa);
 
             logger.info("Rendering...", .{});
@@ -119,7 +121,11 @@ pub fn main() !void {
                 var file = cwd.openFile(filepath_or_input, .{}) catch |err| {
                     switch (err) {
                         error.FileNotFound => {
-                            try inlineTokenize(arena, stdout, filepath_or_input);
+                            try inlineTokenize(
+                                arena,
+                                stdout,
+                                filepath_or_input,
+                            );
                             break :dispatch;
                         },
                         else => return err,

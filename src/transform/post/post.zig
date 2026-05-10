@@ -13,8 +13,7 @@ pub fn transform(
     original_node: *ast.Node,
 ) !*ast.Node {
     switch (original_node.*) {
-        inline .block, .heading, .paragraph, .emphasis, .strong, .link,
-        .blockquote, .myst_directive => |n| {
+        inline .block, .heading, .paragraph, .emphasis, .strong, .link, .blockquote, .myst_directive => |n| {
             for (0..n.children.len) |i| {
                 n.children[i] = try transform(alloc, scratch, n.children[i]);
             }
@@ -78,7 +77,7 @@ fn transformFigure(
     const n = node.container;
     const caption_child, const index = for (n.children, 0..) |child, i| {
         if (@as(ast.NodeType, child.*) != .image) {
-            break .{child, i};
+            break .{ child, i };
         }
     } else return node; // nothing to do
 

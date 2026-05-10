@@ -51,11 +51,13 @@ const NodeList = @import("NodeList.zig");
 const alttext = @import("alttext.zig");
 const escape = @import("escape.zig");
 
+// zig fmt: off
 pub const Error = (
-    Io.Writer.Error
-    || Allocator.Error
-    || cmark.character_refs.CharacterReferenceError
+    Io.Writer.Error ||
+    Allocator.Error ||
+    cmark.character_refs.CharacterReferenceError
 );
+// zig fmt: on
 
 tokenizer: *InlineTokenizer,
 line: ArrayList(InlineToken),
@@ -117,23 +119,17 @@ pub fn parse(
             continue;
         }
 
-        if (
-            try self.parseFullReferenceImage(alloc, scratch)
-        ) |image| {
+        if (try self.parseFullReferenceImage(alloc, scratch)) |image| {
             try nodes.append(image);
             continue;
         }
 
-        if (
-            try self.parseCollapsedReferenceImage(alloc, scratch)
-        ) |image| {
+        if (try self.parseCollapsedReferenceImage(alloc, scratch)) |image| {
             try nodes.append(image);
             continue;
         }
 
-        if (
-            try self.parseShortcutReferenceImage(alloc, scratch)
-        ) |image| {
+        if (try self.parseShortcutReferenceImage(alloc, scratch)) |image| {
             try nodes.append(image);
             continue;
         }
@@ -253,64 +249,54 @@ fn parseStarStrong(
             continue;
         }
 
-        if (
-            try self.parseStarEmphasis(
-                alloc,
-                scratch,
-                .{
-                    .maybe_underscore_open_token =
-                        opts.maybe_underscore_open_token,
-                    .is_link_allowed = opts.is_link_allowed,
-                    .bracket_depth = bracket_depth,
-                },
-            )
-        ) |emph| {
+        if (try self.parseStarEmphasis(
+            alloc,
+            scratch,
+            .{
+                .maybe_underscore_open_token = opts.maybe_underscore_open_token,
+                .is_link_allowed = opts.is_link_allowed,
+                .bracket_depth = bracket_depth,
+            },
+        )) |emph| {
             try children.append(emph);
             continue;
         }
 
-        if (
-            try self.parseUnderscoreEmphasis(
-                alloc,
-                scratch,
-                .{
-                    .maybe_star_open_token = open_token,
-                    .is_link_allowed = opts.is_link_allowed,
-                    .bracket_depth = bracket_depth,
-                },
-            )
-        ) |emph| {
+        if (try self.parseUnderscoreEmphasis(
+            alloc,
+            scratch,
+            .{
+                .maybe_star_open_token = open_token,
+                .is_link_allowed = opts.is_link_allowed,
+                .bracket_depth = bracket_depth,
+            },
+        )) |emph| {
             try children.append(emph);
             continue;
         }
 
-        if (
-            try self.parseStarStrong(
-                alloc,
-                scratch,
-                .{
-                    .maybe_underscore_open_token =
-                        opts.maybe_underscore_open_token,
-                    .is_link_allowed = opts.is_link_allowed,
-                    .bracket_depth = bracket_depth,
-                },
-            )
-        ) |strong| {
+        if (try self.parseStarStrong(
+            alloc,
+            scratch,
+            .{
+                .maybe_underscore_open_token = opts.maybe_underscore_open_token,
+                .is_link_allowed = opts.is_link_allowed,
+                .bracket_depth = bracket_depth,
+            },
+        )) |strong| {
             try children.append(strong);
             continue;
         }
 
-        if (
-            try self.parseUnderscoreStrong(
-                alloc,
-                scratch,
-                .{
-                    .maybe_star_open_token = open_token,
-                    .is_link_allowed = opts.is_link_allowed,
-                    .bracket_depth = bracket_depth,
-                },
-            )
-        ) |strong| {
+        if (try self.parseUnderscoreStrong(
+            alloc,
+            scratch,
+            .{
+                .maybe_star_open_token = open_token,
+                .is_link_allowed = opts.is_link_allowed,
+                .bracket_depth = bracket_depth,
+            },
+        )) |strong| {
             try children.append(strong);
             continue;
         }
@@ -328,11 +314,16 @@ fn parseStarStrong(
                 .r_delim_star, .lr_delim_star => |t| t,
                 .r_delim_underscore, .lr_delim_underscore => {
                     // Handle interleaved emphasis.
+                    // zig fmt: off
                     const underscore_open_token = (
-                        opts.maybe_underscore_open_token
-                        orelse break :blk false
+                        opts.maybe_underscore_open_token orelse
+                        break :blk false
                     );
-                    if (isValidBySumOfLengthsRule(underscore_open_token, token)) {
+                    // zig fmt: on
+                    if (isValidBySumOfLengthsRule(
+                        underscore_open_token,
+                        token,
+                    )) {
                         // Ancestor closes before this emphasis can close.
                         // Give up.
                         return null;
@@ -504,47 +495,40 @@ fn parseStarEmphasis(
                 break :blk brk;
             }
 
-            if (
-                try self.parseUnderscoreEmphasis(
-                    alloc,
-                    scratch,
-                    .{
-                        .maybe_star_open_token = open_token,
-                        .is_link_allowed = opts.is_link_allowed,
-                        .bracket_depth = bracket_depth,
-                    },
-                )
-            ) |emph| {
+            if (try self.parseUnderscoreEmphasis(
+                alloc,
+                scratch,
+                .{
+                    .maybe_star_open_token = open_token,
+                    .is_link_allowed = opts.is_link_allowed,
+                    .bracket_depth = bracket_depth,
+                },
+            )) |emph| {
                 break :blk emph;
             }
 
-            if (
-                try self.parseStarStrong(
-                    alloc,
-                    scratch,
-                    .{
-                        .maybe_underscore_open_token =
-                            opts.maybe_underscore_open_token,
-                        .is_link_allowed = opts.is_link_allowed,
-                        .bracket_depth = bracket_depth,
-                    },
-                )
-            ) |strong| {
+            if (try self.parseStarStrong(
+                alloc,
+                scratch,
+                .{
+                    .maybe_underscore_open_token = opts.maybe_underscore_open_token,
+                    .is_link_allowed = opts.is_link_allowed,
+                    .bracket_depth = bracket_depth,
+                },
+            )) |strong| {
                 try children.append(strong);
                 continue;
             }
 
-            if (
-                try self.parseUnderscoreStrong(
-                    alloc,
-                    scratch,
-                    .{
-                        .maybe_star_open_token = open_token,
-                        .is_link_allowed = opts.is_link_allowed,
-                        .bracket_depth = bracket_depth,
-                    },
-                )
-            ) |strong| {
+            if (try self.parseUnderscoreStrong(
+                alloc,
+                scratch,
+                .{
+                    .maybe_star_open_token = open_token,
+                    .is_link_allowed = opts.is_link_allowed,
+                    .bracket_depth = bracket_depth,
+                },
+            )) |strong| {
                 try children.append(strong);
                 continue;
             }
@@ -557,17 +541,15 @@ fn parseStarEmphasis(
             try children.append(node);
 
             // trailing star_emph?
-            if (
-                try self.parseStarEmphasis(
-                    alloc,
-                    scratch,
-                    .{
-                        .maybe_underscore_open_token = opts.maybe_underscore_open_token,
-                        .is_link_allowed = opts.is_link_allowed,
-                        .bracket_depth = bracket_depth,
-                    },
-                )
-            ) |emph| {
+            if (try self.parseStarEmphasis(
+                alloc,
+                scratch,
+                .{
+                    .maybe_underscore_open_token = opts.maybe_underscore_open_token,
+                    .is_link_allowed = opts.is_link_allowed,
+                    .bracket_depth = bracket_depth,
+                },
+            )) |emph| {
                 try children.append(emph);
             }
 
@@ -595,11 +577,15 @@ fn parseStarEmphasis(
                     // Handle interleaved emphasis. If we are nested within
                     // another emphasis, check if this could be the close
                     // token.
+                    // zig fmt: off
                     const underscore_open_token = (
-                        opts.maybe_underscore_open_token
-                        orelse break :swtch
+                        opts.maybe_underscore_open_token orelse break :swtch
                     );
-                    if (isValidBySumOfLengthsRule(underscore_open_token, token)) {
+                    // zig fmt: on
+                    if (isValidBySumOfLengthsRule(
+                        underscore_open_token,
+                        token,
+                    )) {
                         // Ancestor closes before this emphasis can close.
                         // Give up.
                         return null;
@@ -633,17 +619,15 @@ fn parseStarEmphasis(
             try children.appendText(text_content);
 
             // trailing star_emph?
-            if (
-                try self.parseStarEmphasis(
-                    alloc,
-                    scratch,
-                    .{
-                        .maybe_underscore_open_token = opts.maybe_underscore_open_token,
-                        .is_link_allowed = opts.is_link_allowed,
-                        .bracket_depth = bracket_depth,
-                    },
-                )
-            ) |emph| {
+            if (try self.parseStarEmphasis(
+                alloc,
+                scratch,
+                .{
+                    .maybe_underscore_open_token = opts.maybe_underscore_open_token,
+                    .is_link_allowed = opts.is_link_allowed,
+                    .bracket_depth = bracket_depth,
+                },
+            )) |emph| {
                 try children.append(emph);
             }
 
@@ -778,64 +762,54 @@ fn parseUnderscoreStrong(
             continue;
         }
 
-        if (
-            try self.parseStarEmphasis(
-                alloc,
-                scratch,
-                .{
-                    .maybe_underscore_open_token = open_token,
-                    .is_link_allowed = opts.is_link_allowed,
-                    .bracket_depth = bracket_depth,
-                },
-            )
-        ) |emph| {
+        if (try self.parseStarEmphasis(
+            alloc,
+            scratch,
+            .{
+                .maybe_underscore_open_token = open_token,
+                .is_link_allowed = opts.is_link_allowed,
+                .bracket_depth = bracket_depth,
+            },
+        )) |emph| {
             try children.append(emph);
             continue;
         }
 
-        if (
-            try self.parseUnderscoreEmphasis(
-                alloc,
-                scratch,
-                .{
-                    .maybe_star_open_token =
-                        opts.maybe_star_open_token,
-                    .is_link_allowed = opts.is_link_allowed,
-                    .bracket_depth = bracket_depth,
-                },
-            )
-        ) |emph| {
+        if (try self.parseUnderscoreEmphasis(
+            alloc,
+            scratch,
+            .{
+                .maybe_star_open_token = opts.maybe_star_open_token,
+                .is_link_allowed = opts.is_link_allowed,
+                .bracket_depth = bracket_depth,
+            },
+        )) |emph| {
             try children.append(emph);
             continue;
         }
 
-        if (
-            try self.parseStarStrong(
-                alloc,
-                scratch,
-                .{
-                    .maybe_underscore_open_token = open_token,
-                    .is_link_allowed = opts.is_link_allowed,
-                    .bracket_depth = bracket_depth,
-                },
-            )
-        ) |strong| {
+        if (try self.parseStarStrong(
+            alloc,
+            scratch,
+            .{
+                .maybe_underscore_open_token = open_token,
+                .is_link_allowed = opts.is_link_allowed,
+                .bracket_depth = bracket_depth,
+            },
+        )) |strong| {
             try children.append(strong);
             continue;
         }
 
-        if (
-            try self.parseUnderscoreStrong(
-                alloc,
-                scratch,
-                .{
-                    .maybe_star_open_token =
-                        opts.maybe_star_open_token,
-                    .is_link_allowed = opts.is_link_allowed,
-                    .bracket_depth = bracket_depth,
-                },
-            )
-        ) |strong| {
+        if (try self.parseUnderscoreStrong(
+            alloc,
+            scratch,
+            .{
+                .maybe_star_open_token = opts.maybe_star_open_token,
+                .is_link_allowed = opts.is_link_allowed,
+                .bracket_depth = bracket_depth,
+            },
+        )) |strong| {
             try children.append(strong);
             continue;
         }
@@ -853,10 +827,11 @@ fn parseUnderscoreStrong(
                 .r_delim_underscore, .lr_delim_underscore => |t| t,
                 .r_delim_star, .lr_delim_star => {
                     // Handle interleaved emphasis.
+                    // zig fmt: off
                     const star_open_token = (
-                        opts.maybe_star_open_token
-                        orelse break :blk false
+                        opts.maybe_star_open_token orelse break :blk false
                     );
+                    // zig fmt: on
                     if (isValidBySumOfLengthsRule(star_open_token, token)) {
                         // Ancestor closes before this emphasis can close.
                         // Give up.
@@ -1050,45 +1025,39 @@ fn parseUnderscoreEmphasis(
             }
 
             if (try self.parseStarEmphasis(
-                    alloc,
-                    scratch,
-                    .{
-                        .maybe_underscore_open_token = open_token,
-                        .is_link_allowed = opts.is_link_allowed,
-                        .bracket_depth = bracket_depth,
-                    },
-                )
-            ) |emph| {
+                alloc,
+                scratch,
+                .{
+                    .maybe_underscore_open_token = open_token,
+                    .is_link_allowed = opts.is_link_allowed,
+                    .bracket_depth = bracket_depth,
+                },
+            )) |emph| {
                 break :blk emph;
             }
 
-            if (
-                try self.parseStarStrong(
-                    alloc,
-                    scratch,
-                    .{
-                        .maybe_underscore_open_token = open_token,
-                        .is_link_allowed = opts.is_link_allowed,
-                        .bracket_depth = bracket_depth,
-                    },
-                )
-            ) |strong| {
+            if (try self.parseStarStrong(
+                alloc,
+                scratch,
+                .{
+                    .maybe_underscore_open_token = open_token,
+                    .is_link_allowed = opts.is_link_allowed,
+                    .bracket_depth = bracket_depth,
+                },
+            )) |strong| {
                 try children.append(strong);
                 continue;
             }
 
-            if (
-                try self.parseUnderscoreStrong(
-                    alloc,
-                    scratch,
-                    .{
-                        .maybe_star_open_token =
-                            opts.maybe_star_open_token,
-                        .is_link_allowed = opts.is_link_allowed,
-                        .bracket_depth = bracket_depth,
-                    },
-                )
-            ) |strong| {
+            if (try self.parseUnderscoreStrong(
+                alloc,
+                scratch,
+                .{
+                    .maybe_star_open_token = opts.maybe_star_open_token,
+                    .is_link_allowed = opts.is_link_allowed,
+                    .bracket_depth = bracket_depth,
+                },
+            )) |strong| {
                 try children.append(strong);
                 continue;
             }
@@ -1101,17 +1070,15 @@ fn parseUnderscoreEmphasis(
             try children.append(node);
 
             // trailing under_emph?
-            if (
-                try self.parseUnderscoreEmphasis(
-                    alloc,
-                    scratch,
-                    .{
-                        .maybe_star_open_token = opts.maybe_star_open_token,
-                        .is_link_allowed = opts.is_link_allowed,
-                        .bracket_depth = bracket_depth,
-                    },
-                )
-            ) |emph| {
+            if (try self.parseUnderscoreEmphasis(
+                alloc,
+                scratch,
+                .{
+                    .maybe_star_open_token = opts.maybe_star_open_token,
+                    .is_link_allowed = opts.is_link_allowed,
+                    .bracket_depth = bracket_depth,
+                },
+            )) |emph| {
                 try children.append(emph);
             }
 
@@ -1139,9 +1106,11 @@ fn parseUnderscoreEmphasis(
                     // Handle interleaved emphasis. If we are nested within
                     // another emphasis, check if this could be the close
                     // token.
+                    // zig fmt: off
                     const star_open_token = (
                         opts.maybe_star_open_token orelse break :swtch
                     );
+                    // zig fmt: on
                     if (isValidBySumOfLengthsRule(star_open_token, token)) {
                         // Ancestor closes before this emphasis can close.
                         // Give up.
@@ -1176,17 +1145,15 @@ fn parseUnderscoreEmphasis(
             try children.appendText(text_content);
 
             // trailing under_emph?
-            if (
-                try self.parseUnderscoreEmphasis(
-                    alloc,
-                    scratch,
-                    .{
-                        .maybe_star_open_token = opts.maybe_star_open_token,
-                        .is_link_allowed = opts.is_link_allowed,
-                        .bracket_depth = bracket_depth,
-                    },
-                )
-            ) |emph| {
+            if (try self.parseUnderscoreEmphasis(
+                alloc,
+                scratch,
+                .{
+                    .maybe_star_open_token = opts.maybe_star_open_token,
+                    .is_link_allowed = opts.is_link_allowed,
+                    .bracket_depth = bracket_depth,
+                },
+            )) |emph| {
                 try children.append(emph);
             }
 
@@ -1250,35 +1217,25 @@ fn parseUnderscoreEmphasis(
 /// This function trivially evaluates to true if neither the open nor the close
 /// token is an lr delimiter.
 fn isValidBySumOfLengthsRule(open: InlineToken, close: InlineToken) bool {
-    if (
-        open.token_type == .lr_delim_star
-        or close.token_type == .lr_delim_star
-    ) {
-        const sum_of_len = (
-            open.context.delim_star.run_len
-            + close.context.delim_star.run_len
-        );
+    if (open.token_type == .lr_delim_star or
+        close.token_type == .lr_delim_star)
+    {
+        const sum_of_len = open.context.delim_star.run_len +
+            close.context.delim_star.run_len;
         if (sum_of_len % 3 == 0) {
-            return (
-                open.context.delim_star.run_len % 3 == 0
-                and close.context.delim_star.run_len % 3 == 0
-            );
+            return open.context.delim_star.run_len % 3 == 0 and
+                close.context.delim_star.run_len % 3 == 0;
         }
     }
 
-    if (
-        open.token_type == .lr_delim_underscore
-        or close.token_type == .lr_delim_underscore
-    ) {
-        const sum_of_len = (
-            open.context.delim_underscore.run_len
-            + close.context.delim_underscore.run_len
-        );
+    if (open.token_type == .lr_delim_underscore or
+        close.token_type == .lr_delim_underscore)
+    {
+        const sum_of_len = open.context.delim_underscore.run_len +
+            close.context.delim_underscore.run_len;
         if (sum_of_len % 3 == 0) {
-            return (
-                open.context.delim_underscore.run_len % 3 == 0
-                and close.context.delim_underscore.run_len % 3 == 0
-            );
+            return open.context.delim_underscore.run_len % 3 == 0 and
+                close.context.delim_underscore.run_len % 3 == 0;
         }
     }
 
@@ -1298,26 +1255,24 @@ fn parseAnyEmphasis(
     },
 ) Error!?*ast.Node {
     if (try self.parseStarEmphasis(
-            alloc,
-            scratch,
-            .{
-                .is_link_allowed = opts.is_link_allowed,
-                .bracket_depth = opts.bracket_depth,
-            },
-        )
-    ) |emph| {
+        alloc,
+        scratch,
+        .{
+            .is_link_allowed = opts.is_link_allowed,
+            .bracket_depth = opts.bracket_depth,
+        },
+    )) |emph| {
         return emph;
     }
 
     if (try self.parseUnderscoreEmphasis(
-            alloc,
-            scratch,
-            .{
-                .is_link_allowed = opts.is_link_allowed,
-                .bracket_depth = opts.bracket_depth,
-            },
-        )
-    ) |emph| {
+        alloc,
+        scratch,
+        .{
+            .is_link_allowed = opts.is_link_allowed,
+            .bracket_depth = opts.bracket_depth,
+        },
+    )) |emph| {
         return emph;
     }
 
@@ -1337,26 +1292,24 @@ fn parseAnyStrong(
     },
 ) Error!?*ast.Node {
     if (try self.parseStarStrong(
-            alloc,
-            scratch,
-            .{
-                .is_link_allowed = opts.is_link_allowed,
-                .bracket_depth = opts.bracket_depth,
-            },
-        )
-    ) |strong| {
+        alloc,
+        scratch,
+        .{
+            .is_link_allowed = opts.is_link_allowed,
+            .bracket_depth = opts.bracket_depth,
+        },
+    )) |strong| {
         return strong;
     }
 
     if (try self.parseUnderscoreStrong(
-            alloc,
-            scratch,
-            .{
-                .is_link_allowed = opts.is_link_allowed,
-                .bracket_depth = opts.bracket_depth,
-            },
-        )
-    ) |strong| {
+        alloc,
+        scratch,
+        .{
+            .is_link_allowed = opts.is_link_allowed,
+            .bracket_depth = opts.bracket_depth,
+        },
+    )) |strong| {
         return strong;
     }
 
@@ -1378,7 +1331,7 @@ fn parseInlineCode(
     };
 
     // @ => backtick(n) .+ backtick(n)
-    const open = try self.consume(scratch, &.{ .backtick }) orelse return null;
+    const open = try self.consume(scratch, &.{.backtick}) orelse return null;
 
     // TODO: Use allocating writer instead
     var values: ArrayList([]const u8) = .empty;
@@ -1386,7 +1339,7 @@ fn parseInlineCode(
         const token = try self.peek(scratch) orelse return null;
         switch (token.token_type) {
             .backtick => {
-                _ = try self.consume(scratch, &.{ .backtick });
+                _ = try self.consume(scratch, &.{.backtick});
                 if (token.lexeme.len == open.lexeme.len) {
                     break;
                 }
@@ -1397,7 +1350,7 @@ fn parseInlineCode(
             .escaped_backtick => {
                 // Backslash-escaping is not allowed in code spans. Treat as a
                 // backslash followed by a backtick.
-                _ = try self.consume(scratch, &.{ .escaped_backtick });
+                _ = try self.consume(scratch, &.{.escaped_backtick});
                 try values.append(scratch, "\\");
 
                 if (try self.consume(scratch, &.{.backtick})) |following| {
@@ -1431,7 +1384,7 @@ fn parseInlineCode(
 
                 const value = try emitInlineCode(scratch, token);
                 try values.append(scratch, value);
-            }
+            },
         }
     } else @panic(util.safety.loop_bound_panic_msg);
 
@@ -1444,7 +1397,7 @@ fn parseInlineCode(
     // Special case for stripping single leading and following space
     if (value.len > 1 and !util.strings.containsOnly(value, " ")) {
         if (value[0] == ' ' and value[value.len - 1] == ' ') {
-            value = value[1..value.len - 1];
+            value = value[1 .. value.len - 1];
         }
     }
 
@@ -1476,9 +1429,8 @@ fn parseInlineLink(
     // @ => link_text l_paren (link_dest link_title?)? r_paren
 
     // handle link text
-    const link_text_nodes = (
-        try self.parseLinkText(alloc, scratch) orelse return null
-    );
+    const link_text_nodes = try self.parseLinkText(alloc, scratch) orelse
+        return null;
     defer if (!did_parse) {
         for (link_text_nodes) |node| {
             node.deinit(alloc);
@@ -1489,7 +1441,7 @@ fn parseInlineLink(
     var newline_count: u8 = 0;
     _ = try self.consume(scratch, &.{.l_paren}) orelse return null;
 
-    while (try self.consume(scratch, &.{.newline, .whitespace})) |token| {
+    while (try self.consume(scratch, &.{ .newline, .whitespace })) |token| {
         if (token.token_type == .newline) {
             newline_count += 1;
         }
@@ -1503,7 +1455,7 @@ fn parseInlineLink(
         // link title, if present, must be separated from destination by
         // whitespace
         var consumed_whitespace_or_newline = false;
-        while (try self.consume(scratch, &.{.newline, .whitespace})) |token| {
+        while (try self.consume(scratch, &.{ .newline, .whitespace })) |token| {
             if (token.token_type == .newline) {
                 newline_count += 1;
             }
@@ -1518,7 +1470,7 @@ fn parseInlineLink(
         break :blk "";
     };
 
-    while (try self.consume(scratch, &.{.newline, .whitespace})) |token| {
+    while (try self.consume(scratch, &.{ .newline, .whitespace })) |token| {
         if (token.token_type == .newline) {
             newline_count += 1;
         }
@@ -1625,27 +1577,25 @@ fn parseLinkText(
         }
 
         if (try self.parseAnyEmphasis(
-                alloc,
-                scratch,
-                .{
-                    .is_link_allowed = false,
-                    .bracket_depth = &bracket_depth,
-                },
-            )
-        ) |emph| {
+            alloc,
+            scratch,
+            .{
+                .is_link_allowed = false,
+                .bracket_depth = &bracket_depth,
+            },
+        )) |emph| {
             try nodes.append(emph);
             continue;
         }
 
         if (try self.parseAnyStrong(
-                alloc,
-                scratch,
-                .{
-                    .is_link_allowed = false,
-                    .bracket_depth = &bracket_depth,
-                },
-            )
-        ) |strong| {
+            alloc,
+            scratch,
+            .{
+                .is_link_allowed = false,
+                .bracket_depth = &bracket_depth,
+            },
+        )) |strong| {
             try nodes.append(strong);
             continue;
         }
@@ -1766,7 +1716,7 @@ fn scanLinkTitle(self: *Self, scratch: Allocator) !?[]const u8 {
 
     const open = try self.consume(
         scratch,
-        &.{.l_paren, .single_quote, .double_quote},
+        &.{ .l_paren, .single_quote, .double_quote },
     ) orelse return null;
 
     const open_t = open.token_type;
@@ -1809,7 +1759,10 @@ fn scanLinkTitle(self: *Self, scratch: Allocator) !?[]const u8 {
 }
 
 /// Scans spaces, tabs, and up to one newline.
-fn scanSeparatingWhitespace(self: *Self, scratch: Allocator) Error!?[]const u8 {
+fn scanSeparatingWhitespace(
+    self: *Self,
+    scratch: Allocator,
+) Error!?[]const u8 {
     var did_parse = false;
     const checkpoint_index = self.checkpoint();
     defer if (!did_parse) {
@@ -1819,7 +1772,7 @@ fn scanSeparatingWhitespace(self: *Self, scratch: Allocator) Error!?[]const u8 {
     var running_text = Io.Writer.Allocating.init(scratch);
 
     var seen_newline = false;
-    while (try self.consume(scratch, &.{.newline, .whitespace})) |token| {
+    while (try self.consume(scratch, &.{ .newline, .whitespace })) |token| {
         if (token.token_type == .newline) {
             if (seen_newline) {
                 return null;
@@ -1850,9 +1803,8 @@ fn parseFullReferenceLink(
     };
 
     // handle link text
-    const link_text_nodes = (
-        try self.parseLinkText(alloc, scratch) orelse return null
-    );
+    const link_text_nodes = try self.parseLinkText(alloc, scratch) orelse
+        return null;
     defer if (!did_parse) {
         for (link_text_nodes) |node| {
             node.deinit(alloc);
@@ -1861,9 +1813,8 @@ fn parseFullReferenceLink(
     };
 
     // handle link label
-    const scanned_link_label = (
-        try self.scanLinkLabel(scratch) orelse return null
-    );
+    const scanned_link_label = try self.scanLinkLabel(scratch) orelse
+        return null;
 
     // lookup link def
     const link_def = try self.link_defs.get(
@@ -1906,9 +1857,8 @@ fn parseCollapsedReferenceLink(
     };
 
     // handle link label
-    const scanned_link_label = (
-        try self.scanLinkLabel(scratch) orelse return null
-    );
+    const scanned_link_label = try self.scanLinkLabel(scratch) orelse
+        return null;
 
     // consume trailing "[]", check for early bail condition
     _ = try self.consume(scratch, &.{.l_square_bracket}) orelse return null;
@@ -1922,9 +1872,8 @@ fn parseCollapsedReferenceLink(
 
     // !! re-parse label as inline content !!
     self.backtrack(checkpoint_index);
-    const inline_nodes = (
-        try self.parseLinkLabel(alloc, scratch) orelse return null
-    );
+    const inline_nodes = try self.parseLinkLabel(alloc, scratch) orelse
+        return null;
     defer if (!did_parse) {
         for (inline_nodes) |node| {
             node.deinit(alloc);
@@ -1970,15 +1919,13 @@ fn parseShortcutReferenceLink(
     };
 
     // handle link label
-    const scanned_link_label = (
-        try self.scanLinkLabel(scratch) orelse return null
-    );
+    const scanned_link_label = try self.scanLinkLabel(scratch) orelse
+        return null;
 
     // !! re-parse label as inline content !!
     self.backtrack(checkpoint_index);
-    const inline_nodes = (
-        try self.parseLinkLabel(alloc, scratch) orelse return null
-    );
+    const inline_nodes = try self.parseLinkLabel(alloc, scratch) orelse
+        return null;
     defer if (!did_parse) {
         for (inline_nodes) |node| {
             node.deinit(alloc);
@@ -2178,9 +2125,8 @@ fn parseInlineImage(
     // @ => ! link_description l_paren (link_dest link_title?)? r_paren
     _ = try self.consume(scratch, &.{.exclamation_mark}) orelse return null;
 
-    const img_desc_nodes = (
-        try self.parseImageDescription(alloc, scratch) orelse return null
-    );
+    const img_desc_nodes = try self.parseImageDescription(alloc, scratch) orelse
+        return null;
     defer {
         // We only need these nodes to produce the alt text. They won't end
         // up in the final AST.
@@ -2197,9 +2143,8 @@ fn parseInlineImage(
     const raw_url = try self.scanLinkDestination(scratch) orelse "";
     const url = try cmark.uri.normalize(scratch, scratch, raw_url);
 
-    const whitespace = (
-        try self.scanSeparatingWhitespace(scratch) orelse return null
-    );
+    const whitespace = try self.scanSeparatingWhitespace(scratch) orelse
+        return null;
     const title = blk: {
         // link title, if present, must be separated from destination by
         // whitespace
@@ -2314,21 +2259,19 @@ fn parseImageDescription(
         }
 
         if (try self.parseAnyEmphasis(
-                alloc,
-                scratch,
-                .{.bracket_depth = &bracket_depth},
-            )
-        ) |emph| {
+            alloc,
+            scratch,
+            .{ .bracket_depth = &bracket_depth },
+        )) |emph| {
             try nodes.append(emph);
             continue;
         }
 
         if (try self.parseAnyStrong(
-                alloc,
-                scratch,
-                .{.bracket_depth = &bracket_depth},
-            )
-        ) |strong| {
+            alloc,
+            scratch,
+            .{ .bracket_depth = &bracket_depth },
+        )) |strong| {
             try nodes.append(strong);
             continue;
         }
@@ -2372,9 +2315,8 @@ fn parseFullReferenceImage(
 
     _ = try self.consume(scratch, &.{.exclamation_mark}) orelse return null;
 
-    const img_desc_nodes = (
-        try self.parseImageDescription(alloc, scratch) orelse return null
-    );
+    const img_desc_nodes = try self.parseImageDescription(alloc, scratch) orelse
+        return null;
     defer {
         // We only need these nodes to produce the alt text. They won't end
         // up in the final AST.
@@ -2385,9 +2327,8 @@ fn parseFullReferenceImage(
     }
 
     // handle link label
-    const scanned_link_label = (
-        try self.scanLinkLabel(scratch) orelse return null
-    );
+    const scanned_link_label = try self.scanLinkLabel(scratch) orelse
+        return null;
 
     // lookup link def
     const link_def = try self.link_defs.get(
@@ -2438,9 +2379,8 @@ fn parseCollapsedReferenceImage(
     const label_begin_index = self.checkpoint();
 
     // handle link label
-    const scanned_link_label = (
-        try self.scanLinkLabel(scratch) orelse return null
-    );
+    const scanned_link_label = try self.scanLinkLabel(scratch) orelse
+        return null;
 
     _ = try self.consume(scratch, &.{.l_square_bracket}) orelse return null;
     _ = try self.consume(scratch, &.{.r_square_bracket}) orelse return null;
@@ -2453,9 +2393,8 @@ fn parseCollapsedReferenceImage(
 
     // !! re-parse label as inline content !!
     self.backtrack(label_begin_index);
-    const inline_nodes = (
-        try self.parseLinkLabel(alloc, scratch) orelse return null
-    );
+    const inline_nodes = try self.parseLinkLabel(alloc, scratch) orelse
+        return null;
     defer {
         // We only need these nodes to produce the alt text. They won't end
         // up in the final AST.
@@ -2514,9 +2453,8 @@ fn parseShortcutReferenceImage(
     const label_begin_index = self.checkpoint();
 
     // handle link label
-    const scanned_link_label = (
-        try self.scanLinkLabel(scratch) orelse return null
-    );
+    const scanned_link_label = try self.scanLinkLabel(scratch) orelse
+        return null;
 
     // lookup link def
     const link_def = try self.link_defs.get(
@@ -2526,9 +2464,8 @@ fn parseShortcutReferenceImage(
 
     // !! re-parse label as inline content !!
     self.backtrack(label_begin_index);
-    const inline_nodes = (
-        try self.parseLinkLabel(alloc, scratch) orelse return null
-    );
+    const inline_nodes = try self.parseLinkLabel(alloc, scratch) orelse
+        return null;
     defer {
         // We only need these nodes to produce the alt text. They won't end
         // up in the final AST.
@@ -2613,8 +2550,8 @@ fn parseURIAutolink(
 
     _ = try self.consume(
         scratch,
-        &.{.r_angle_bracket, .escaped_r_angle_bracket},
-        ) orelse return null;
+        &.{ .r_angle_bracket, .escaped_r_angle_bracket },
+    ) orelse return null;
 
     const content = try running_text.toOwnedSlice();
     if (!isValidAbsoluteURI(content)) {
@@ -2742,7 +2679,7 @@ fn parseEmailAutolink(
 
     _ = try self.consume(
         scratch,
-        &.{.r_angle_bracket, .escaped_r_angle_bracket},
+        &.{ .r_angle_bracket, .escaped_r_angle_bracket },
     ) orelse return null;
 
     const content = try running_text.toOwnedSlice();
@@ -2802,9 +2739,30 @@ fn isValidEmailAddress(content: []const u8) bool {
             }
 
             switch (content[lookahead_i]) {
-                'a'...'z', 'A'...'Z', '0'...'9', '.', '!', '#', '$', '%', '&',
-                '\'', '*', '+', '/', '=', '?', '^', '_', '`', '{', '|', '}',
-                '~', '-' => {
+                'a'...'z',
+                'A'...'Z',
+                '0'...'9',
+                '.',
+                '!',
+                '#',
+                '$',
+                '%',
+                '&',
+                '\'',
+                '*',
+                '+',
+                '/',
+                '=',
+                '?',
+                '^',
+                '_',
+                '`',
+                '{',
+                '|',
+                '}',
+                '~',
+                '-',
+                => {
                     lookahead_i += 1;
                     continue :fsm .name;
                 },
@@ -2817,9 +2775,30 @@ fn isValidEmailAddress(content: []const u8) bool {
             }
 
             switch (content[lookahead_i]) {
-                'a'...'z', 'A'...'Z', '0'...'9', '.', '!', '#', '$', '%', '&',
-                '\'', '*', '+', '/', '=', '?', '^', '_', '`', '{', '|', '}',
-                '~', '-' => {
+                'a'...'z',
+                'A'...'Z',
+                '0'...'9',
+                '.',
+                '!',
+                '#',
+                '$',
+                '%',
+                '&',
+                '\'',
+                '*',
+                '+',
+                '/',
+                '=',
+                '?',
+                '^',
+                '_',
+                '`',
+                '{',
+                '|',
+                '}',
+                '~',
+                '-',
+                => {
                     lookahead_i += 1;
                     continue :fsm .name;
                 },
@@ -3148,10 +3127,9 @@ fn parseHTMLComment(
 
     const content = try running_text.toOwnedSlice();
 
-    if (
-        std.mem.startsWith(u8, content, ">")
-        or std.mem.startsWith(u8, content, "->")
-    ) {
+    if (std.mem.startsWith(u8, content, ">") or
+        std.mem.startsWith(u8, content, "->"))
+    {
         return null;
     }
 
@@ -3354,7 +3332,6 @@ fn parseHTMLCDATA(
     return node;
 }
 
-
 /// A tag name consists of an ASCII letter followed by zero or more ASCII
 /// letters, digits, or hyphens.
 fn scanHTMLTagName(self: *Self, scratch: Allocator) !?[]const u8 {
@@ -3366,7 +3343,7 @@ fn scanHTMLTagName(self: *Self, scratch: Allocator) !?[]const u8 {
 
     var running_text = Io.Writer.Allocating.init(scratch);
 
-    while (try self.consume(scratch, &.{.text, .hyphen})) |token| {
+    while (try self.consume(scratch, &.{ .text, .hyphen })) |token| {
         const value = emitInlineLiteral(token);
         _ = try running_text.writer.write(value);
     }
@@ -3495,18 +3472,16 @@ fn scanHTMLAttrName(self: *Self, scratch: Allocator) !?[]const u8 {
         return null;
     }
 
-    if (
-        !std.ascii.isAlphabetic(attr_name[0])
-        and !util.strings.containsScalar("_:", attr_name[0])
-    ) {
+    if (!std.ascii.isAlphabetic(attr_name[0]) and
+        !util.strings.containsScalar("_:", attr_name[0]))
+    {
         return null;
     }
 
     for (1..attr_name.len) |i| {
-        if (
-            !std.ascii.isAlphanumeric(attr_name[i])
-            and !util.strings.containsScalar("_:.-", attr_name[i])
-        ) {
+        if (!std.ascii.isAlphanumeric(attr_name[i]) and
+            !util.strings.containsScalar("_:.-", attr_name[i]))
+        {
             return null;
         }
     }
@@ -3526,7 +3501,7 @@ fn scanHTMLAttrValQuoted(self: *Self, scratch: Allocator) !?[]const u8 {
 
     const open_quote = try self.consume(
         scratch,
-        &.{.single_quote, .double_quote},
+        &.{ .single_quote, .double_quote },
     ) orelse return null;
     _ = try running_text.writer.write(emitInlineLiteral(open_quote));
 
@@ -3754,8 +3729,10 @@ fn scanText(self: *Self, scratch: Allocator) ![]const u8 {
             const token = try self.peek(scratch) orelse break :fsm;
             switch (token.token_type) {
                 .decimal_character_reference,
-                .hexadecimal_character_reference, .entity_reference,
-                .text => |t| {
+                .hexadecimal_character_reference,
+                .entity_reference,
+                .text,
+                => |t| {
                     _ = try self.consume(scratch, &.{t});
 
                     const value = try emitInlineText(scratch, token);
@@ -3766,10 +3743,9 @@ fn scanText(self: *Self, scratch: Allocator) ![]const u8 {
                 },
                 .lr_delim_underscore => {
                     // Only allowed if cannot start or stop emphasis
-                    if (
-                        token.context.delim_underscore.preceded_by_punct
-                        or token.context.delim_underscore.followed_by_punct
-                    ) {
+                    if (token.context.delim_underscore.preceded_by_punct or
+                        token.context.delim_underscore.followed_by_punct)
+                    {
                         break :fsm;
                     }
                     _ = try self.consume(scratch, &.{.lr_delim_underscore});
@@ -3817,8 +3793,8 @@ fn emitInlineText(scratch: Allocator, token: InlineToken) ![]const u8 {
     const value = switch (token.token_type) {
         .decimal_character_reference,
         .hexadecimal_character_reference,
-        .entity_reference
-            => try resolveCharacterReference(scratch, token),
+        .entity_reference,
+        => try resolveCharacterReference(scratch, token),
         .text => try escape.strip(scratch, token.lexeme),
         .escaped_single_quote => "'",
         .escaped_double_quote => "\"",
@@ -3862,8 +3838,8 @@ fn emitInlineLiteral(token: InlineToken) []const u8 {
         .text,
         // If we are emitting the hard break, it was matched in a place where
         // hard linebreaks aren't allowed. So just emit the chars as text
-        .hard_break
-            => token.lexeme,
+        .hard_break,
+        => token.lexeme,
         .l_delim_star, .r_delim_star, .lr_delim_star => "*",
         .l_delim_underscore, .r_delim_underscore, .lr_delim_underscore => "_",
         .l_square_bracket => "[",
@@ -3899,7 +3875,7 @@ fn resolveCharacterReference(
         .decimal_character_reference => {
             const value = try cmark.character_refs.resolveNumericCharacter(
                 scratch,
-                token.lexeme[2..token.lexeme.len - 1],
+                token.lexeme[2 .. token.lexeme.len - 1],
                 10, // base
             );
             return value;
@@ -3907,7 +3883,7 @@ fn resolveCharacterReference(
         .hexadecimal_character_reference => {
             const value = try cmark.character_refs.resolveNumericCharacter(
                 scratch,
-                token.lexeme[3..token.lexeme.len - 1],
+                token.lexeme[3 .. token.lexeme.len - 1],
                 16, // base
             );
             return value;
@@ -3915,7 +3891,7 @@ fn resolveCharacterReference(
         .entity_reference => {
             const lexeme = token.lexeme;
             const value = cmark.character_refs.resolveCharacterEntity(
-                lexeme[1..lexeme.len - 1],
+                lexeme[1 .. lexeme.len - 1],
             );
             return value orelse lexeme;
         },
@@ -4128,8 +4104,7 @@ test "triple star strong nested" {
     try testing.expectEqualStrings(
         "a strong in an emphasis",
 
-            nodes[1].emphasis.children[0].strong.children[0].text.value
-        ,
+        nodes[1].emphasis.children[0].strong.children[0].text.value,
     );
 
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[2].*));
@@ -5096,8 +5071,7 @@ test "inline link nested emphasis with nonsignificant brackets" {
         try testing.expectEqualStrings(
             "[",
 
-                emphasis_node.emphasis.children[0].text.value
-            ,
+            emphasis_node.emphasis.children[0].text.value,
         );
     }
 
@@ -5126,8 +5100,7 @@ test "inline link nested emphasis with nonsignificant brackets" {
         try testing.expectEqualStrings(
             "foo[]]]",
 
-                emphasis_node.emphasis.children[0].text.value
-            ,
+            emphasis_node.emphasis.children[0].text.value,
         );
     }
 }
@@ -5931,7 +5904,10 @@ test "unknown myst role" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.myst_role, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqual(
+        ast.NodeType.myst_role,
+        @as(ast.NodeType, nodes[0].*),
+    );
     try testing.expectEqual(0, nodes[0].myst_role.children.len);
     try testing.expectEqualStrings(
         "foo",
@@ -5950,7 +5926,10 @@ test "myst role with invalid name" {
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
-    try testing.expectEqual(ast.NodeType.myst_role_error, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqual(
+        ast.NodeType.myst_role_error,
+        @as(ast.NodeType, nodes[0].*),
+    );
     try testing.expectEqualStrings(
         "baz",
         nodes[0].myst_role_error.value,

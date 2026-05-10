@@ -22,8 +22,8 @@ const TestCmds = struct {
     c_api: *Step.Run,
 };
 
-/// We have two benchmark executables, one that benchmarks peak memory usage and
-/// another that benchmarks (wall clock) performance.
+/// We have two benchmark executables, one that benchmarks peak memory usage
+/// and another that benchmarks (wall clock) performance.
 const BenchmarkCmds = struct {
     memory: *Step.Run,
     speed: *Step.Run,
@@ -71,7 +71,7 @@ pub fn build(b: *std.Build) void {
     // docs
     const docs = installDocs(b, exe_artifact.artifact);
 
-    // -- top-level build steps ------------------------------------------------
+    // -- top-level build steps -----------------------------------------------
     // exe
     const exe_step = b.step("exe", "Install Atrus CLI executable only");
     exe_step.dependOn(&exe_artifact.step);
@@ -190,24 +190,21 @@ fn installLibrary(
 
     // pkgconfig
     const pc: *Step.InstallFile = pc: {
-        const file = b.addWriteFile(
-            "libatrus.pc",
-            b.fmt(
-                \\prefix={s}
-                \\includedir=${{prefix}}/include
-                \\libdir=${{prefix}}/lib
-                \\
-                \\Name: libatrus
-                \\URL: https://github.com/sinclairtarget/libatrus
-                \\Description: A MyST parser/document engine
-                \\Version: 0.1.0
-                \\Cflags: -I${{includedir}}
-                \\Libs: -L${{libdir}} -latrus
-                \\
-                ,
-                .{b.install_prefix},
-            )
-        );
+        const file = b.addWriteFile("libatrus.pc", b.fmt(
+            \\prefix={s}
+            \\includedir=${{prefix}}/include
+            \\libdir=${{prefix}}/lib
+            \\
+            \\Name: libatrus
+            \\URL: https://github.com/sinclairtarget/libatrus
+            \\Description: A MyST parser/document engine
+            \\Version: 0.1.0
+            \\Cflags: -I${{includedir}}
+            \\Libs: -L${{libdir}} -latrus
+            \\
+        ,
+            .{b.install_prefix},
+        ));
         break :pc b.addInstallFileWithDir(
             file.getDirectory().path(b, "libatrus.pc"),
             .prefix,
@@ -235,7 +232,7 @@ fn addTests(
         .name = "unit",
         .root_module = atrus_module,
         .filters = if (test_filter) |f|
-            &[_][]const u8 { f }
+            &[_][]const u8{f}
         else
             &.{},
     });

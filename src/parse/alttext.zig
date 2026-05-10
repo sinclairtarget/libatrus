@@ -19,8 +19,7 @@ pub fn write(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
             },
         },
         .no => |leaf_node| switch (leaf_node) {
-            inline .text, .code, .inline_code, .html,
-            .myst_role_error => |n| {
+            inline .text, .code, .inline_code, .html, .myst_role_error => |n| {
                 _ = try out.write(n.value);
             },
             .image => |n| {
