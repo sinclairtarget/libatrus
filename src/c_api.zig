@@ -1,6 +1,8 @@
 //! Implements the C-ABI-compatible interface to libatrus.
 //!
 //! See include/atrus.h for usage documentation.
+//!
+//! TODO: Better error handling; return error code enums.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -14,11 +16,28 @@ const RenderHTMLError = atrus.RenderHTMLError;
 const c_alloc = std.heap.c_allocator;
 
 export fn atrus_version(major: *c_int, minor: *c_int, patch: *c_int) void {
-    const version = std.SemanticVersion.parse(atrus.version) catch
-        @panic("could not parse version");
-    major.* = @intCast(version.major);
-    minor.* = @intCast(version.minor);
-    patch.* = @intCast(version.patch);
+    const link_version = std.SemanticVersion.parse(atrus.version) catch
+        @panic("could not parse linked libatrus version");
+    major.* = @intCast(link_version.major);
+    minor.* = @intCast(link_version.minor);
+    patch.* = @intCast(link_version.patch);
+}
+
+export fn atrus_version_at_least(
+    major: c_int,
+    minor: c_int,
+    patch: c_int,
+) bool {
+    const version: std.SemanticVersion = .{
+        .major = @intCast(major),
+        .minor = @intCast(minor),
+        .patch = @intCast(patch),
+    };
+
+    const link_version = std.SemanticVersion.parse(atrus.version) catch
+        @panic("could not parse linked libatrus version");
+
+    return std.SemanticVersion.order(link_version, version) != .lt;
 }
 
 // ----------------------------------------------------------------------------
@@ -135,8 +154,8 @@ export fn atrus_free(root: *atrus.ast.Node) void {
 // ----------------------------------------------------------------------------
 const child_out_of_bounds_panic_msg = "child index out of bounds";
 
-export fn atrus_node_type(node: *atrus.ast.Node) c_uint {
-    return @intFromEnum(node.*);
+export fn atrus_node_type(node: *atrus.ast.Node) atrus.ast.NodeType {
+    return node.*;
 }
 
 export fn atrus_node_type_name(node: *atrus.ast.Node) [*:0]const u8 {

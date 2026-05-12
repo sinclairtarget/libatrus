@@ -22,6 +22,7 @@
 
 #include <stdbool.h>
 
+// Compile-time version.
 #define ATRUS_MAJOR_VERSION 0
 #define ATRUS_MINOR_VERSION 5
 #define ATRUS_PATCH_VERSION 2
@@ -30,6 +31,12 @@
  * Reports the link-time version of the library.
  */
 void atrus_version(int* major, int* minor, int* patch);
+
+/*
+ * Returns true if the linked version of libatrus is at least as new as the
+ * given version.
+ */
+bool atrus_version_at_least(int major, int minor, int patch);
 
 // Opaque node type.
 struct atrus_node;
