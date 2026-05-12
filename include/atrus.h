@@ -10,11 +10,12 @@
  * API" divider. Functions for traversing and manipulating the tree are defined
  * under the "Node API" divider.
  *
- * The caller is responsible for managing the lifetime of the AST as a whole.
- * In all other cases, data is owned by the library. Any string values attached
- * to the tree, for example, will always be cleaned up by the library and are
- * not the responsibility of the caller, even when they are returned by one of
- * the Node API accessor functions.
+ * The caller is responsible for managing the lifetime of the AST as a whole
+ * (and the lifetime of any nodes or trees not attached to the main AST). In
+ * all other cases, data is owned by the library. Any string values attached to
+ * the tree, for example, will always be cleaned up by the library and are not
+ * the responsibility of the caller, even when they are returned by one of the
+ * Node API accessor functions.
  */
 #ifndef ATRUS_H
 #define ATRUS_H
@@ -131,14 +132,54 @@ unsigned int atrus_node_num_children(struct atrus_node* node);
 struct atrus_node* atrus_node_child(struct atrus_node* node, unsigned int i);
 
 /*
- * The below functions operate on node of a particular type.
+ * Replaces the ith child with a new node.
+ *
+ * The AST takes ownership of the new child.
+ */
+void atrus_node_replace_child(
+    struct atrus_node* node,
+    unsigned int i,
+    struct atrus_node* new_child_node
+);
+
+/*
+ * The below functions operate on a node of a particular type.
  *
  * If a function is used on a node of the wrong type, the function will panic.
+ *
+ * The `atrus_node_*_create()` functions create a node owned by the caller. If
+ * later made a child of an existing node, then the node becomes owned by its
+ * parent. All values passed into an `atrus_node_*_create()` will be copied and
+ * the copies will be owned by the node.
  */
+
+typedef enum {
+    ATRUS_NODE_CREATE_SUCCESS = 0,
+    ATRUS_NODE_CREATE_ERROR = -1,
+} atrus_node_create_error_t;
+
 // --- Heading ----------------------------------------------------------------
 unsigned short atrus_node_heading_depth(struct atrus_node* node);
 
+atrus_node_create_error_t atrus_node_heading_create(
+    struct atrus_node** out,
+    unsigned int depth
+);
+
 // --- Text -------------------------------------------------------------------
 const char* atrus_node_text_value(struct atrus_node* node);
+
+atrus_node_create_error_t atrus_node_text_create(
+    struct atrus_node** out,
+    const char* text_value
+);
+
+// --- HTML -------------------------------------------------------------------
+const char* atrus_node_html_value(struct atrus_node* node);
+
+atrus_node_create_error_t atrus_node_html_create(
+    struct atrus_node** out,
+    const char* html_value
+);
 
 #endif

@@ -133,6 +133,8 @@ export fn atrus_free(root: *atrus.ast.Node) void {
 // ----------------------------------------------------------------------------
 // Node API
 // ----------------------------------------------------------------------------
+const child_out_of_bounds_panic_msg = "child index out of bounds";
+
 export fn atrus_node_type(node: *atrus.ast.Node) [*:0]const u8 {
     return node.name();
 }
@@ -147,14 +149,12 @@ export fn atrus_node_num_children(node: *atrus.ast.Node) c_uint {
 }
 
 export fn atrus_node_child(node: *atrus.ast.Node, i: c_uint) *atrus.ast.Node {
-    const panic_msg = "child index out of bounds";
-
     return switch (node.hasChildren()) {
-        .no => @panic(panic_msg),
+        .no => @panic(child_out_of_bounds_panic_msg),
         .yes => |branch_node| switch (branch_node) {
             inline else => |n| {
                 if (i >= n.children.len) {
-                    @panic(panic_msg);
+                    @panic(child_out_of_bounds_panic_msg);
                 }
 
                 return n.children[i];
@@ -163,12 +163,88 @@ export fn atrus_node_child(node: *atrus.ast.Node, i: c_uint) *atrus.ast.Node {
     };
 }
 
+export fn atrus_node_replace_child(
+    node: *atrus.ast.Node,
+    i: c_uint,
+    new_child_node: *atrus.ast.Node,
+) void {
+    switch (node.hasChildren()) {
+        .no => @panic(child_out_of_bounds_panic_msg),
+        .yes => |branch_node| switch (branch_node) {
+            inline else => |n| {
+                if (i >= n.children.len) {
+                    @panic(child_out_of_bounds_panic_msg);
+                }
+
+                const old_node = n.children[i];
+                defer old_node.deinit(c_alloc);
+
+                n.children[i] = new_child_node;
+            },
+        },
+    }
+}
+
 // --- Heading ----------------------------------------------------------------
 export fn atrus_node_heading_depth(node: *atrus.ast.Node) c_uint {
     return node.heading.depth;
 }
 
+export fn atrus_node_heading_create(
+    out: **atrus.ast.Node,
+    depth: c_uint,
+) c_int {
+    const heading = c_alloc.create(atrus.ast.Node) catch return -1;
+    heading.* = .{
+        .heading = .{
+            .depth = @intCast(depth),
+            .children = &.{},
+        },
+    };
+    out.* = heading;
+    return 0;
+}
+
 // ----Text -------------------------------------------------------------------
 export fn atrus_node_text_value(node: *atrus.ast.Node) [*:0]const u8 {
     return node.text.value;
+}
+
+export fn atrus_node_text_create(
+    out: **atrus.ast.Node,
+    value: [*:0]const u8,
+) c_int {
+    const owned_value = c_alloc.dupeZ(u8, std.mem.span(value)) catch return -1;
+    errdefer c_alloc.free(owned_value);
+
+    const text = c_alloc.create(atrus.ast.Node) catch return -1;
+    text.* = .{
+        .text = .{
+            .value = owned_value,
+        },
+    };
+    out.* = text;
+    return 0;
+}
+
+// --- HTML -------------------------------------------------------------------
+export fn atrus_node_html_value(node: *atrus.ast.Node) [*:0]const u8 {
+    return node.html.value;
+}
+
+export fn atrus_node_html_create(
+    out: **atrus.ast.Node,
+    value: [*:0]const u8,
+) c_int {
+    const owned_value = c_alloc.dupeZ(u8, std.mem.span(value)) catch return -1;
+    errdefer c_alloc.free(owned_value);
+
+    const html = c_alloc.create(atrus.ast.Node) catch return -1;
+    html.* = .{
+        .html = .{
+            .value = owned_value,
+        },
+    };
+    out.* = html;
+    return 0;
 }
