@@ -112,10 +112,45 @@ void atrus_free(struct atrus_node* root);
 // ----------------------------------------------------------------------------
 // Node API
 // ----------------------------------------------------------------------------
+typedef enum : unsigned int {
+    ATRUS_NODE_TYPE_ROOT = 0,
+    ATRUS_NODE_TYPE_BLOCK = 1,
+    ATRUS_NODE_TYPE_HEADING = 2,
+    ATRUS_NODE_TYPE_PARAGRAPH = 3,
+    ATRUS_NODE_TYPE_TEXT = 4,
+    ATRUS_NODE_TYPE_CODE = 5,
+    ATRUS_NODE_TYPE_THEMATIC_BREAK = 6,
+    ATRUS_NODE_TYPE_BREAK = 7,
+    ATRUS_NODE_TYPE_EMPHASIS = 8,
+    ATRUS_NODE_TYPE_STRONG = 9,
+    ATRUS_NODE_TYPE_INLINE_CODE = 10,
+    ATRUS_NODE_TYPE_LINK = 11,
+    ATRUS_NODE_TYPE_DEFINITION = 12,
+    ATRUS_NODE_TYPE_IMAGE = 13,
+    ATRUS_NODE_TYPE_BLOCKQUOTE = 14,
+    ATRUS_NODE_TYPE_HTML = 15,
+    ATRUS_NODE_TYPE_CONTAINER = 25,
+    ATRUS_NODE_TYPE_CAPTION = 26,
+    ATRUS_NODE_TYPE_MYST_ROLE = 16,
+    ATRUS_NODE_TYPE_MYST_ROLE_ERROR = 17,
+    ATRUS_NODE_TYPE_SUBSCRIPT = 18,
+    ATRUS_NODE_TYPE_SUPERSCRIPT = 19,
+    ATRUS_NODE_TYPE_ABBREVIATION = 20,
+    ATRUS_NODE_TYPE_MYST_DIRECTIVE = 21,
+    ATRUS_NODE_TYPE_MYST_DIRECTIVE_ERROR = 22,
+    ATRUS_NODE_TYPE_ADMONITION = 23,
+    ATRUS_NODE_TYPE_ADMONITION_TITLE = 24,
+} atrus_node_type_t;
+
 /*
- * Returns the camel-cased type name for the given node.
+ * Returns the node type of the given node.
  */
-const char* atrus_node_type(struct atrus_node* node);
+atrus_node_type_t atrus_node_type(struct atrus_node* node);
+
+/*
+ * Returns the node type of the given node as a camel-cased string.
+ */
+const char* atrus_node_type_name(struct atrus_node* node);
 
 /*
  * Returns the number of children the node has.
@@ -181,5 +216,6 @@ atrus_node_create_error_t atrus_node_html_create(
     struct atrus_node** out,
     const char* html_value
 );
+
 
 #endif

@@ -60,8 +60,10 @@ int main() {
     // Test AST traversal
     traverse_ast(node);
 
-    // Test getting node type name
-    const char* node_type_name = atrus_node_type(node);
+    // Test getting node type and type name
+    atrus_node_type_t node_type = atrus_node_type(node);
+    assert(node_type == ATRUS_NODE_TYPE_ROOT);
+    const char* node_type_name = atrus_node_type_name(node);
     printf("node type name: \"%s\"\n", node_type_name);
 
     // Test rendering (HTML)

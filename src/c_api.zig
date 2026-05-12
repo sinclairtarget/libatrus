@@ -135,7 +135,11 @@ export fn atrus_free(root: *atrus.ast.Node) void {
 // ----------------------------------------------------------------------------
 const child_out_of_bounds_panic_msg = "child index out of bounds";
 
-export fn atrus_node_type(node: *atrus.ast.Node) [*:0]const u8 {
+export fn atrus_node_type(node: *atrus.ast.Node) c_uint {
+    return @intFromEnum(node.*);
+}
+
+export fn atrus_node_type_name(node: *atrus.ast.Node) [*:0]const u8 {
     return node.name();
 }
 
