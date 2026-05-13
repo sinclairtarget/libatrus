@@ -15,12 +15,8 @@ const RenderHTMLError = atrus.RenderHTMLError;
 
 const c_alloc = std.heap.c_allocator;
 
-export fn atrus_version(major: *c_int, minor: *c_int, patch: *c_int) void {
-    const link_version = std.SemanticVersion.parse(atrus.version) catch
-        @panic("could not parse linked libatrus version");
-    major.* = @intCast(link_version.major);
-    minor.* = @intCast(link_version.minor);
-    patch.* = @intCast(link_version.patch);
+export fn atrus_version() [*:0]const u8 {
+    return atrus.version[0.. :0];
 }
 
 export fn atrus_version_at_least(

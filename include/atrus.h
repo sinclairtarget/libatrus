@@ -30,7 +30,7 @@
 /*
  * Reports the link-time version of the library.
  */
-void atrus_version(int* major, int* minor, int* patch);
+const char* atrus_version();
 
 /*
  * Returns true if the linked version of libatrus is at least as new as the

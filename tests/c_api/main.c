@@ -44,9 +44,8 @@ void modify_ast(struct atrus_node* root) {
  */
 int main() {
     // Test getting version
-    int major, minor, patch;
-    atrus_version(&major, &minor, &patch);
-    fprintf(stderr, "%d.%d.%d\n", major, minor, patch);
+    const char* version = atrus_version();
+    fprintf(stderr, "libatrus version: %s\n", version);
 
     // Test parsing
     char* md = "# Heading\nThis is a paragraph.\n";
