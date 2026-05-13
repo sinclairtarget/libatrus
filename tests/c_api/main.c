@@ -50,7 +50,7 @@ int main() {
     // Test parsing
     char* md = "# Heading\nThis is a paragraph.\n";
     struct atrus_node* node;
-    atrus_parse_error_t err = atrus_parse(md, &node, ATRUS_POST_PARSE_LEVEL);
+    atrus_parse_error_t err = atrus_parse(md, &node, ATRUS_PARSE_LEVEL_POST);
     if (err != ATRUS_PARSE_SUCCESS) {
         fprintf(stderr, "Failed to parse. Got error: %d.\n", err);
         exit(1);

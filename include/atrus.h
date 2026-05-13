@@ -45,10 +45,10 @@ struct atrus_node;
 // Top-Level API
 // ----------------------------------------------------------------------------
 typedef enum : unsigned int {
-    ATRUS_POST_PARSE_LEVEL = 0,
-    ATRUS_PRE_PARSE_LEVEL = 1,
-    ATRUS_RAW_PARSE_LEVEL = 2,
-    ATRUS_BLOCK_PARSE_LEVEL = 3,
+    ATRUS_PARSE_LEVEL_POST = 0,
+    ATRUS_PARSE_LEVEL_PRE = 1,
+    ATRUS_PARSE_LEVEL_RAW = 2,
+    ATRUS_PARSE_LEVEL_BLOCK = 3,
 } atrus_parse_option_parse_level_t;
 
 typedef enum {
