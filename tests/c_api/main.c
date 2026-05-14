@@ -9,8 +9,11 @@
 void traverse_ast(struct atrus_node* root) {
     struct atrus_node* block = atrus_node_child(root, 0);
     assert(block);
+
     struct atrus_node* heading = atrus_node_child(block, 0);
     assert(heading);
+    assert(atrus_node_heading_depth(heading) == 1);
+
     struct atrus_node* text = atrus_node_child(heading, 0);
     assert(text);
     printf("heading text: \"%s\"\n", atrus_node_text_value(text));

@@ -204,6 +204,30 @@ export fn atrus_node_replace_child(
     }
 }
 
+// --- Root -------------------------------------------------------------------
+export fn atrus_node_root_create(out: **atrus.ast.Node) c_int {
+    const root = c_alloc.create(atrus.ast.Node) catch return -1;
+    root.* = .{
+        .root = .{
+            .children = &.{},
+        },
+    };
+    out.* = root;
+    return 0;
+}
+
+// --- Block ------------------------------------------------------------------
+export fn atrus_node_block_create(out: **atrus.ast.Node) c_int {
+    const block = c_alloc.create(atrus.ast.Node) catch return -1;
+    block.* = .{
+        .block = .{
+            .children = &.{},
+        },
+    };
+    out.* = block;
+    return 0;
+}
+
 // --- Heading ----------------------------------------------------------------
 export fn atrus_node_heading_depth(node: *atrus.ast.Node) c_uint {
     return node.heading.depth;
@@ -221,6 +245,18 @@ export fn atrus_node_heading_create(
         },
     };
     out.* = heading;
+    return 0;
+}
+
+// --- Paragraph --------------------------------------------------------------
+export fn atrus_node_paragraph_create(out: **atrus.ast.Node) c_int {
+    const paragraph = c_alloc.create(atrus.ast.Node) catch return -1;
+    paragraph.* = .{
+        .paragraph = .{
+            .children = &.{},
+        },
+    };
+    out.* = paragraph;
     return 0;
 }
 
@@ -246,6 +282,183 @@ export fn atrus_node_text_create(
     return 0;
 }
 
+// --- Code -------------------------------------------------------------------
+export fn atrus_node_code_value(node: *atrus.ast.Node) [*:0]const u8 {
+    return node.code.value;
+}
+
+export fn atrus_node_code_lang(node: *atrus.ast.Node) [*:0]const u8 {
+    return node.code.lang;
+}
+
+export fn atrus_node_code_show_line_numbers(node: *atrus.ast.Node) bool {
+    return node.code.show_line_numbers;
+}
+
+export fn atrus_node_code_create(
+    out: **atrus.ast.Node,
+    value: [*:0]const u8,
+    lang: [*:0]const u8,
+    show_line_numbers: bool,
+) c_int {
+    const owned_value = c_alloc.dupeZ(u8, std.mem.span(value)) catch return -1;
+    errdefer c_alloc.free(owned_value);
+
+    const owned_lang = c_alloc.dupeZ(u8, std.mem.span(lang)) catch return -1;
+    errdefer c_alloc.free(owned_lang);
+
+    const code = c_alloc.create(atrus.ast.Node) catch return -1;
+    code.* = .{
+        .code = .{
+            .value = owned_value,
+            .lang = owned_lang,
+            .show_line_numbers = show_line_numbers,
+        },
+    };
+    out.* = code;
+    return 0;
+}
+
+// --- Inline Code ------------------------------------------------------------
+export fn atrus_node_inline_code_value(node: *atrus.ast.Node) [*:0]const u8 {
+    return node.inline_code.value;
+}
+
+export fn atrus_node_inline_code_create(
+    out: **atrus.ast.Node,
+    value: [*:0]const u8,
+) c_int {
+    const owned_value = c_alloc.dupeZ(u8, std.mem.span(value)) catch return -1;
+    errdefer c_alloc.free(owned_value);
+
+    const inline_code = c_alloc.create(atrus.ast.Node) catch return -1;
+    inline_code.* = .{
+        .inline_code = .{
+            .value = owned_value,
+        },
+    };
+    out.* = inline_code;
+    return 0;
+}
+
+// --- Link -------------------------------------------------------------------
+export fn atrus_node_link_url(node: *atrus.ast.Node) [*:0]const u8 {
+    return node.link.url;
+}
+
+export fn atrus_node_link_title(node: *atrus.ast.Node) [*:0]const u8 {
+    return node.link.title;
+}
+
+export fn atrus_node_link_create(
+    out: **atrus.ast.Node,
+    url: [*:0]const u8,
+    title: [*:0]const u8,
+) c_int {
+    const owned_url = c_alloc.dupeZ(u8, std.mem.span(url)) catch return -1;
+    errdefer c_alloc.free(owned_url);
+
+    const owned_title = c_alloc.dupeZ(u8, std.mem.span(title)) catch return -1;
+    errdefer c_alloc.free(owned_title);
+
+    const link = c_alloc.create(atrus.ast.Node) catch return -1;
+    link.* = .{
+        .link = .{
+            .url = owned_url,
+            .title = owned_title,
+            .children = &.{},
+        },
+    };
+    out.* = link;
+    return 0;
+}
+
+// --- Link Definition --------------------------------------------------------
+export fn atrus_node_definition_url(
+    node: *atrus.ast.Node,
+) [*:0]const u8 {
+    return node.definition.url;
+}
+
+export fn atrus_node_definition_title(
+    node: *atrus.ast.Node,
+) [*:0]const u8 {
+    return node.definition.title;
+}
+
+export fn atrus_node_definition_label(
+    node: *atrus.ast.Node,
+) [*:0]const u8 {
+    return node.definition.label;
+}
+
+export fn atrus_node_definition_create(
+    out: **atrus.ast.Node,
+    url: [*:0]const u8,
+    title: [*:0]const u8,
+    label: [*:0]const u8,
+) c_int {
+    const owned_url = c_alloc.dupeZ(u8, std.mem.span(url)) catch return -1;
+    errdefer c_alloc.free(owned_url);
+
+    const owned_title = c_alloc.dupeZ(u8, std.mem.span(title)) catch return -1;
+    errdefer c_alloc.free(owned_title);
+
+    const owned_label = c_alloc.dupeZ(u8, std.mem.span(label)) catch return -1;
+    errdefer c_alloc.free(owned_label);
+
+    const definition = c_alloc.create(atrus.ast.Node) catch return -1;
+    definition.* = .{
+        .definition = .{
+            .url = owned_url,
+            .title = owned_title,
+            .label = owned_label,
+        },
+    };
+    out.* = definition;
+    return 0;
+}
+
+// --- Image ------------------------------------------------------------------
+export fn atrus_node_image_url(node: *atrus.ast.Node) [*:0]const u8 {
+    return node.image.url;
+}
+
+export fn atrus_node_image_title(node: *atrus.ast.Node) [*:0]const u8 {
+    return node.image.title;
+}
+
+export fn atrus_node_image_alt(node: *atrus.ast.Node) [*:0]const u8 {
+    return node.image.alt;
+}
+
+export fn atrus_node_image_create(
+    out: **atrus.ast.Node,
+    url: [*:0]const u8,
+    title: [*:0]const u8,
+    alt: [*:0]const u8,
+) c_int {
+    const owned_url = c_alloc.dupeZ(u8, std.mem.span(url)) catch return -1;
+    errdefer c_alloc.free(owned_url);
+
+    const owned_title = c_alloc.dupeZ(u8, std.mem.span(title)) catch return -1;
+    errdefer c_alloc.free(owned_title);
+
+    const owned_alt = c_alloc.dupeZ(u8, std.mem.span(alt)) catch return -1;
+    errdefer c_alloc.free(owned_alt);
+
+    const image = c_alloc.create(atrus.ast.Node) catch return -1;
+    image.* = .{
+        .image = .{
+            .url = owned_url,
+            .title = owned_title,
+            .alt = owned_alt,
+        },
+    };
+    out.* = image;
+    return 0;
+}
+
 // --- HTML -------------------------------------------------------------------
 export fn atrus_node_html_value(node: *atrus.ast.Node) [*:0]const u8 {
     return node.html.value;
@@ -266,4 +479,57 @@ export fn atrus_node_html_create(
     };
     out.* = html;
     return 0;
+}
+
+// --- Container --------------------------------------------------------------
+export fn atrus_node_container_kind(node: *atrus.ast.Node) [*:0]const u8 {
+    return node.container.kind;
+}
+
+// --- MyST Role --------------------------------------------------------------
+export fn atrus_node_myst_role_name(node: *atrus.ast.Node) [*:0]const u8 {
+    return node.myst_role.name;
+}
+
+export fn atrus_node_myst_role_value(node: *atrus.ast.Node) [*:0]const u8 {
+    return node.myst_role.value;
+}
+
+// --- MyST Role Error --------------------------------------------------------
+export fn atrus_node_myst_role_error_value(
+    node: *atrus.ast.Node,
+) [*:0]const u8 {
+    return node.myst_role_error.value;
+}
+
+// --- Abbreviation -----------------------------------------------------------
+export fn atrus_node_abbreviation_title(node: *atrus.ast.Node) [*:0]const u8 {
+    return node.abbreviation.title;
+}
+
+// --- MyST Directive ---------------------------------------------------------
+export fn atrus_node_myst_directive_name(node: *atrus.ast.Node) [*:0]const u8 {
+    return node.myst_directive.name;
+}
+
+export fn atrus_node_myst_directive_args(node: *atrus.ast.Node) [*:0]const u8 {
+    return node.myst_directive.args;
+}
+
+export fn atrus_node_myst_directive_value(
+    node: *atrus.ast.Node,
+) [*:0]const u8 {
+    return node.myst_directive.value;
+}
+
+// --- MyST Directive Error ---------------------------------------------------
+export fn atrus_node_myst_directive_error_message(
+    node: *atrus.ast.Node,
+) [*:0]const u8 {
+    return node.myst_directive_error.message;
+}
+
+// --- Admonition -------------------------------------------------------------
+export fn atrus_node_admonition_kind(node: *atrus.ast.Node) [*:0]const u8 {
+    return node.admonition.kind;
 }

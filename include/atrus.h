@@ -190,15 +190,21 @@ void atrus_node_replace_child(
  * If a function is used on a node of the wrong type, the function will panic.
  *
  * The `atrus_node_*_create()` functions create a node owned by the caller. If
- * later made a child of an existing node, then the node becomes owned by its
- * parent. All values passed into an `atrus_node_*_create()` will be copied and
- * the copies will be owned by the node.
+ * the node is later made a child of an existing node, then the node becomes
+ * owned by its parent. All values passed into an `atrus_node_*_create()` will
+ * be copied and the copies will be owned by the node.
  */
 
 typedef enum {
     ATRUS_NODE_CREATE_SUCCESS = 0,
     ATRUS_NODE_CREATE_ERROR = -1,
 } atrus_node_create_error_t;
+
+// --- Root -------------------------------------------------------------------
+atrus_node_create_error_t atrus_node_root_create(struct atrus_node** out);
+
+// --- Block ------------------------------------------------------------------
+atrus_node_create_error_t atrus_node_block_create(struct atrus_node** out);
 
 // --- Heading ----------------------------------------------------------------
 unsigned short atrus_node_heading_depth(struct atrus_node* node);
@@ -208,13 +214,80 @@ atrus_node_create_error_t atrus_node_heading_create(
     unsigned int depth
 );
 
+// --- Paragraph --------------------------------------------------------------
+atrus_node_create_error_t atrus_node_paragraph_create(struct atrus_node** out);
+
 // --- Text -------------------------------------------------------------------
 const char* atrus_node_text_value(struct atrus_node* node);
 
 atrus_node_create_error_t atrus_node_text_create(
     struct atrus_node** out,
-    const char* text_value
+    const char* value
 );
+
+// --- Code -------------------------------------------------------------------
+const char* atrus_node_code_value(struct atrus_node* node);
+const char* atrus_node_code_lang(struct atrus_node* node);
+bool atrus_node_code_show_line_numbers(struct atrus_node* node);
+
+atrus_node_create_error_t atrus_node_code_create(
+    struct atrus_node** out,
+    const char* value,
+    const char* lang,
+    bool show_line_numbers
+);
+
+// --- Thematic Break ---------------------------------------------------------
+
+// --- Break ------------------------------------------------------------------
+
+// --- Emphasis ---------------------------------------------------------------
+
+// --- Strong -----------------------------------------------------------------
+
+// --- Inline Code ------------------------------------------------------------
+const char* atrus_node_inline_code_value(struct atrus_node* node);
+
+atrus_node_create_error_t atrus_node_inline_code_create(
+    struct atrus_node** out,
+    const char* value
+);
+
+// --- Link -------------------------------------------------------------------
+const char* atrus_node_link_url(struct atrus_node* node);
+const char* atrus_node_link_title(struct atrus_node* node);
+
+atrus_node_create_error_t atrus_node_link_create(
+    struct atrus_node** out,
+    const char* url,
+    const char* title
+);
+
+// --- Link Definition --------------------------------------------------------
+const char* atrus_node_link_definition_url(struct atrus_node* node);
+const char* atrus_node_link_definition_title(struct atrus_node* node);
+const char* atrus_node_link_definition_label(struct atrus_node* node);
+
+atrus_node_create_error_t atrus_node_link_definition_create(
+    struct atrus_node** out,
+    const char* url,
+    const char* title,
+    const char* label
+);
+
+// --- Image ------------------------------------------------------------------
+const char* atrus_node_image_url(struct atrus_node* node);
+const char* atrus_node_image_title(struct atrus_node* node);
+const char* atrus_node_image_alt(struct atrus_node* node);
+
+atrus_node_create_error_t atrus_node_image_create(
+    struct atrus_node** out,
+    const char* url,
+    const char* title,
+    const char* alt
+);
+
+// --- Blockquote -------------------------------------------------------------
 
 // --- HTML -------------------------------------------------------------------
 const char* atrus_node_html_value(struct atrus_node* node);
@@ -224,5 +297,36 @@ atrus_node_create_error_t atrus_node_html_create(
     const char* html_value
 );
 
+// --- Container --------------------------------------------------------------
+const char* atrus_node_container_kind(struct atrus_node* node);
+
+// --- Caption ----------------------------------------------------------------
+
+// --- MyST Role --------------------------------------------------------------
+const char* atrus_node_myst_role_name(struct atrus_node* node);
+const char* atrus_node_myst_role_value(struct atrus_node* node);
+
+// --- MyST Role Error --------------------------------------------------------
+const char* atrus_node_myst_role_error_value(struct atrus_node* node);
+
+// --- Subscript --------------------------------------------------------------
+
+// --- Superscript ------------------------------------------------------------
+
+// --- Abbreviation -----------------------------------------------------------
+const char* atrus_node_abbreviation_title(struct atrus_node* node);
+
+// --- MyST Directive ---------------------------------------------------------
+const char* atrus_node_myst_directive_name(struct atrus_node* node);
+const char* atrus_node_myst_directive_args(struct atrus_node* node);
+const char* atrus_node_myst_directive_value(struct atrus_node* node);
+
+// --- MyST Directive Error ---------------------------------------------------
+const char* atrus_node_myst_directive_error_message(struct atrus_node* node);
+
+// --- Admonition -------------------------------------------------------------
+const char* atrus_node_admonition_kind(struct atrus_node* node);
+
+// --- Admonition Title -------------------------------------------------------
 
 #endif
