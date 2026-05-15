@@ -264,11 +264,11 @@ atrus_node_create_error_t atrus_node_link_create(
 );
 
 // --- Link Definition --------------------------------------------------------
-const char* atrus_node_link_definition_url(struct atrus_node* node);
-const char* atrus_node_link_definition_title(struct atrus_node* node);
-const char* atrus_node_link_definition_label(struct atrus_node* node);
+const char* atrus_node_definition_url(struct atrus_node* node);
+const char* atrus_node_definition_title(struct atrus_node* node);
+const char* atrus_node_definition_label(struct atrus_node* node);
 
-atrus_node_create_error_t atrus_node_link_definition_create(
+atrus_node_create_error_t atrus_node_definition_create(
     struct atrus_node** out,
     const char* url,
     const char* title,
