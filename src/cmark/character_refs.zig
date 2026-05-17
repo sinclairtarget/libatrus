@@ -34,7 +34,7 @@ pub fn resolveCharacterEntity(name: []const u8) ?[]const u8 {
     } else if (mem.eql(u8, name, "quot")) {
         return "\"";
     } else if (mem.eql(u8, name, "nbsp")) {
-        return " ";
+        return " ";
     } else if (mem.eql(u8, name, "copy")) {
         return "©";
     } else if (mem.eql(u8, name, "AElig")) {
