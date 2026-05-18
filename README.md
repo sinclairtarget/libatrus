@@ -78,7 +78,7 @@ Much more work remains:
 - [ ] Finish implementing MyST extensions
 - [ ] Implement JSON AST parser
 - [ ] Add benchmarks
-- [ ] Make if faaast
+- [ ] Make if faaast. Ditch recursive descent? Data-oriented design?
 
 [aweigh gh]: https://github.com/sinclairtarget/aweigh
 [michel gh]: https://github.com/sinclairtarget/michel
