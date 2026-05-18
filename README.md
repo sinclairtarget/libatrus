@@ -31,17 +31,38 @@ Atrus can currently parse the following Markdown document:
 # Heading
 This is a paragraph, containing `code`, *emphasis*, and **strong** text.
 
-```python This is a code block.
+```python This is a regular code block.
 def foo():
    pass
 ```
 
 > This is a blockquote.
+>
+> > You can nest blockquotes!
+> > 
+> > Or even put code inside them:
+> > 
+> > ```zig
+> > fn foo() u8 {
+> >     return 'a';
+> > }
+> > ```
 
 ## Subheading
 Checkout my cool [link][google].
 
 [google]: https://google.com
+
+## Roles
+In {abbr}`MyST (Markedly Structured Text)`, you can create abbreviations using
+roles.
+
+## Directives
+You can also use MyST directives, like this one creating a warning admonition:
+
+```{warning}
+This project is in development. It has bugs and is NOT secure!
+```
 ~~~
 
 This is exciting!
