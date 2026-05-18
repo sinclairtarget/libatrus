@@ -27,7 +27,7 @@ see [Michel][michel gh] and [libatrus-go][libatrus-go gh]._
 ## Roadmap
 Atrus can currently parse the following Markdown document:
 
-~~~md
+~~~txt
 # Heading
 This is a paragraph, containing `code`, *emphasis*, and **strong** text.
 
