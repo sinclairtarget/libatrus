@@ -139,26 +139,6 @@ pub const Node = union(NodeType) {
 
         alloc.destroy(self);
     }
-
-    /// Cleans up the AST, but only frees memory used for the tree itself,
-    /// leaving any strings owned by the tree alone.
-    ///
-    /// This is only used by the C API.
-    pub fn deinitTreeOnly(self: *Node, alloc: Allocator) void {
-        switch (self.hasChildren()) {
-            .yes => |branch_node| switch (branch_node) {
-                inline else => |n| {
-                    for (n.children) |child| {
-                        child.deinitTreeOnly(alloc);
-                    }
-                    alloc.free(n.children);
-                },
-            },
-            .no => {},
-        }
-
-        alloc.destroy(self);
-    }
 };
 
 pub const Root = struct {
