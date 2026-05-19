@@ -88,37 +88,12 @@ pub const Node = union(NodeType) {
     admonition: Admonition,
     admonition_title: Wrapper,
 
-    /// Returns a "restricted node," i.e. one that has been type-narrowed to a
-    /// subset of all possible nodes types.
-    ///
-    /// The returned union should be considered a view on the union payload of
-    /// the node and not a node itself.
-    pub fn restrict(
-        self: *Node,
-        comptime RestrictionEnum: type,
-        comptime choice: RestrictionEnum,
-    ) RestrictedNode(RestrictionEnum, choice) {
-        switch (self.*) {
-            inline else => |*n, tag| {
-                if (comptime RestrictionEnum.fromNodeType(tag) != choice) {
-                    @panic("wrong node type for restriction choice");
-                }
-
-                return @unionInit(
-                    RestrictedNode(RestrictionEnum, choice),
-                    @tagName(tag),
-                    n,
-                );
-            },
-        }
-    }
-
     /// Returns a union bisecting nodes into those that have children and those
     /// that don't.
-    pub fn hasChildren(self: *Node) HasChildrenRestriction {
+    pub fn hasChildren(self: *Node) HasChildrenSubsets {
         return switch (HasChildren.fromNodeType(self.*)) {
-            .yes => .{ .yes = self.restrict(HasChildren, .yes) },
-            .no => .{ .no = self.restrict(HasChildren, .no) },
+            .yes => .{ .yes = self.narrow(HasChildren, .yes) },
+            .no => .{ .no = self.narrow(HasChildren, .no) },
         };
     }
 
@@ -138,6 +113,33 @@ pub const Node = union(NodeType) {
         }
 
         alloc.destroy(self);
+    }
+
+    /// Returns a "narrowed node," i.e. one that has been type-narrowed to a
+    /// subset of all possible nodes types.
+    ///
+    /// The returned union should be considered a view on the union payload of
+    /// the node and not a node itself.
+    ///
+    /// Panics if the runtime node type is not in the given subset.
+    fn narrow(
+        self: *Node,
+        comptime SubsetEnum: type,
+        comptime choice: SubsetEnum,
+    ) NarrowedNode(SubsetEnum, choice) {
+        switch (self.*) {
+            inline else => |*n, tag| {
+                if (comptime SubsetEnum.fromNodeType(tag) != choice) {
+                    @panic("runtime node type mismatch in narrow()");
+                }
+
+                return @unionInit(
+                    NarrowedNode(SubsetEnum, choice),
+                    @tagName(tag),
+                    n,
+                );
+            },
+        }
     }
 };
 
@@ -340,22 +342,30 @@ pub const HasChildren = enum {
             .admonition,
             .admonition_title,
             => .yes,
-            else => .no,
+            .text,
+            .code,
+            .thematic_break,
+            .@"break",
+            .inline_code,
+            .definition,
+            .image,
+            .html,
+            .myst_role_error => .no,
         };
     }
 };
 
 // Bisects nodes into those that have children and those that don't.
-const HasChildrenRestriction = union(HasChildren) {
-    yes: RestrictedNode(HasChildren, .yes),
-    no: RestrictedNode(HasChildren, .no),
+const HasChildrenSubsets = union(HasChildren) {
+    yes: NarrowedNode(HasChildren, .yes),
+    no: NarrowedNode(HasChildren, .no),
 };
 
 // Creates an enum containing only the subset of node types matching the given
 // restriction choice.
-fn RestrictedNodeType(
-    comptime RestrictionEnum: type,
-    comptime choice: RestrictionEnum,
+fn NarrowedNodeType(
+    comptime SubsetEnum: type,
+    comptime choice: SubsetEnum,
 ) type {
     @setEvalBranchQuota(10000);
 
@@ -366,7 +376,7 @@ fn RestrictedNodeType(
     var fields: [all_fields.len]std.builtin.Type.EnumField = undefined;
     for (all_fields) |field| {
         const node = @unionInit(Node, field.name, undefined);
-        if (RestrictionEnum.fromNodeType(node) == choice) {
+        if (SubsetEnum.fromNodeType(node) == choice) {
             fields[i] = field;
             i += 1;
         }
@@ -384,9 +394,9 @@ fn RestrictedNodeType(
 // restriction choice.
 //
 // The union payloads are pointers to the original payloads in the node union.
-pub fn RestrictedNode(
-    comptime RestrictionEnum: type,
-    comptime choice: RestrictionEnum,
+fn NarrowedNode(
+    comptime SubsetEnum: type,
+    comptime choice: SubsetEnum,
 ) type {
     @setEvalBranchQuota(10000);
 
@@ -396,7 +406,7 @@ pub fn RestrictedNode(
     var fields: [all_fields.len]std.builtin.Type.UnionField = undefined;
     for (all_fields) |field| {
         const node = @unionInit(Node, field.name, undefined);
-        if (RestrictionEnum.fromNodeType(node) == choice) {
+        if (SubsetEnum.fromNodeType(node) == choice) {
             fields[i] = .{
                 .name = field.name,
                 .type = *field.type,
@@ -409,7 +419,7 @@ pub fn RestrictedNode(
     return @Type(.{
         .@"union" = .{
             .layout = .auto,
-            .tag_type = RestrictedNodeType(RestrictionEnum, choice),
+            .tag_type = NarrowedNodeType(SubsetEnum, choice),
             .fields = fields[0..i],
             .decls = &.{},
         },
