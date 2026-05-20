@@ -311,6 +311,7 @@ fn handleDirective(
         .myst_directive = .{
             .name = try testing.allocator.dupeZ(u8, name),
             .args = try testing.allocator.dupeZ(u8, args),
+            .options = &.{},
             .value = try testing.allocator.dupeZ(u8, value),
             .children = &.{},
         },

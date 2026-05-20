@@ -106,6 +106,20 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
                     try stringify.write(args);
                 }
 
+                if (n.options.len > 0) {
+                    try stringify.objectField("options");
+                    try stringify.beginObject();
+                    for (n.options) |option| {
+                        try stringify.objectField(option.name);
+                        if (option.value) |v| {
+                            try stringify.write(v);
+                        } else {
+                            try stringify.write(true);
+                        }
+                    }
+                    try stringify.endObject();
+                }
+
                 const value = n.value;
                 if (value.len > 0) {
                     try stringify.objectField("value");
@@ -196,4 +210,48 @@ fn renderChildren(
     }
 
     try stringify.endArray();
+}
+
+//-----------------------------------------------------------------------------
+// Unit Tests
+//-----------------------------------------------------------------------------
+const testing = std.testing;
+
+test "myst directive" {
+    var directive: ast.Node = .{
+        .myst_directive = .{
+            .name = "code",
+            .args = "python",
+            .options = &.{
+                .{
+                    .name = "foo",
+                },
+                .{
+                    .name = "fop",
+                    .value = "1,2",
+                },
+            },
+            .value = "def foo():\n    pass",
+            .children = &.{},
+        },
+    };
+
+    var buf: [1024]u8 = undefined;
+    var writer: Io.Writer = .fixed(&buf);
+    try render(&directive, &writer, .{.whitespace = .indent_2});
+
+    const expected =
+        \\{
+        \\  "type": "mystDirective",
+        \\  "name": "code",
+        \\  "args": "python",
+        \\  "options": {
+        \\    "foo": true,
+        \\    "fop": "1,2"
+        \\  },
+        \\  "value": "def foo():\n    pass"
+        \\}
+    ;
+
+    try testing.expectEqualStrings(expected, writer.buffered());
 }

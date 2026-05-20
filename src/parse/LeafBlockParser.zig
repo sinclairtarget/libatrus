@@ -1104,10 +1104,24 @@ fn parseMySTDirective(
 
     const args = std.mem.trim(u8, try running_text.toOwnedSlice(), " \t");
 
-    // Block content
-    var content = Io.Writer.Allocating.init(scratch);
     self.interruptible = false;
     defer self.interruptible = true;
+
+    // Options
+    var options: ArrayList(ast.MySTDirective.Option) = .empty;
+    defer if (!did_parse) {
+        for (options.items) |opt| {
+            opt.deinit(alloc);
+        }
+        options.deinit(alloc);
+    };
+
+    while (try self.parseMySTDirectiveOption(alloc, scratch)) |option| {
+        try options.append(alloc, option);
+    }
+
+    // Block content
+    var content = Io.Writer.Allocating.init(scratch);
     loop: while (try self.it.peek(scratch)) |line_start_token| {
         // Handle first token in line
         switch (line_start_token.token_type) {
@@ -1204,6 +1218,9 @@ fn parseMySTDirective(
     const owned_args = try alloc.dupeZ(u8, args);
     errdefer alloc.free(owned_args);
 
+    const owned_options = try options.toOwnedSlice(alloc);
+    errdefer alloc.free(owned_options);
+
     const owned_value = try alloc.dupeZ(u8, value);
     errdefer alloc.free(owned_value);
 
@@ -1213,12 +1230,63 @@ fn parseMySTDirective(
             .children = &.{},
             .name = owned_name,
             .args = owned_args,
+            .options = owned_options,
             .value = owned_value,
         },
     };
     return .{
         .maybe_node = node,
         .should_end = should_end,
+    };
+}
+
+/// Parses a single option line for a MyST directive.
+///
+/// We only support the colon-bookends syntax.
+fn parseMySTDirectiveOption(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) !?ast.MySTDirective.Option {
+    var did_parse = false;
+    const checkpoint_index = self.it.checkpoint();
+    defer if (!did_parse) {
+        self.it.backtrack(checkpoint_index);
+    };
+
+    _ = try self.it.consume(scratch, &.{.colon}) orelse return null;
+    const name_token = try self.it.consume(scratch, &.{.text}) orelse
+        return null;
+    _ = try self.it.consume(scratch, &.{.colon}) orelse return null;
+
+    _ = try self.it.consume(scratch, &.{.whitespace});
+
+    var running_text = Io.Writer.Allocating.init(scratch);
+    while (try self.it.peek(scratch)) |token| {
+        switch (token.token_type) {
+            .newline => break,
+            else => {
+                _ = try running_text.writer.write(token.lexeme);
+                _ = try self.it.consume(scratch, &.{token.token_type});
+            },
+        }
+    }
+
+    _ = try self.it.consume(scratch, &.{.newline}) orelse return null;
+
+    const owned_name = try alloc.dupeZ(u8, name_token.lexeme);
+    errdefer alloc.free(owned_name);
+
+    var owned_value: ?[:0]const u8 = null;
+    if (running_text.written().len > 0) {
+        owned_value = try alloc.dupeZ(u8, running_text.written());
+        errdefer alloc.free(owned_value);
+    }
+
+    did_parse = true;
+    return .{
+        .name = owned_name,
+        .value = owned_value,
     };
 }
 
@@ -2052,6 +2120,52 @@ test "MyST directive with closing backtick fence on same line not allowed" {
 
     const p_node = nodes[0];
     try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node.*));
+}
+
+test "MyST directive with options" {
+    const md =
+        \\```{foo}
+        \\:bar:
+        \\:baz: bam
+        \\Hi, this is my directive.
+        \\```
+        \\
+    ;
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksMd(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(1, nodes.len);
+
+    const directive_node = nodes[0];
+    try testing.expectEqual(.myst_directive, @as(
+        ast.NodeType,
+        directive_node.*,
+    ));
+    try testing.expectEqualStrings(
+        "foo",
+        directive_node.myst_directive.name,
+    );
+    try testing.expectEqualStrings(
+        "Hi, this is my directive.",
+        directive_node.myst_directive.value,
+    );
+
+    const opt0 = directive_node.myst_directive.options[0];
+    try testing.expectEqualStrings("bar", opt0.name);
+    try testing.expect(opt0.value == null);
+
+    const opt1 = directive_node.myst_directive.options[1];
+    try testing.expectEqualStrings("baz", opt1.name);
+    try testing.expectEqualStrings("bam", opt1.value.?);
 }
 
 fn parseBlocksTokens(

@@ -268,9 +268,22 @@ pub const Abbreviation = struct {
 };
 
 pub const MySTDirective = struct {
+    pub const Option = struct {
+        name: [:0]const u8,
+        value: ?[:0]const u8 = null,
+
+        pub fn deinit(self: Option, alloc: Allocator) void {
+            alloc.free(self.name);
+            if (self.value) |v| {
+                alloc.free(v);
+            }
+        }
+    };
+
     children: []*Node,
     name: [:0]const u8,
     args: [:0]const u8,
+    options: []const Option,
     value: [:0]const u8,
 
     pub fn deinit(self: *MySTDirective, alloc: Allocator) void {
@@ -278,6 +291,12 @@ pub const MySTDirective = struct {
 
         alloc.free(self.name);
         alloc.free(self.args);
+
+        for (self.options) |option| {
+            option.deinit(alloc);
+        }
+        alloc.free(self.options);
+
         alloc.free(self.value);
     }
 };
