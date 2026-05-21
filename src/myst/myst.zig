@@ -1,3 +1,5 @@
+pub const option_values = @import("option_values.zig");
+
 pub fn isValidRoleName(name: []const u8) bool {
     for (name) |c| {
         switch (c) {

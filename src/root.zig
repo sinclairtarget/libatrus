@@ -249,6 +249,8 @@ test {
     _ = @import("lex/LineReader.zig");
     _ = @import("lex/BlockTokenizer.zig");
     _ = @import("lex/InlineTokenizer.zig");
+    _ = @import("myst/myst.zig");
+    _ = @import("myst/option_values.zig");
     _ = @import("parse/LeafBlockParser.zig");
     _ = @import("parse/ContainerBlockParser.zig");
     _ = @import("parse/escape.zig");

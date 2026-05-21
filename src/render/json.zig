@@ -173,6 +173,10 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
                     try stringify.objectField("filename");
                     try stringify.write(f);
                 }
+                if (n.emphasize_lines) |l| {
+                    try stringify.objectField("emphasizeLines");
+                    try stringify.write(l);
+                }
             },
             .image => |n| {
                 try stringify.objectField("url");

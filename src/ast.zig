@@ -182,12 +182,16 @@ pub const Code = struct {
     lang: [:0]const u8,
     show_line_numbers: bool = false,
     filename: ?[:0]const u8 = null,
+    emphasize_lines: ?[]u16 = null,
 
     pub fn deinit(self: *Code, alloc: Allocator) void {
         alloc.free(self.value);
         alloc.free(self.lang);
         if (self.filename) |f| {
             alloc.free(f);
+        }
+        if (self.emphasize_lines) |l| {
+            alloc.free(l);
         }
     }
 };

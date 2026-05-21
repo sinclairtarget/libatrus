@@ -5,6 +5,7 @@ const Io = std.Io;
 
 const ast = @import("../../ast.zig");
 const atrus = @import("../../root.zig");
+const myst = @import("../../myst/myst.zig");
 const logger = @import("../../logging.zig").logger;
 const util = @import("../../util/util.zig");
 
@@ -270,6 +271,14 @@ fn transformCode(
             if (opt.value) |v| {
                 code_node.code.filename = try alloc.dupeZ(u8, v);
             }
+        } else if (std.mem.eql(u8, opt.name, "emphasize-lines")) {
+            if (opt.value) |v| {
+                const lines = try myst.option_values.parseCommaSeparatedRanges(
+                    alloc,
+                    v,
+                );
+                code_node.code.emphasize_lines = lines;
+            }
         } else {
             logger.warn("Unknown code option \"{s}\"", .{opt.name});
         }
@@ -501,6 +510,7 @@ test "code block with options" {
         &.{
             .{ .name = "linenos" },
             .{ .name = "filename", .value = "foobar.zig" },
+            .{ .name = "emphasize-lines", .value = "1, 3-5, 7" },
         },
         "def foo():\n    pass",
     );
@@ -519,4 +529,9 @@ test "code block with options" {
 
     try testing.expectEqual(true, code_node.code.show_line_numbers);
     try testing.expectEqualStrings("foobar.zig", code_node.code.filename.?);
+    try testing.expectEqualSlices(
+        u16,
+        &.{ 1, 3, 4, 5, 7 },
+        code_node.code.emphasize_lines.?,
+    );
 }
