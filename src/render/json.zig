@@ -169,6 +169,10 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
                     try stringify.objectField("showLineNumbers");
                     try stringify.write(n.show_line_numbers);
                 }
+                if (n.filename) |f| {
+                    try stringify.objectField("filename");
+                    try stringify.write(f);
+                }
             },
             .image => |n| {
                 try stringify.objectField("url");

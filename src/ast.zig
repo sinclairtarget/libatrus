@@ -181,10 +181,14 @@ pub const Code = struct {
     value: [:0]const u8,
     lang: [:0]const u8,
     show_line_numbers: bool = false,
+    filename: ?[:0]const u8 = null,
 
     pub fn deinit(self: *Code, alloc: Allocator) void {
         alloc.free(self.value);
         alloc.free(self.lang);
+        if (self.filename) |f| {
+            alloc.free(f);
+        }
     }
 };
 
@@ -362,15 +366,7 @@ pub const HasChildren = enum {
             .admonition,
             .admonition_title,
             => .yes,
-            .text,
-            .code,
-            .thematic_break,
-            .@"break",
-            .inline_code,
-            .definition,
-            .image,
-            .html,
-            .myst_role_error => .no,
+            .text, .code, .thematic_break, .@"break", .inline_code, .definition, .image, .html, .myst_role_error => .no,
         };
     }
 };

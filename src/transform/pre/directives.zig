@@ -5,6 +5,7 @@ const Io = std.Io;
 
 const ast = @import("../../ast.zig");
 const atrus = @import("../../root.zig");
+const logger = @import("../../logging.zig").logger;
 const util = @import("../../util/util.zig");
 
 pub fn transform(
@@ -265,6 +266,12 @@ fn transformCode(
     for (options) |opt| {
         if (std.mem.eql(u8, opt.name, "linenos")) {
             code_node.code.show_line_numbers = true;
+        } else if (std.mem.eql(u8, opt.name, "filename")) {
+            if (opt.value) |v| {
+                code_node.code.filename = try alloc.dupeZ(u8, v);
+            }
+        } else {
+            logger.warn("Unknown code option \"{s}\"", .{opt.name});
         }
     }
 
@@ -493,6 +500,7 @@ test "code block with options" {
         "python",
         &.{
             .{ .name = "linenos" },
+            .{ .name = "filename", .value = "foobar.zig" },
         },
         "def foo():\n    pass",
     );
@@ -510,4 +518,5 @@ test "code block with options" {
     );
 
     try testing.expectEqual(true, code_node.code.show_line_numbers);
+    try testing.expectEqualStrings("foobar.zig", code_node.code.filename.?);
 }
