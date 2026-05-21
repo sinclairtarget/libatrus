@@ -27,6 +27,7 @@ pub fn transform(
                     original_node,
                     n.name,
                     n.args,
+                    n.options,
                     n.value,
                 );
             },
@@ -52,6 +53,7 @@ fn transformBuiltin(
     node: *ast.Node,
     name: []const u8,
     args: []const u8,
+    options: []const ast.MySTDirective.Option,
     value: []const u8,
 ) !*ast.Node {
     _ = scratch;
@@ -76,7 +78,7 @@ fn transformBuiltin(
     }
 
     if (std.mem.eql(u8, name, "code")) {
-        return try transformCode(alloc, node, args, value);
+        return try transformCode(alloc, node, args, options, value);
     }
 
     if (std.mem.eql(u8, name, "deprecated-unsafe-html")) {
@@ -242,6 +244,7 @@ fn transformCode(
     alloc: Allocator,
     node: *ast.Node,
     args: []const u8,
+    options: []const ast.MySTDirective.Option,
     value: []const u8,
 ) !*ast.Node {
     const owned_lang = try alloc.dupeZ(u8, args);
@@ -251,13 +254,19 @@ fn transformCode(
     errdefer alloc.free(owned_value);
 
     const code_node = try alloc.create(ast.Node);
+    errdefer code_node.deinit(alloc);
     code_node.* = .{
         .code = .{
             .lang = owned_lang,
             .value = owned_value,
-            .show_line_numbers = true, // TODO: Remove when we support options
         },
     };
+
+    for (options) |opt| {
+        if (std.mem.eql(u8, opt.name, "linenos")) {
+            code_node.code.show_line_numbers = true;
+        }
+    }
 
     try setDirectiveChild(alloc, node, code_node);
     return node;
@@ -304,14 +313,31 @@ const testing = std.testing;
 fn handleDirective(
     name: []const u8,
     args: []const u8,
+    options: []const ast.MySTDirective.Option,
     value: []const u8,
 ) !*ast.Node {
+    // We need to create a node on the heap so that we can later deinit() it
+    // and any children that might have been added to it.
+    const owned_options = try testing.allocator.alloc(
+        ast.MySTDirective.Option,
+        options.len,
+    );
+    for (options, 0..) |opt, i| {
+        owned_options[i] = .{
+            .name = try testing.allocator.dupeZ(u8, opt.name),
+            .value = if (opt.value) |v|
+                try testing.allocator.dupeZ(u8, v)
+            else
+                null,
+        };
+    }
+
     const directive_node = try testing.allocator.create(ast.Node);
     directive_node.* = .{
         .myst_directive = .{
             .name = try testing.allocator.dupeZ(u8, name),
             .args = try testing.allocator.dupeZ(u8, args),
-            .options = &.{},
+            .options = owned_options,
             .value = try testing.allocator.dupeZ(u8, value),
             .children = &.{},
         },
@@ -323,6 +349,7 @@ fn handleDirective(
         directive_node,
         name,
         args,
+        options,
         value,
     );
 }
@@ -331,6 +358,7 @@ test "simple admonition" {
     const node = try handleDirective(
         "admonition",
         "This is a title",
+        &.{},
         "This is a body",
     );
     defer node.deinit(testing.allocator);
@@ -369,6 +397,7 @@ test "simple warning" {
     const node = try handleDirective(
         "warning",
         "This is a body",
+        &.{},
         "",
     );
     defer node.deinit(testing.allocator);
@@ -400,6 +429,7 @@ test "simple figure" {
     const node = try handleDirective(
         "figure",
         "http://foo.com/cat.jpg",
+        &.{},
         "This is a picture of my cat!",
     );
     defer node.deinit(testing.allocator);
@@ -438,6 +468,7 @@ test "simple code block" {
     const node = try handleDirective(
         "code",
         "python",
+        &.{},
         "def foo():\n    pass",
     );
     defer node.deinit(testing.allocator);
@@ -453,7 +484,30 @@ test "simple code block" {
         code_node.code.value,
     );
 
-    // For now, expect show_line_numbers to always be true.
-    // TODO: Remove when we implement directive options.
+    try testing.expectEqual(false, code_node.code.show_line_numbers);
+}
+
+test "code block with options" {
+    const node = try handleDirective(
+        "code",
+        "python",
+        &.{
+            .{ .name = "linenos" },
+        },
+        "def foo():\n    pass",
+    );
+    defer node.deinit(testing.allocator);
+
+    try testing.expectEqual(.myst_directive, @as(ast.NodeType, node.*));
+    try testing.expectEqual(1, node.myst_directive.children.len);
+
+    const code_node = node.myst_directive.children[0];
+    try testing.expectEqual(.code, @as(ast.NodeType, code_node.*));
+    try testing.expectEqualStrings("python", code_node.code.lang);
+    try testing.expectEqualStrings(
+        "def foo():\n    pass",
+        code_node.code.value,
+    );
+
     try testing.expectEqual(true, code_node.code.show_line_numbers);
 }

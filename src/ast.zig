@@ -112,6 +112,7 @@ pub const Node = union(NodeType) {
             },
         }
 
+        // TODO: Should this be in a deinit()?
         alloc.destroy(self);
     }
 
