@@ -229,6 +229,13 @@ atrus_node_create_error_t atrus_node_text_create(
 const char* atrus_node_code_value(struct atrus_node* node);
 const char* atrus_node_code_lang(struct atrus_node* node);
 bool atrus_node_code_show_line_numbers(struct atrus_node* node);
+const char* atrus_node_code_filename(struct atrus_node* node); // can be null
+// copies no more than len line numbers to dest, returning the number copied
+size_t atrus_node_code_emphasize_lines(
+    struct atrus_node* node,
+    unsigned int* dest,
+    size_t len
+);
 
 atrus_node_create_error_t atrus_node_code_create(
     struct atrus_node** out,

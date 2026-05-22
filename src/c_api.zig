@@ -295,6 +295,27 @@ export fn atrus_node_code_show_line_numbers(node: *atrus.ast.Node) bool {
     return node.code.show_line_numbers;
 }
 
+export fn atrus_node_code_filename(node: *atrus.ast.Node) ?[*:0]const u8 {
+    return node.code.filename orelse null;
+}
+
+export fn atrus_node_code_emphasize_lines(
+    node: *atrus.ast.Node,
+    maybe_dest: ?[*]c_uint,
+    len: usize,
+) usize {
+    const dest = maybe_dest orelse return 0;
+    const emphasize_lines = node.code.emphasize_lines orelse return 0;
+
+    var n_copied: usize = 0;
+    for (emphasize_lines, 0..len) |line_num, i| {
+        dest[i] = line_num;
+        n_copied += 1;
+    }
+
+    return n_copied;
+}
+
 export fn atrus_node_code_create(
     out: **atrus.ast.Node,
     value: [*:0]const u8,
