@@ -147,22 +147,22 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
             }
         },
         .caption => |n| {
-            _ = try out.write("<figcaption>\n");
+            _ = try out.writeAll("<figcaption>\n");
             for (n.children) |child| {
-                _ = try out.write("  ");
+                _ = try out.writeAll("  ");
                 _ = try renderNode(child, out);
-                _ = try out.write("\n");
+                _ = try out.writeAll("\n");
             }
-            _ = try out.write("</figcaption>");
+            _ = try out.writeAll("</figcaption>");
         },
         .myst_role => |n| {
             if (n.children.len == 0) {
                 // unknown role
                 try out.print("<span class=\"role unhandled\">", .{});
 
-                _ = try out.write("<code class=\"kind\">{");
+                _ = try out.writeAll("<code class=\"kind\">{");
                 try printHTMLEscapedContent(out, n.name);
-                _ = try out.write("}</code>");
+                _ = try out.writeAll("}</code>");
 
                 try out.print("<code>", .{});
                 try printHTMLEscapedContent(out, n.value);
@@ -180,63 +180,63 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
             try printHTMLEscapedContent(out, n.value);
         },
         .subscript => |n| {
-            _ = try out.write("<sub>");
+            _ = try out.writeAll("<sub>");
 
             for (n.children) |child| {
                 _ = try renderNode(child, out);
             }
 
-            _ = try out.write("</sub>");
+            _ = try out.writeAll("</sub>");
         },
         .superscript => |n| {
-            _ = try out.write("<sup>");
+            _ = try out.writeAll("<sup>");
 
             for (n.children) |child| {
                 _ = try renderNode(child, out);
             }
 
-            _ = try out.write("</sup>");
+            _ = try out.writeAll("</sup>");
         },
         .abbreviation => |n| {
-            _ = try out.write("<abbr");
+            _ = try out.writeAll("<abbr");
             const title = n.title;
             if (title.len > 0) {
                 try out.print(" title=\"", .{});
                 try printHTMLEscapedAttrValue(out, title);
                 try out.print("\"", .{});
             }
-            _ = try out.write(">");
+            _ = try out.writeAll(">");
 
             for (n.children) |child| {
                 _ = try renderNode(child, out);
             }
 
-            _ = try out.write("</abbr>");
+            _ = try out.writeAll("</abbr>");
         },
         .myst_directive => |n| {
             if (n.children.len == 0) {
                 // unknown directive
-                _ = try out.write("<div class=\"directive unhandled\">\n");
+                _ = try out.writeAll("<div class=\"directive unhandled\">\n");
 
-                _ = try out.write("  <p>");
-                _ = try out.write("<code class=\"kind\">{");
+                _ = try out.writeAll("  <p>");
+                _ = try out.writeAll("<code class=\"kind\">{");
                 try printHTMLEscapedContent(out, n.name);
-                _ = try out.write("}</code>");
+                _ = try out.writeAll("}</code>");
 
                 const args = n.args;
                 if (args.len > 0) {
-                    _ = try out.write("<code class=\"args\">");
+                    _ = try out.writeAll("<code class=\"args\">");
                     try printHTMLEscapedContent(out, args);
-                    _ = try out.write("</code>");
+                    _ = try out.writeAll("</code>");
                 }
 
-                _ = try out.write("</p>\n");
+                _ = try out.writeAll("</p>\n");
 
-                _ = try out.write("  <pre><code>");
+                _ = try out.writeAll("  <pre><code>");
                 try printHTMLEscapedContent(out, n.value);
-                _ = try out.write("</code></pre>\n");
+                _ = try out.writeAll("</code></pre>\n");
 
-                _ = try out.write("</div>");
+                _ = try out.writeAll("</div>");
             } else {
                 // implemented directive; this is just a wrapper
                 for (n.children) |child| {
@@ -245,43 +245,43 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
             }
         },
         .myst_directive_error => |n| {
-            _ = try out.write("<div>");
+            _ = try out.writeAll("<div>");
             for (n.children) |child| {
                 _ = try renderNode(child, out);
             }
-            _ = try out.write("</div>");
+            _ = try out.writeAll("</div>");
         },
         .admonition => |n| {
-            _ = try out.write("<aside class=\"admonition");
+            _ = try out.writeAll("<aside class=\"admonition");
 
             const kind = n.kind;
             if (kind.len > 0) {
                 try out.print(" {s}", .{kind});
             }
-            _ = try out.write("\">\n");
+            _ = try out.writeAll("\">\n");
 
             // If we don't have a child title, we must render one ourselves.
             // But only if we aren't a simple admonition.
             const have_title = (n.children.len == 0 or @as(ast.NodeType, n.children[0].*) != .admonition_title);
             if (have_title and !std.mem.eql(u8, kind, "admonition")) {
-                _ = try out.write("  ");
+                _ = try out.writeAll("  ");
                 try renderAdmonitionTitle(out, kind);
-                _ = try out.write("\n");
+                _ = try out.writeAll("\n");
             }
 
             for (n.children) |child| {
-                _ = try out.write("  ");
+                _ = try out.writeAll("  ");
                 _ = try renderNode(child, out);
-                _ = try out.write("\n");
+                _ = try out.writeAll("\n");
             }
-            _ = try out.write("</aside>");
+            _ = try out.writeAll("</aside>");
         },
         .admonition_title => |n| {
-            _ = try out.write("<p class=\"admonition-title\">");
+            _ = try out.writeAll("<p class=\"admonition-title\">");
             for (n.children) |child| {
                 _ = try renderNode(child, out);
             }
-            _ = try out.write("</p>");
+            _ = try out.writeAll("</p>");
         },
     }
 
@@ -324,13 +324,13 @@ fn renderAdmonitionTitle(out: *Io.Writer, kind: []const u8) !void {
 }
 
 fn renderFigure(out: *Io.Writer, node: *ast.Node) !void {
-    _ = try out.write("<figure class=\"numbered\">\n");
+    _ = try out.writeAll("<figure class=\"numbered\">\n");
 
     const n = node.container;
     for (n.children) |child| {
         _ = try renderNode(child, out);
     }
-    _ = try out.write("</figure>");
+    _ = try out.writeAll("</figure>");
 }
 
 /// HTML-escape output to appear as text content.

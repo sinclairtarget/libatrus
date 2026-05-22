@@ -1,3 +1,7 @@
+//! An executable for testing libatrus at the command line.
+//!
+//! Not intended for general use.
+
 const std = @import("std");
 const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
@@ -100,10 +104,16 @@ pub fn main() !void {
 
             logger.info("Rendering...", .{});
             switch (options.output_choice) {
-                .json => try atrus.renderJSON(ast, stdout, .{}),
-                .html => try atrus.renderHTML(ast, stdout, .{}),
+                .json => {
+                    try atrus.renderJSON(ast, stdout, .{});
+                    try stdout.print("\n", .{});
+                },
+                .html => {
+                    try atrus.renderHTML(ast, stdout, .{});
+                    try stdout.print("\n", .{});
+                },
+                .typst => try atrus.renderTypst(ast, stdout, .{}),
             }
-            try stdout.print("\n", .{});
             try stdout.flush();
             logger.info("Done.", .{});
         },

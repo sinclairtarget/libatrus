@@ -7,6 +7,7 @@ const Io = std.Io;
 pub const OutputChoice = enum {
     json,
     html,
+    typst,
 };
 
 pub const ParseLevel = enum {
@@ -50,11 +51,12 @@ pub const Diagnostic = struct {
 
 pub fn printUsage(out: *Io.Writer) !void {
     const usage =
-        \\Usage: atrus [--block|--raw|--pre|--html] [FILEPATH]
+        \\Usage: atrus [--block|--raw|--pre|--html|--typst] [FILEPATH]
         \\       atrus --version
         \\       atrus -h|--help
         \\
-        \\If no filepath is given, input is read from STDIN.
+        \\Reads a MyST file and writes out the JSON AST (unless another format
+        \\is specified). If no filepath is given, input is read from STDIN.
         \\
         \\Flags:
         \\  -h|--help  Ouptut this help text.
@@ -120,6 +122,8 @@ pub fn parseArgs(
     for (args[1..args.len]) |arg| {
         if (std.mem.eql(u8, arg, "--html")) {
             output_choice = .html;
+        } else if (std.mem.eql(u8, arg, "--typst")) {
+            output_choice = .typst;
         } else if (std.mem.eql(u8, arg, "--block")) {
             parse_level = .block;
         } else if (std.mem.eql(u8, arg, "--raw")) {

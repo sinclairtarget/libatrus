@@ -22,6 +22,7 @@ const InlineParser = @import("parse/InlineParser.zig");
 const transform_ = @import("transform/transform.zig");
 const json = @import("render/json.zig");
 const html = @import("render/html.zig");
+const typst = @import("render/typst.zig");
 
 const logger = @import("logging.zig").logger;
 
@@ -201,10 +202,7 @@ pub fn renderHTML(
 
 pub const JSONOptions = json.Options;
 
-pub const RenderJSONError = error{
-    WriteFailed,
-    OutOfMemory,
-};
+pub const RenderJSONError = typst.RenderError;
 
 /// Renders the AST as JSON, writing to the given writer.
 pub fn renderJSON(
@@ -213,6 +211,22 @@ pub fn renderJSON(
     options: JSONOptions,
 ) RenderJSONError!void {
     try json.render(root, out, options);
+}
+
+pub const TypstOptions = struct {}; // No options (yet!)
+
+pub const RenderTypstError = error{
+    WriteFailed,
+    NotImplemented,
+};
+
+pub fn renderTypst(
+    root: *ast.Node,
+    out: *Io.Writer,
+    options: TypstOptions,
+) RenderTypstError!void {
+    _ = options;
+    try typst.render(root, out);
 }
 
 /// Parses the input string (containing a MyST AST in JSON form) into a MYST
@@ -372,6 +386,31 @@ test renderJSON {
 
     var buf = Io.Writer.Allocating.init(testing.allocator);
     try renderJSON(root, &buf.writer, .{ .whitespace = .indent_2 });
+    const result = try buf.toOwnedSlice();
+    defer testing.allocator.free(result);
+
+    try testing.expectEqualStrings(expected, result);
+}
+
+test renderTypst {
+    const md =
+        \\# I am a heading
+        \\I am a paragraph with [a link](http://coolpage.com).
+        \\
+    ;
+
+    const expected =
+        \\= I am a heading
+        \\I am a paragraph with #link("http://coolpage.com)[a link].
+        \\
+    ;
+
+    var in: Io.Reader = .fixed(md);
+    const root = try parse(testing.allocator, &in, .{});
+    defer root.deinit(testing.allocator);
+
+    var buf = Io.Writer.Allocating.init(testing.allocator);
+    try renderTypst(root, &buf.writer, .{});
     const result = try buf.toOwnedSlice();
     defer testing.allocator.free(result);
 
