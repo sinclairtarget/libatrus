@@ -24,7 +24,7 @@
 
 // Compile-time version.
 #define ATRUS_MAJOR_VERSION 0
-#define ATRUS_MINOR_VERSION 6
+#define ATRUS_MINOR_VERSION 7
 #define ATRUS_PATCH_VERSION 0
 
 /*
