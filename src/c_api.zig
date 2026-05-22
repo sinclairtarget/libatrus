@@ -306,14 +306,13 @@ export fn atrus_node_code_emphasize_lines(
 ) usize {
     const dest = maybe_dest orelse return 0;
     const emphasize_lines = node.code.emphasize_lines orelse return 0;
+    const clamped_len = std.mem.min(usize, &.{len, emphasize_lines.len});
 
-    var n_copied: usize = 0;
-    for (emphasize_lines, 0..len) |line_num, i| {
+    for (emphasize_lines[0..clamped_len], 0..clamped_len) |line_num, i| {
         dest[i] = line_num;
-        n_copied += 1;
     }
 
-    return n_copied;
+    return clamped_len;
 }
 
 export fn atrus_node_code_create(
