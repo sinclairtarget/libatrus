@@ -95,6 +95,14 @@ int atrus_render_json(
     atrus_json_option_whitespace_t whitespace
 );
 
+/*
+ * Give a MyST AST, renders the tree as Typst markup into a null-terminated
+ * string. Returns the length of the string or a negative number on error.
+ *
+ * The caller is responsible for freeing the string.
+ */
+int atrus_render_typst(struct atrus_node* root, char** out);
+
 typedef enum {
     ATRUS_LOAD_SUCCESS = 0,
     ATRUS_LOAD_FAILURE = -1,

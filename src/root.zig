@@ -202,7 +202,10 @@ pub fn renderHTML(
 
 pub const JSONOptions = json.Options;
 
-pub const RenderJSONError = typst.RenderError;
+pub const RenderJSONError = error{
+    WriteFailed,
+    OutOfMemory,
+};
 
 /// Renders the AST as JSON, writing to the given writer.
 pub fn renderJSON(
@@ -215,10 +218,7 @@ pub fn renderJSON(
 
 pub const TypstOptions = struct {}; // No options (yet!)
 
-pub const RenderTypstError = error{
-    WriteFailed,
-    NotImplemented,
-};
+pub const RenderTypstError = typst.RenderError;
 
 pub fn renderTypst(
     root: *ast.Node,

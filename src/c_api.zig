@@ -12,6 +12,7 @@ const atrus = @import("atrus");
 const ParseError = atrus.ParseError;
 const RenderJSONError = atrus.RenderJSONError;
 const RenderHTMLError = atrus.RenderHTMLError;
+const RenderTypstError = atrus.RenderTypstError;
 
 const c_alloc = std.heap.c_allocator;
 
@@ -126,6 +127,23 @@ export fn atrus_render_json(
             Allocator.Error.OutOfMemory => return -1,
         }
     };
+    out.* = s.ptr;
+    return @intCast(s.len);
+}
+
+export fn atrus_render_typst(
+    root: *atrus.ast.Node,
+    out: *[*:0]const u8,
+) c_int {
+    var buf = Io.Writer.Allocating.init(c_alloc);
+    atrus.renderTypst(root, &buf.writer, .{}) catch |err| {
+        switch (err) {
+            RenderTypstError.WriteFailed => return -1,
+            RenderTypstError.NotImplemented => return -2,
+        }
+    };
+
+    const s: [:0]const u8 = buf.toOwnedSliceSentinel(0) catch return -1;
     out.* = s.ptr;
     return @intCast(s.len);
 }
@@ -306,7 +324,7 @@ export fn atrus_node_code_emphasize_lines(
 ) usize {
     const dest = maybe_dest orelse return 0;
     const emphasize_lines = node.code.emphasize_lines orelse return 0;
-    const clamped_len = std.mem.min(usize, &.{len, emphasize_lines.len});
+    const clamped_len = std.mem.min(usize, &.{ len, emphasize_lines.len });
 
     for (emphasize_lines[0..clamped_len], 0..clamped_len) |line_num, i| {
         dest[i] = line_num;
