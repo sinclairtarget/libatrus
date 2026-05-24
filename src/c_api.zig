@@ -31,8 +31,12 @@ export fn atrus_version_at_least(
         .patch = @intCast(patch),
     };
 
-    const link_version = std.SemanticVersion.parse(atrus.version) catch
+    var link_version = std.SemanticVersion.parse(atrus.version) catch
         @panic("could not parse linked libatrus version");
+
+    // For the purposes of this check, let's only consider major, minor, patch
+    link_version.pre = null;
+    link_version.build = null;
 
     return std.SemanticVersion.order(link_version, version) != .lt;
 }
