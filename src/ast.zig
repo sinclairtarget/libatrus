@@ -104,6 +104,7 @@ pub const Node = union(NodeType) {
         return @as(NodeType, self).name();
     }
 
+    /// Adds a node as the first child of this node.
     pub fn prependChild(
         self: *Node,
         alloc: Allocator,
@@ -133,6 +134,7 @@ pub const Node = union(NodeType) {
         }
     }
 
+    /// Adds a node as the last child of this node.
     pub fn appendChild(
         self: *Node,
         alloc: Allocator,

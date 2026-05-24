@@ -83,12 +83,10 @@ fn transformSubscript(
         },
     };
 
-    const role_children = try alloc.dupe(*ast.Node, &.{sub_node});
-
     std.debug.assert(@as(ast.NodeType, node.*) == .myst_role);
     std.debug.assert(node.myst_role.children.len == 0);
+    try node.appendChild(alloc, sub_node);
 
-    node.myst_role.children = role_children;
     return node;
 }
 
@@ -113,12 +111,10 @@ fn transformSuperscript(
         },
     };
 
-    const role_children = try alloc.dupe(*ast.Node, &.{sup_node});
-
     std.debug.assert(@as(ast.NodeType, node.*) == .myst_role);
     std.debug.assert(node.myst_role.children.len == 0);
+    try node.appendChild(alloc, sup_node);
 
-    node.myst_role.children = role_children;
     return node;
 }
 
@@ -186,12 +182,10 @@ fn transformAbbreviation(
         },
     };
 
-    const role_children = try alloc.dupe(*ast.Node, &.{abbr_node});
-
     std.debug.assert(@as(ast.NodeType, node.*) == .myst_role);
     std.debug.assert(node.myst_role.children.len == 0);
+    try node.appendChild(alloc, abbr_node);
 
-    node.myst_role.children = role_children;
     return node;
 }
 

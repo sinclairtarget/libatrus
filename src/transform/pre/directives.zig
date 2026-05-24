@@ -174,7 +174,8 @@ fn transformAdmonition(
         },
     };
 
-    try setDirectiveChild(alloc, node, admonition_node);
+    std.debug.assert(node.myst_directive.children.len == 0);
+    try node.appendChild(alloc, admonition_node);
     return node;
 }
 
@@ -238,7 +239,8 @@ fn transformFigure(
         },
     };
 
-    try setDirectiveChild(alloc, node, container_node);
+    std.debug.assert(node.myst_directive.children.len == 0);
+    try node.appendChild(alloc, container_node);
     return node;
 }
 
@@ -284,7 +286,8 @@ fn transformCode(
         }
     }
 
-    try setDirectiveChild(alloc, node, code_node);
+    std.debug.assert(node.myst_directive.children.len == 0);
+    try node.appendChild(alloc, code_node);
     return node;
 }
 
@@ -307,18 +310,9 @@ fn transformUnsafeHTML(
         },
     };
 
-    try setDirectiveChild(alloc, node, html_node);
+    std.debug.assert(node.myst_directive.children.len == 0);
+    try node.appendChild(alloc, html_node);
     return node;
-}
-
-fn setDirectiveChild(
-    alloc: Allocator,
-    directive_node: *ast.Node,
-    new_child_node: *ast.Node,
-) !void {
-    std.debug.assert(directive_node.myst_directive.children.len == 0);
-    const directive_children = try alloc.dupe(*ast.Node, &.{new_child_node});
-    directive_node.myst_directive.children = directive_children;
 }
 
 // ----------------------------------------------------------------------------
