@@ -104,6 +104,64 @@ pub const Node = union(NodeType) {
         return @as(NodeType, self).name();
     }
 
+    pub fn prependChild(
+        self: *Node,
+        alloc: Allocator,
+        new_child_node: *Node,
+    ) !void {
+        switch (self.hasChildren()) {
+            .yes => |branch_node| switch (branch_node) {
+                inline else => |n| {
+                    // TODO: Should children be stored in array lists?
+                    const new_children = try alloc.alloc(
+                        *Node,
+                        n.children.len + 1,
+                    );
+                    const old_children = n.children;
+                    defer alloc.free(old_children);
+
+                    new_children[0] = new_child_node;
+                    for (old_children, 1..) |child, i| {
+                        new_children[i] = child;
+                    }
+                    n.children = new_children;
+                },
+            },
+            .no => {
+                @panic("can't prepend child to node that can't have children");
+            },
+        }
+    }
+
+    pub fn appendChild(
+        self: *Node,
+        alloc: Allocator,
+        new_child_node: *Node,
+    ) !void {
+        switch (self.hasChildren()) {
+            .yes => |branch_node| switch (branch_node) {
+                inline else => |n| {
+                    // TODO: Should children be stored in array lists?
+                    const new_children = try alloc.alloc(
+                        *Node,
+                        n.children.len + 1,
+                    );
+                    const old_children = n.children;
+                    defer alloc.free(old_children);
+
+                    for (old_children, 0..) |child, i| {
+                        new_children[i] = child;
+                    }
+                    new_children[old_children.len] = new_child_node;
+                    n.children = new_children;
+                },
+            },
+            .no => {
+                @panic("can't append child to node that can't have children");
+            },
+        }
+    }
+
     pub fn deinit(self: *Node, alloc: Allocator) void {
         switch (self.*) {
             .thematic_break, .@"break" => {}, // no cleanup needed
@@ -370,7 +428,16 @@ pub const HasChildren = enum {
             .admonition,
             .admonition_title,
             => .yes,
-            .text, .code, .thematic_break, .@"break", .inline_code, .definition, .image, .html, .myst_role_error => .no,
+            .text,
+            .code,
+            .thematic_break,
+            .@"break",
+            .inline_code,
+            .definition,
+            .image,
+            .html,
+            .myst_role_error,
+            => .no,
         };
     }
 };

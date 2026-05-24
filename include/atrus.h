@@ -182,6 +182,30 @@ unsigned int atrus_node_num_children(struct atrus_node* node);
 struct atrus_node* atrus_node_child(struct atrus_node* node, unsigned int i);
 
 /*
+ * Adds a new node as the first child of a node.
+ *
+ * Returns zero on success or a negative number on error.
+ *
+ * The AST takes ownership of the new child.
+ */
+int atrus_node_prepend_child(
+    struct atrus_node* node,
+    struct atrus_node* new_child_node
+);
+
+/*
+ * Adds a new node as the last child of a node.
+ *
+ * Returns zero on success or a negative number on error.
+ *
+ * The AST takes ownership of the new child.
+ */
+int atrus_node_append_child(
+    struct atrus_node* node,
+    struct atrus_node* new_child_node
+);
+
+/*
  * Replaces the ith child with a new node.
  *
  * The AST takes ownership of the new child.

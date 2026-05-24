@@ -226,6 +226,32 @@ export fn atrus_node_replace_child(
     }
 }
 
+export fn atrus_node_prepend_child(
+    node: *atrus.ast.Node,
+    new_child_node: *atrus.ast.Node,
+) c_int {
+    node.prependChild(c_alloc, new_child_node) catch |err| {
+        switch (err) {
+            error.OutOfMemory => return -1,
+        }
+    };
+
+    return 0;
+}
+
+export fn atrus_node_append_child(
+    node: *atrus.ast.Node,
+    new_child_node: *atrus.ast.Node,
+) c_int {
+    node.appendChild(c_alloc, new_child_node) catch |err| {
+        switch (err) {
+            error.OutOfMemory => return -1,
+        }
+    };
+
+    return 0;
+}
+
 // --- Root -------------------------------------------------------------------
 export fn atrus_node_root_create(out: **atrus.ast.Node) c_int {
     const root = c_alloc.create(atrus.ast.Node) catch return -1;
