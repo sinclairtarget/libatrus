@@ -10,7 +10,7 @@ const ast = @import("../ast.zig");
 
 /// Write node as alt text to writer.
 pub fn write(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
-    switch (node.hasChildren()) {
+    switch (node.allowedChildren()) {
         .yes => |branch_node| switch (branch_node) {
             inline else => |n| {
                 for (n.children) |child| {

@@ -9,7 +9,7 @@ pub fn transform(
     scratch: Allocator,
     original_node: *ast.Node,
 ) !*ast.Node {
-    switch (original_node.hasChildren()) {
+    switch (original_node.allowedChildren()) {
         .yes => |branch_node| switch (branch_node) {
             .myst_role => |n| {
                 // Check to see if we have already transformed this node. If

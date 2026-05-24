@@ -13,7 +13,7 @@ pub fn render(node: *ast.Node, out: *Io.Writer) RenderError!void {
 }
 
 fn renderNode(node: *ast.Node, out: *Io.Writer) RenderError!void {
-    switch (node.hasChildren()) {
+    switch (node.allowedChildren()) {
         .yes => |branch_node| {
             switch (branch_node) {
                 .root,  => |n| {

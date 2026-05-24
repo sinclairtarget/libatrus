@@ -181,7 +181,7 @@ export fn atrus_node_type_name(node: *atrus.ast.Node) [*:0]const u8 {
 }
 
 export fn atrus_node_num_children(node: *atrus.ast.Node) c_uint {
-    return @intCast(switch (node.hasChildren()) {
+    return @intCast(switch (node.allowedChildren()) {
         .no => 0,
         .yes => |branch_node| switch (branch_node) {
             inline else => |n| n.children.len,
@@ -190,7 +190,7 @@ export fn atrus_node_num_children(node: *atrus.ast.Node) c_uint {
 }
 
 export fn atrus_node_child(node: *atrus.ast.Node, i: c_uint) *atrus.ast.Node {
-    return switch (node.hasChildren()) {
+    return switch (node.allowedChildren()) {
         .no => @panic(child_out_of_bounds_panic_msg),
         .yes => |branch_node| switch (branch_node) {
             inline else => |n| {
@@ -209,7 +209,7 @@ export fn atrus_node_replace_child(
     i: c_uint,
     new_child_node: *atrus.ast.Node,
 ) void {
-    switch (node.hasChildren()) {
+    switch (node.allowedChildren()) {
         .no => @panic(child_out_of_bounds_panic_msg),
         .yes => |branch_node| switch (branch_node) {
             inline else => |n| {

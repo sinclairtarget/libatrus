@@ -90,10 +90,10 @@ pub const Node = union(NodeType) {
 
     /// Returns a union bisecting nodes into those that have children and those
     /// that don't.
-    pub fn hasChildren(self: *Node) HasChildrenSubsets {
-        return switch (HasChildren.fromNodeType(self.*)) {
-            .yes => .{ .yes = self.narrow(HasChildren, .yes) },
-            .no => .{ .no = self.narrow(HasChildren, .no) },
+    pub fn allowedChildren(self: *Node) AllowedChildrenSubsets {
+        return switch (AllowedChildren.fromNodeType(self.*)) {
+            .yes => .{ .yes = self.narrow(AllowedChildren, .yes) },
+            .no => .{ .no = self.narrow(AllowedChildren, .no) },
         };
     }
 
@@ -109,7 +109,7 @@ pub const Node = union(NodeType) {
         alloc: Allocator,
         new_child_node: *Node,
     ) !void {
-        switch (self.hasChildren()) {
+        switch (self.allowedChildren()) {
             .yes => |branch_node| switch (branch_node) {
                 inline else => |n| {
                     // TODO: Should children be stored in array lists?
@@ -138,7 +138,7 @@ pub const Node = union(NodeType) {
         alloc: Allocator,
         new_child_node: *Node,
     ) !void {
-        switch (self.hasChildren()) {
+        switch (self.allowedChildren()) {
             .yes => |branch_node| switch (branch_node) {
                 inline else => |n| {
                     // TODO: Should children be stored in array lists?
@@ -400,14 +400,14 @@ fn freeChildren(alloc: Allocator, children: []*Node) void {
 // ----------------------------------------------------------------------------
 // Fancy-Pants Comptime Union Subsets
 // ----------------------------------------------------------------------------
-pub const HasChildren = enum {
+pub const AllowedChildren = enum {
     yes,
     no,
 
-    /// Maps node types onto a value in the HasChildren enum.
+    /// Maps node types onto a value in the AllowedChildren enum.
     ///
     /// In other words, answers whether a type of node has children.
-    pub fn fromNodeType(node_type: NodeType) HasChildren {
+    pub fn fromNodeType(node_type: NodeType) AllowedChildren {
         return switch (node_type) {
             .root,
             .block,
@@ -443,9 +443,9 @@ pub const HasChildren = enum {
 };
 
 // Bisects nodes into those that have children and those that don't.
-const HasChildrenSubsets = union(HasChildren) {
-    yes: NarrowedNode(HasChildren, .yes),
-    no: NarrowedNode(HasChildren, .no),
+const AllowedChildrenSubsets = union(AllowedChildren) {
+    yes: NarrowedNode(AllowedChildren, .yes),
+    no: NarrowedNode(AllowedChildren, .no),
 };
 
 // Creates an enum containing only the subset of node types matching the given

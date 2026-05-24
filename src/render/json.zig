@@ -47,7 +47,7 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
     try stringify.objectField("type");
     try stringify.write(node.name());
 
-    switch (node.hasChildren()) {
+    switch (node.allowedChildren()) {
         .yes => |branch_node| switch (branch_node) {
             .heading => |n| {
                 try stringify.objectField("depth");
