@@ -401,7 +401,7 @@ test renderTypst {
 
     const expected =
         \\= I am a heading
-        \\I am a paragraph with #link("http://coolpage.com)[a link].
+        \\I am a paragraph with #link("http://coolpage.com")[a link].
         \\
     ;
 
