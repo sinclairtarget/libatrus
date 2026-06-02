@@ -124,6 +124,18 @@ pub fn parse(
             }
         }
 
+        {
+            const result = try self.parseHTML(alloc, scratch);
+            if (result.maybe_node) |html| {
+                try children.append(html);
+                if (result.should_end) {
+                    break;
+                } else {
+                    continue;
+                }
+            }
+        }
+
         if (try self.parseATXHeading(alloc, scratch)) |heading| {
             try children.append(heading);
             continue;
@@ -1045,6 +1057,143 @@ fn scanLinkDefTitle(self: *Self, scratch: Allocator) !?[]const u8 {
     return try running_text.toOwnedSlice();
 }
 
+/// Parses an HTML block.
+///
+/// https://spec.commonmark.org/0.30/#html-block
+///
+/// An HTML block begins with a start condition and ends with a matching end
+/// condition. There are seven different start and end conditions.
+///
+/// The Commonmark spec supports basically any kind of HTML, even with
+/// arbitrary tag names.
+fn parseHTML(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) !EndingParseResult {
+    const result = try self.parseHTMLComment(alloc, scratch);
+    if (result.maybe_node) |_| {
+        return result;
+    }
+
+    return .{
+        .maybe_node = null,
+    };
+}
+
+/// Parse HTML comment.
+///
+/// Start condition is "<!--" (at the beginning of a line). End condition is
+/// "-->" somewhere in a line. Any trailing content in the last line is
+/// included in the HTML block.
+fn parseHTMLComment(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) !EndingParseResult {
+    var did_parse = false;
+    const checkpoint_index = self.it.checkpoint();
+    defer if (!did_parse) {
+        self.it.backtrack(checkpoint_index);
+    };
+
+    const fail: EndingParseResult = .{ .maybe_node = null };
+    var saw_close_token = false;
+    var content = Io.Writer.Allocating.init(scratch);
+
+    // start condition
+    _ = try self.it.consume(scratch, &.{ .l_angle_bracket }) orelse
+        return fail;
+    _ = try self.it.consume(scratch, &.{ .exclamation_mark }) orelse
+        return fail;
+    _ = try self.it.consume(scratch, &.{ .hyphen }) orelse return fail;
+    _ = try self.it.consume(scratch, &.{ .hyphen }) orelse return fail;
+    _ = try content.writer.write("<!--");
+
+    // Cannot start a new container in an HTML block.
+    self.interruptible = false;
+    defer self.interruptible = true;
+
+    // Handle content within comment block
+    while (try self.it.peek(scratch)) |token| {
+        switch (token.token_type) {
+            .hyphen => {
+                const have_end_condition: bool = blk: {
+                    if (try self.it.peekAhead(scratch, 2)) |t| {
+                        if (t.token_type != .hyphen) {
+                            break :blk false;
+                        }
+                    }
+
+                    if (try self.it.peekAhead(scratch, 3)) |t| {
+                        if (t.token_type != .r_angle_bracket) {
+                            break :blk false;
+                        }
+                    }
+
+                    break :blk true;
+                };
+
+                if (have_end_condition) {
+                    _ = try self.it.consume(scratch, &.{.hyphen});
+                    _ = try self.it.consume(scratch, &.{.hyphen});
+                    _ = try self.it.consume(scratch, &.{.r_angle_bracket});
+                    _ = try content.writer.write("-->");
+                    break;
+                } else {
+                    _ = try self.it.consume(scratch, &.{.hyphen});
+                    _ = try content.writer.write(token.lexeme);
+                }
+            },
+            .close => {
+                _ = try self.it.consume(scratch, &.{.close});
+                saw_close_token = true;
+                break;
+            },
+            .newline => {
+                _ = try self.it.consume(scratch, &.{.newline});
+                _ = try content.writer.write("\n");
+            },
+            else => |t| {
+                _ = try self.it.consume(scratch, &.{t});
+                _ = try content.writer.write(token.lexeme);
+            },
+        }
+    }
+
+    // Handle content trailing comment block end
+    if (!saw_close_token) {
+        while (try self.it.peek(scratch)) |token| {
+            switch (token.token_type) {
+                .newline => {
+                    _ = try self.it.consume(scratch, &.{.newline});
+                    break;
+                },
+                else => |t| {
+                    _ = try self.it.consume(scratch, &.{t});
+                    _ = try content.writer.write(token.lexeme);
+                },
+            }
+        }
+    }
+
+    const owned_value = try alloc.dupeZ(u8, content.written());
+    errdefer alloc.free(owned_value);
+
+    const node = try alloc.create(ast.Node);
+    node.* = .{
+        .html = .{
+            .value = owned_value,
+        },
+    };
+
+    did_parse = true;
+    return .{
+        .maybe_node = node,
+        .should_end = saw_close_token,
+    };
+}
+
 /// Parses a MyST directive.
 ///
 /// MyST directives are delimited by "fences" of three or more colons or
@@ -1366,6 +1515,7 @@ fn scanParagraphText(self: *Self, scratch: Allocator) !EndingScanResult {
                 .rule_equals,
                 .backtick_fence,
                 .tilde_fence,
+                .l_angle_bracket,
                 => {
                     // These tokens can interrupt a paragraph.
                     break :fsm;
@@ -2426,5 +2576,135 @@ test "close token in MyST directive" {
     try testing.expectEqualStrings(
         "bar",
         directive_node.myst_directive.value,
+    );
+}
+
+test "HTML comment" {
+    const md =
+        \\<!-- foobar -->
+        \\<!--
+        \\bimbat zam
+        \\-->
+        \\
+    ;
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksMd(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(2, nodes.len);
+
+    const html_node_1 = nodes[0];
+    try testing.expectEqual(.html, @as(ast.NodeType, html_node_1.*));
+    try testing.expectEqualStrings(
+        "<!-- foobar -->",
+        html_node_1.html.value,
+    );
+
+    const html_node_2 = nodes[1];
+    try testing.expectEqual(.html, @as(ast.NodeType, html_node_2.*));
+    try testing.expectEqualStrings(
+        "<!--\nbimbat zam\n-->",
+        html_node_2.html.value,
+    );
+}
+
+test "HTML comment with trailing text" {
+    const md =
+        \\<!--
+        \\bimbat zam
+        \\--> foobar
+        \\
+    ;
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksMd(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(1, nodes.len);
+
+    const html_node = nodes[0];
+    try testing.expectEqual(.html, @as(ast.NodeType, html_node.*));
+    try testing.expectEqualStrings(
+        "<!--\nbimbat zam\n--> foobar",
+        html_node.html.value,
+    );
+}
+
+test "HTML comment at container close" {
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksTokens(&.{
+        .{ .token_type = .l_angle_bracket },
+        .{ .token_type = .exclamation_mark },
+        .{ .token_type = .hyphen },
+        .{ .token_type = .hyphen },
+        .{
+            .token_type = .text,
+            .lexeme = "foo",
+        },
+        .{ .token_type = .close },
+    }, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(1, nodes.len);
+
+    const html_node = nodes[0];
+    try testing.expectEqual(.html, @as(ast.NodeType, html_node.*));
+    try testing.expectEqualStrings(
+        "<!--foo",
+        html_node.html.value,
+    );
+}
+
+// All types of HTML blocks except type 7 can interrupt a paragraph.
+test "HTML comment interrupts paragraphs" {
+    const md =
+        \\Hi this is a paragraph.
+        \\<!-- this is a comment on the very next line -->
+        \\
+    ;
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksMd(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(2, nodes.len);
+
+    const p_node = nodes[0];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node.*));
+
+    const html_node = nodes[1];
+    try testing.expectEqual(.html, @as(ast.NodeType, html_node.*));
+    try testing.expectEqualStrings(
+        "<!-- this is a comment on the very next line -->",
+        html_node.html.value,
     );
 }
