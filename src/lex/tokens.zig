@@ -4,15 +4,9 @@ const Io = std.Io;
 
 /// Tokens recognized by the block parsers.
 pub const BlockTokenType = enum {
-    text,
-    pound, // one or more consecutive '#' symbols
-    newline,
-    whitespace,
-    rule_star,
-    rule_underline,
-    rule_dash_with_whitespace,
-    rule_dash,
-    rule_equals,
+    // --- single-character tokens ---
+    exclamation_mark, // used only for HTML parsing
+    hyphen, // used only for HTML parsing
     colon,
     l_square_bracket,
     r_square_bracket,
@@ -24,10 +18,21 @@ pub const BlockTokenType = enum {
     r_brace,
     single_quote,
     double_quote,
+    newline,
+    close, // special token inserted by container block parser
+    // --- multi-charcter tokens ---
+    text,
+    pound, // one or more consecutive '#' symbols
+    whitespace,
     backtick_fence, // three or more consecutive '`' symbols
     tilde_fence, // three or more consecutive '~' symbols
     colon_fence, // three or more consecutive ':' symbols
-    close, // special token inserted by container block parser
+    // --- must match entire line --
+    rule_star,
+    rule_underline,
+    rule_dash_with_whitespace,
+    rule_dash,
+    rule_equals,
 };
 
 /// Tokens recognized by the inline parser.

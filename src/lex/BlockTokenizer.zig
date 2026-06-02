@@ -76,12 +76,17 @@ fn iteratorNext(ctx: *anyopaque, scratch: Allocator) Error!?BlockToken {
 /// Returns the next token starting at the current index.
 fn tokenize(self: *Self, scratch: Allocator) !BlockToken {
     const result: TokenizeResult = blk: {
-        // This has to go first so that colon fences have precedence over
-        // single colons.
         if (try self.matchFence(scratch)) |result| {
             break :blk result;
         }
 
+        if (try self.matchRule(scratch)) |result| {
+            break :blk result;
+        }
+
+        // We match fences and rules before single characters, since they
+        // contain characters that would otherwise tokenize to a
+        // single-character token.
         if (try self.matchSingleCharTokens(scratch)) |result| {
             break :blk result;
         }
@@ -91,10 +96,6 @@ fn tokenize(self: *Self, scratch: Allocator) !BlockToken {
         }
 
         if (try self.matchNewline(scratch)) |result| {
-            break :blk result;
-        }
-
-        if (try self.matchRule(scratch)) |result| {
             break :blk result;
         }
 
@@ -122,6 +123,8 @@ fn matchSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
         ':' => .colon,
         '"' => .double_quote,
         '\'' => .single_quote,
+        '!' => .exclamation_mark,
+        '-' => .hyphen,
         else => return null,
     };
 
