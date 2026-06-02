@@ -384,9 +384,12 @@ fn parseThematicBreak(
     return node;
 }
 
-/// Represents the result of parsing a node that can be interrupted by a CLOSE
-/// token. E.g.: a fenced code block ends when its container closes and the
-/// leaf block parser should end parsing since the container is now closed.
+/// Represents the result of parsing a node that can be ended by a CLOSE token.
+/// E.g.: a fenced code block ends when its container closes and the leaf block
+/// parser should end parsing since the container is now closed.
+///
+/// This should only ever be used by constructs that extend over more than one
+/// line.
 const EndingParseResult = struct {
     maybe_node: ?*ast.Node = null,
     should_end: bool = false,
