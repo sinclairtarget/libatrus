@@ -1,18 +1,27 @@
 //! Parser in the first parsing stage that handles leaf blocks.
 //!
+//! This is a recursive-descent parser with backtracking.
+//!
 //! Parser pulls tokens from the iterator as needed. The tokens are stored in
 //! an array list. The array list is cleared of consumed tokens as each block
 //! is successfully parsed.
 //!
-//! This is a recursive-descent parser with backtracking.
+//! Ideally, this parser wouldn't have to be aware of container blocks in any
+//! way. But until we find a better factorization we include some functionality
+//! here required only by the container block parser.
 //!
 //! In addition to the regular block tokens, this parser can also handle
 //! special "CLOSE" tokens. A CLOSE token indicates that the parser should not
 //! parse any more blocks. This is similar to but different from the actual end
-//! of the token stream: Whereas the end of the stream obviously means that the
+//! of the token stream: whereas the end of the stream obviously means that the
 //! parser can't parse anything more, the CLOSE token allows the parser to keep
 //! parsing an open paragraph but nothing else. (CLOSE tokens are used to
-//! implement lazy continuation lines.)
+//! implement lazy continuation lines for blockquotes.)
+//!
+//! This parser also sets a flag when it is parsing something that cannot be
+//! interrupted by the start of a new container. This flag lets the container
+//! block parser know that ">" tokens, for example, cannot begin a blockquote
+//! in the current context.
 
 const std = @import("std");
 const fmt = std.fmt;
@@ -42,7 +51,11 @@ const Error = error{
 const close_token_panic_msg = "encountered unexpected CLOSE token";
 
 it: *TokenIterator(BlockTokenType),
-interruptible: bool = true, // Whether a new container block can open now
+/// Whether a new container block can open now.
+///
+/// Set this to false when parsing something (like a code block) where all
+/// tokens must be consumed by the current leaf block parser.
+interruptible: bool = true,
 
 const Self = @This();
 
@@ -371,9 +384,9 @@ fn parseThematicBreak(
     return node;
 }
 
-/// A parsed node that could end parsing.
-///
-/// TODO: Why exactly do we need this again?
+/// Represents the result of parsing a node that can be interrupted by a CLOSE
+/// token. E.g.: a fenced code block ends when its container closes and the
+/// leaf block parser should end parsing since the container is now closed.
 const EndingParseResult = struct {
     maybe_node: ?*ast.Node = null,
     should_end: bool = false,
