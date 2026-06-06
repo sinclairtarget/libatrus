@@ -86,12 +86,11 @@ pub fn TokenIterator(comptime TokenType: type) type {
             std.debug.assert(self.tokens.items.len > 0);
 
             // Copy unconsumed tokens to beginning of list
+            // Is there a way to do this with ArrayList's API? I haven't been
+            // able to figure it out.
             const unparsed = self.tokens.items[self.token_index..];
-            self.tokens.replaceRangeAssumeCapacity(
-                0,
-                self.tokens.items.len,
-                unparsed,
-            );
+            @memmove(self.tokens.items[0..unparsed.len], unparsed);
+            self.tokens.shrinkRetainingCapacity(unparsed.len);
             self.token_index = 0;
         }
 
