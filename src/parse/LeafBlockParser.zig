@@ -530,7 +530,7 @@ fn parseFencedCode(
     };
 
     const fail: EndingParseResult = .{ .maybe_node = null };
-    var should_end = false;
+    var saw_close_token = false;
 
     // Opening code fence line
     const maybe_whitespace = try self.consumeOptionalLeadingWhitespace(scratch);
@@ -624,7 +624,7 @@ fn parseFencedCode(
             .close => {
                 // Container is closing, can't keep parsing fenced code
                 _ = try self.it.consume(scratch, &.{.close});
-                should_end = true;
+                saw_close_token = true;
                 break :loop;
             },
             else => |t| {
@@ -650,7 +650,7 @@ fn parseFencedCode(
         }
     }
 
-    if (!should_end) {
+    if (!saw_close_token) {
         // Closing code fence line
         // Not needed if file ends
         _ = try self.consumeOptionalLeadingWhitespace(scratch);
@@ -680,7 +680,7 @@ fn parseFencedCode(
     did_parse = true;
     return .{
         .maybe_node = node,
-        .should_end = should_end,
+        .should_end = saw_close_token,
     };
 }
 
@@ -1211,7 +1211,7 @@ fn parseMySTDirective(
     };
 
     const fail: EndingParseResult = .{ .maybe_node = null };
-    var should_end = false;
+    var saw_close_token = false;
 
     // Opening code fence line
     const maybe_whitespace = try self.consumeOptionalLeadingWhitespace(scratch);
@@ -1321,7 +1321,7 @@ fn parseMySTDirective(
             .close => {
                 // Container is closing, can't keep parsing directive
                 _ = try self.it.consume(scratch, &.{.close});
-                should_end = true;
+                saw_close_token = true;
                 break :loop;
             },
             else => |t| {
@@ -1349,7 +1349,7 @@ fn parseMySTDirective(
     const value = std.mem.trim(u8, content.written(), " \t\n");
 
     // Closing fence
-    if (!should_end) {
+    if (!saw_close_token) {
         // Closing fence line
         // Not needed if file ends
         _ = try self.consumeOptionalLeadingWhitespace(scratch);
@@ -1377,7 +1377,7 @@ fn parseMySTDirective(
         };
         return .{
             .maybe_node = error_node,
-            .should_end = should_end,
+            .should_end = saw_close_token,
         };
     }
 
@@ -1405,7 +1405,7 @@ fn parseMySTDirective(
     };
     return .{
         .maybe_node = node,
-        .should_end = should_end,
+        .should_end = saw_close_token,
     };
 }
 
@@ -1476,7 +1476,7 @@ const EndingScanResult = struct {
 /// token to parse everything after it in the line.)
 fn scanParagraphText(self: *Self, scratch: Allocator) !EndingScanResult {
     var running_text = Io.Writer.Allocating.init(scratch);
-    var should_end = false;
+    var saw_close_token = false;
 
     const start_token = try self.it.peek(scratch) orelse return .{};
     _ = try self.it.consume(scratch, &.{start_token.token_type});
@@ -1522,11 +1522,11 @@ fn scanParagraphText(self: *Self, scratch: Allocator) !EndingScanResult {
                 },
                 .close => {
                     _ = try self.it.consume(scratch, &.{.close});
-                    should_end = true;
+                    saw_close_token = true;
                     continue :fsm .maybe_close;
                 },
                 else => {
-                    should_end = false;
+                    saw_close_token = false;
                     continue :fsm .open;
                 },
             }
@@ -1536,7 +1536,7 @@ fn scanParagraphText(self: *Self, scratch: Allocator) !EndingScanResult {
     const text_value = try running_text.toOwnedSlice();
     return .{
         .maybe_text_value = text_value,
-        .should_end = should_end,
+        .should_end = saw_close_token,
     };
 }
 
