@@ -5,8 +5,6 @@ const Io = std.Io;
 /// Tokens recognized by the block parsers.
 pub const BlockTokenType = enum {
     // --- single-character tokens ---
-    exclamation_mark, // used only for HTML parsing
-    hyphen, // used only for HTML parsing
     colon,
     l_square_bracket,
     r_square_bracket,
@@ -19,6 +17,9 @@ pub const BlockTokenType = enum {
     single_quote,
     double_quote,
     newline,
+    exclamation_mark, // used only for HTML parsing
+    question_mark, // used only for HTML parsing
+    hyphen, // used only for HTML parsing
     close, // special token inserted by container block parser
     // --- multi-charcter tokens ---
     text,
