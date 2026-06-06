@@ -1073,7 +1073,12 @@ fn parseHTML(
     alloc: Allocator,
     scratch: Allocator,
 ) !EndingParseResult {
-    const result = try self.parseHTMLComment(alloc, scratch);
+    var result = try self.parseHTMLComment(alloc, scratch);
+    if (result.maybe_node) |_| {
+        return result;
+    }
+
+    result = try self.parseHTMLProcessingInstruction(alloc, scratch);
     if (result.maybe_node) |_| {
         return result;
     }
@@ -1141,6 +1146,108 @@ fn parseHTMLComment(
                     _ = try self.it.consume(scratch, &.{.hyphen});
                     _ = try self.it.consume(scratch, &.{.r_angle_bracket});
                     _ = try content.writer.write("-->");
+                    break;
+                } else {
+                    _ = try self.it.consume(scratch, &.{.hyphen});
+                    _ = try content.writer.write(token.lexeme);
+                }
+            },
+            .close => {
+                _ = try self.it.consume(scratch, &.{.close});
+                saw_close_token = true;
+                break;
+            },
+            .newline => {
+                _ = try self.it.consume(scratch, &.{.newline});
+                _ = try content.writer.write("\n");
+            },
+            else => |t| {
+                _ = try self.it.consume(scratch, &.{t});
+                _ = try content.writer.write(token.lexeme);
+            },
+        }
+    }
+
+    // Handle content trailing comment block end
+    if (!saw_close_token) {
+        while (try self.it.peek(scratch)) |token| {
+            switch (token.token_type) {
+                .newline => {
+                    _ = try self.it.consume(scratch, &.{.newline});
+                    break;
+                },
+                else => |t| {
+                    _ = try self.it.consume(scratch, &.{t});
+                    _ = try content.writer.write(token.lexeme);
+                },
+            }
+        }
+    }
+
+    const owned_value = try alloc.dupeZ(u8, content.written());
+    errdefer alloc.free(owned_value);
+
+    const node = try alloc.create(ast.Node);
+    node.* = .{
+        .html = .{
+            .value = owned_value,
+        },
+    };
+
+    did_parse = true;
+    return .{
+        .maybe_node = node,
+        .should_end = saw_close_token,
+    };
+}
+
+/// Parses an HTML block that begins with "<?" and ends with "?>".
+///
+/// Trailing content in the last line is included in the HTML block.
+fn parseHTMLProcessingInstruction(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) !EndingParseResult {
+    var did_parse = false;
+    const checkpoint_index = self.it.checkpoint();
+    defer if (!did_parse) {
+        self.it.backtrack(checkpoint_index);
+    };
+
+    const fail: EndingParseResult = .{ .maybe_node = null };
+    var saw_close_token = false;
+    var content = Io.Writer.Allocating.init(scratch);
+
+    // start condition
+    _ = try self.it.consume(scratch, &.{ .l_angle_bracket }) orelse
+        return fail;
+    _ = try self.it.consume(scratch, &.{ .question_mark }) orelse
+        return fail;
+    _ = try content.writer.write("<?");
+
+    // Cannot start a new container in an HTML block.
+    self.interruptible = false;
+    defer self.interruptible = true;
+
+    // Handle content within processing instruction block
+    while (try self.it.peek(scratch)) |token| {
+        switch (token.token_type) {
+            .question_mark => {
+                const have_end_condition: bool = blk: {
+                    if (try self.it.peekAhead(scratch, 2)) |t| {
+                        if (t.token_type != .r_angle_bracket) {
+                            break :blk false;
+                        }
+                    }
+
+                    break :blk true;
+                };
+
+                if (have_end_condition) {
+                    _ = try self.it.consume(scratch, &.{.question_mark});
+                    _ = try self.it.consume(scratch, &.{.r_angle_bracket});
+                    _ = try content.writer.write("?>");
                     break;
                 } else {
                     _ = try self.it.consume(scratch, &.{.hyphen});
@@ -2707,6 +2814,133 @@ test "HTML comment interrupts paragraphs" {
     try testing.expectEqual(.html, @as(ast.NodeType, html_node.*));
     try testing.expectEqualStrings(
         "<!-- this is a comment on the very next line -->",
+        html_node.html.value,
+    );
+}
+
+test "HTML processing instruction" {
+    const md =
+        \\<?xml-stylesheet type="text/xsl" href="style.xsl"?>
+        \\<?
+        \\bimbat zam
+        \\?>
+        \\
+    ;
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksMd(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(2, nodes.len);
+
+    const html_node_1 = nodes[0];
+    try testing.expectEqual(.html, @as(ast.NodeType, html_node_1.*));
+    try testing.expectEqualStrings(
+        "<?xml-stylesheet type=\"text/xsl\" href=\"style.xsl\"?>",
+        html_node_1.html.value,
+    );
+
+    const html_node_2 = nodes[1];
+    try testing.expectEqual(.html, @as(ast.NodeType, html_node_2.*));
+    try testing.expectEqualStrings(
+        "<?\nbimbat zam\n?>",
+        html_node_2.html.value,
+    );
+}
+
+test "HTML processing instruction with trailing text" {
+    const md =
+        \\<?
+        \\bimbat zam
+        \\?> foobar
+        \\
+    ;
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksMd(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(1, nodes.len);
+
+    const html_node = nodes[0];
+    try testing.expectEqual(.html, @as(ast.NodeType, html_node.*));
+    try testing.expectEqualStrings(
+        "<?\nbimbat zam\n?> foobar",
+        html_node.html.value,
+    );
+}
+
+test "HTML processing instruction at container close" {
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksTokens(&.{
+        .{ .token_type = .l_angle_bracket },
+        .{ .token_type = .question_mark },
+        .{
+            .token_type = .text,
+            .lexeme = "foo",
+        },
+        .{ .token_type = .close },
+    }, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(1, nodes.len);
+
+    const html_node = nodes[0];
+    try testing.expectEqual(.html, @as(ast.NodeType, html_node.*));
+    try testing.expectEqualStrings(
+        "<?foo",
+        html_node.html.value,
+    );
+}
+
+test "HTML processing instruction interrupts paragraphs" {
+    const md =
+        \\Hi this is a paragraph.
+        \\<?xml-stylesheet foobar ?>
+        \\
+    ;
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksMd(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(2, nodes.len);
+
+    const p_node = nodes[0];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node.*));
+
+    const html_node = nodes[1];
+    try testing.expectEqual(.html, @as(ast.NodeType, html_node.*));
+    try testing.expectEqualStrings(
+        "<?xml-stylesheet foobar ?>",
         html_node.html.value,
     );
 }
