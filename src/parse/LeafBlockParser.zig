@@ -966,21 +966,7 @@ fn scanLinkDefDestination(self: *Self, scratch: Allocator) !?[]const u8 {
                 .tilde_fence,
                 .colon_fence,
                 => return null,
-                .text,
-                .pound,
-                .colon,
-                .l_square_bracket,
-                .r_square_bracket,
-                .l_angle_bracket,
-                .r_angle_bracket,
-                .l_brace,
-                .r_brace,
-                .double_quote,
-                .single_quote,
-                .exclamation_mark,
-                .question_mark,
-                .hyphen
-                => |t| {
+                .text, .pound, .colon, .l_square_bracket, .r_square_bracket, .l_angle_bracket, .r_angle_bracket, .l_brace, .r_brace, .double_quote, .single_quote, .exclamation_mark, .question_mark, .hyphen => |t| {
                     _ = try self.it.consume(scratch, &.{t});
                     if (util.strings.containsAsciiControl(token.lexeme)) {
                         return null;
@@ -1109,12 +1095,12 @@ fn parseHTMLComment(
     var content = Io.Writer.Allocating.init(scratch);
 
     // start condition
-    _ = try self.it.consume(scratch, &.{ .l_angle_bracket }) orelse
+    _ = try self.it.consume(scratch, &.{.l_angle_bracket}) orelse
         return fail;
-    _ = try self.it.consume(scratch, &.{ .exclamation_mark }) orelse
+    _ = try self.it.consume(scratch, &.{.exclamation_mark}) orelse
         return fail;
-    _ = try self.it.consume(scratch, &.{ .hyphen }) orelse return fail;
-    _ = try self.it.consume(scratch, &.{ .hyphen }) orelse return fail;
+    _ = try self.it.consume(scratch, &.{.hyphen}) orelse return fail;
+    _ = try self.it.consume(scratch, &.{.hyphen}) orelse return fail;
     _ = try content.writer.write("<!--");
 
     // Cannot start a new container in an HTML block.
@@ -1220,9 +1206,9 @@ fn parseHTMLProcessingInstruction(
     var content = Io.Writer.Allocating.init(scratch);
 
     // start condition
-    _ = try self.it.consume(scratch, &.{ .l_angle_bracket }) orelse
+    _ = try self.it.consume(scratch, &.{.l_angle_bracket}) orelse
         return fail;
-    _ = try self.it.consume(scratch, &.{ .question_mark }) orelse
+    _ = try self.it.consume(scratch, &.{.question_mark}) orelse
         return fail;
     _ = try content.writer.write("<?");
 

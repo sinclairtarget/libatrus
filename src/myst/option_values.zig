@@ -189,11 +189,11 @@ fn testParseCommaSeparatedRanges(s: []const u8, expected: []const u16) !void {
 }
 
 test "parse single int" {
-    try testParseCommaSeparatedRanges("427", &.{ 427 });
+    try testParseCommaSeparatedRanges("427", &.{427});
 }
 
 test "parse single int with trailing comma" {
-    try testParseCommaSeparatedRanges("4,", &.{ 4 });
+    try testParseCommaSeparatedRanges("4,", &.{4});
 }
 
 test "parse comma-separated ints with duplicate" {
@@ -212,16 +212,16 @@ test "parse comma-separated ranges with overlaps" {
 }
 
 test "parse overflow" {
-    try testParseCommaSeparatedRanges("65535", &.{ 65535 });
+    try testParseCommaSeparatedRanges("65535", &.{65535});
 
     // saturate at max
-    try testParseCommaSeparatedRanges("65536", &.{ 65535 });
-    try testParseCommaSeparatedRanges("6553714124", &.{ 65535 });
+    try testParseCommaSeparatedRanges("65536", &.{65535});
+    try testParseCommaSeparatedRanges("6553714124", &.{65535});
 }
 
 test "parse failures" {
     try testParseCommaSeparatedRanges("%^&$!gh", &.{});
-    try testParseCommaSeparatedRanges("-4, 5", &.{ 5 });
-    try testParseCommaSeparatedRanges("3-, 5,,,", &.{ 5 });
-    try testParseCommaSeparatedRanges("3-4-7, 5,,,", &.{ 5 });
+    try testParseCommaSeparatedRanges("-4, 5", &.{5});
+    try testParseCommaSeparatedRanges("3-, 5,,,", &.{5});
+    try testParseCommaSeparatedRanges("3-4-7, 5,,,", &.{5});
 }

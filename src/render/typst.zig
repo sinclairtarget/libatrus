@@ -16,7 +16,8 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) RenderError!void {
     switch (node.allowedChildren()) {
         .yes => |branch_node| {
             switch (branch_node) {
-                .root,  => |n| {
+                .root,
+                => |n| {
                     for (n.children) |child| {
                         _ = try renderNode(child, out);
                     }

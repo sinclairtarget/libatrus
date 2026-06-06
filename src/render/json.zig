@@ -246,7 +246,7 @@ test "myst directive" {
 
     var buf: [1024]u8 = undefined;
     var writer: Io.Writer = .fixed(&buf);
-    try render(&directive, &writer, .{.whitespace = .indent_2});
+    try render(&directive, &writer, .{ .whitespace = .indent_2 });
 
     const expected =
         \\{
