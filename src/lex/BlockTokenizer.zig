@@ -126,6 +126,7 @@ fn matchSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
         '!' => .exclamation_mark,
         '?' => .question_mark,
         '-' => .hyphen,
+        '/' => .slash,
         else => return null,
     };
 
@@ -603,6 +604,7 @@ test "link reference definition" {
         .r_square_bracket,
         .colon,
         .whitespace,
+        .slash,
         .text,
         .whitespace,
         .double_quote,

@@ -20,6 +20,7 @@ pub const BlockTokenType = enum {
     exclamation_mark, // used only for HTML parsing
     question_mark, // used only for HTML parsing
     hyphen, // used only for HTML parsing
+    slash, // used only for HTML parsing
     close, // special token inserted by container block parser
     // --- multi-charcter tokens ---
     text,

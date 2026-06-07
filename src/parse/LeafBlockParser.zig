@@ -924,6 +924,7 @@ fn scanLinkDefDestination(self: *Self, scratch: Allocator) !?[]const u8 {
                 .exclamation_mark,
                 .question_mark,
                 .hyphen,
+                .slash,
                 => |t| {
                     _ = try self.it.consume(scratch, &.{t});
                     const value = try resolveText(scratch, token);
@@ -966,7 +967,22 @@ fn scanLinkDefDestination(self: *Self, scratch: Allocator) !?[]const u8 {
                 .tilde_fence,
                 .colon_fence,
                 => return null,
-                .text, .pound, .colon, .l_square_bracket, .r_square_bracket, .l_angle_bracket, .r_angle_bracket, .l_brace, .r_brace, .double_quote, .single_quote, .exclamation_mark, .question_mark, .hyphen => |t| {
+                .text,
+                .pound,
+                .colon,
+                .l_square_bracket,
+                .r_square_bracket,
+                .l_angle_bracket,
+                .r_angle_bracket,
+                .l_brace,
+                .r_brace,
+                .double_quote,
+                .single_quote,
+                .exclamation_mark,
+                .question_mark,
+                .hyphen,
+                .slash,
+                => |t| {
                     _ = try self.it.consume(scratch, &.{t});
                     if (util.strings.containsAsciiControl(token.lexeme)) {
                         return null;
