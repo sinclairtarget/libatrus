@@ -1075,7 +1075,12 @@ fn parseHTML(
     alloc: Allocator,
     scratch: Allocator,
 ) !EndingParseResult {
-    var result = try self.parseHTMLComment(alloc, scratch);
+    var result = try self.parseHTMLLiteralContent(alloc, scratch);
+    if (result.maybe_node) |_| {
+        return result;
+    }
+
+    result = try self.parseHTMLComment(alloc, scratch);
     if (result.maybe_node) |_| {
         return result;
     }
@@ -1100,6 +1105,154 @@ fn parseHTML(
     };
 }
 
+fn isLiteralContentTagName(s: []const u8) bool {
+    if (std.ascii.eqlIgnoreCase(s, "pre") or
+        std.ascii.eqlIgnoreCase(s, "script") or
+        std.ascii.eqlIgnoreCase(s, "style") or
+        std.ascii.eqlIgnoreCase(s, "textarea"))
+    {
+        return true;
+    }
+
+    return false;
+}
+
+/// Parse a pre, script, style, or textarea HTML element. These can contain
+/// blank lines.
+fn parseHTMLLiteralContent(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) !EndingParseResult {
+    var did_parse = false;
+    const checkpoint_index = self.it.checkpoint();
+    defer if (!did_parse) {
+        self.it.backtrack(checkpoint_index);
+    };
+
+    const fail: EndingParseResult = .{ .maybe_node = null };
+    var saw_close_token = false;
+    var content = Io.Writer.Allocating.init(scratch);
+
+    // start condition
+    _ = try self.it.consume(scratch, &.{.l_angle_bracket}) orelse return fail;
+    const open_tag_token = try self.it.consume(scratch, &.{.text}) orelse
+        return fail;
+    if (!isLiteralContentTagName(open_tag_token.lexeme)) {
+        return fail;
+    }
+    const following_token = try self.it.consume(
+        scratch,
+        &.{ .whitespace, .r_angle_bracket, .newline },
+    ) orelse return fail;
+    if (following_token.token_type == .newline) { // TODO: newline lexeme?
+        _ = try content.writer.print("<{s}\n", .{ open_tag_token.lexeme });
+    } else {
+        _ = try content.writer.print(
+            "<{s}{s}",
+            .{ open_tag_token.lexeme, following_token.lexeme },
+        );
+    }
+
+    // Cannot start a new container in an HTML block.
+    self.interruptible = false;
+    defer self.interruptible = true;
+
+    // Handle content within block
+    while (try self.it.peek(scratch)) |token| {
+        switch (token.token_type) {
+            .l_angle_bracket => {
+                const have_end_condition: bool = blk: {
+                    if (try self.it.peekAhead(scratch, 2)) |t| {
+                        if (t.token_type != .slash) {
+                            break :blk false;
+                        }
+                    }
+
+                    if (try self.it.peekAhead(scratch, 3)) |t| {
+                        if (t.token_type != .text or
+                            !isLiteralContentTagName(t.lexeme))
+                        {
+                            break :blk false;
+                        }
+                    }
+
+                    if (try self.it.peekAhead(scratch, 4)) |t| {
+                        if (t.token_type != .r_angle_bracket) {
+                            break :blk false;
+                        }
+                    }
+
+                    break :blk true;
+                };
+
+                if (have_end_condition) {
+                    _ = try self.it.consume(scratch, &.{.l_angle_bracket});
+                    _ = try self.it.consume(scratch, &.{.slash});
+                    const close_tag_token = try self.it.consume(
+                        scratch,
+                        &.{.text},
+                    ) orelse unreachable;
+                    _ = try self.it.consume(scratch, &.{.r_angle_bracket});
+                    _ = try content.writer.print(
+                        "</{s}>",
+                        .{ close_tag_token.lexeme },
+                    );
+                    break;
+                } else {
+                    _ = try self.it.consume(scratch, &.{.l_angle_bracket});
+                    _ = try content.writer.write(token.lexeme);
+                }
+            },
+            .close => {
+                _ = try self.it.consume(scratch, &.{.close});
+                saw_close_token = true;
+                break;
+            },
+            .newline => {
+                _ = try self.it.consume(scratch, &.{.newline});
+                _ = try content.writer.write("\n");
+            },
+            else => |t| {
+                _ = try self.it.consume(scratch, &.{t});
+                _ = try content.writer.write(token.lexeme);
+            },
+        }
+    }
+
+    // Handle content trailing comment block end
+    if (!saw_close_token) {
+        while (try self.it.peek(scratch)) |token| {
+            switch (token.token_type) {
+                .newline => {
+                    _ = try self.it.consume(scratch, &.{.newline});
+                    break;
+                },
+                else => |t| {
+                    _ = try self.it.consume(scratch, &.{t});
+                    _ = try content.writer.write(token.lexeme);
+                },
+            }
+        }
+    }
+
+    const owned_value = try alloc.dupeZ(u8, content.written());
+    errdefer alloc.free(owned_value);
+
+    const node = try alloc.create(ast.Node);
+    node.* = .{
+        .html = .{
+            .value = owned_value,
+        },
+    };
+
+    did_parse = true;
+    return .{
+        .maybe_node = node,
+        .should_end = saw_close_token,
+    };
+}
+
 /// Parse HTML comment.
 ///
 /// Start condition is "<!--" (at the beginning of a line). End condition is
@@ -1121,10 +1274,8 @@ fn parseHTMLComment(
     var content = Io.Writer.Allocating.init(scratch);
 
     // start condition
-    _ = try self.it.consume(scratch, &.{.l_angle_bracket}) orelse
-        return fail;
-    _ = try self.it.consume(scratch, &.{.exclamation_mark}) orelse
-        return fail;
+    _ = try self.it.consume(scratch, &.{.l_angle_bracket}) orelse return fail;
+    _ = try self.it.consume(scratch, &.{.exclamation_mark}) orelse return fail;
     _ = try self.it.consume(scratch, &.{.hyphen}) orelse return fail;
     _ = try self.it.consume(scratch, &.{.hyphen}) orelse return fail;
     _ = try content.writer.write("<!--");
@@ -2898,6 +3049,60 @@ test "close token in MyST directive" {
     try testing.expectEqualStrings(
         "bar",
         directive_node.myst_directive.value,
+    );
+}
+
+test "HTML literal content tag" {
+    const md =
+        \\<textarea>
+        \\Hello, foobar
+        \\
+        \\That was an empty line.
+        \\</textarea>
+        \\<pre>
+        \\def foo():
+        \\  pass</pre>
+        \\<script>console.log("Hello");</script>
+        \\<style></style>
+        \\
+    ;
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksMd(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(4, nodes.len);
+
+    const html_node_1 = nodes[0];
+    try testing.expectEqual(.html, @as(ast.NodeType, html_node_1.*));
+    try testing.expectEqualStrings(
+        "<textarea>\nHello, foobar\n\nThat was an empty line.\n</textarea>",
+        html_node_1.html.value,
+    );
+    const html_node_2 = nodes[1];
+    try testing.expectEqual(.html, @as(ast.NodeType, html_node_2.*));
+    try testing.expectEqualStrings(
+        "<pre>\ndef foo():\n  pass</pre>",
+        html_node_2.html.value,
+    );
+    const html_node_3 = nodes[2];
+    try testing.expectEqual(.html, @as(ast.NodeType, html_node_3.*));
+    try testing.expectEqualStrings(
+        "<script>console.log(\"Hello\");</script>",
+        html_node_3.html.value,
+    );
+    const html_node_4 = nodes[3];
+    try testing.expectEqual(.html, @as(ast.NodeType, html_node_4.*));
+    try testing.expectEqualStrings(
+        "<style></style>",
+        html_node_4.html.value,
     );
 }
 
