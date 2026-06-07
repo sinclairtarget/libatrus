@@ -1074,6 +1074,11 @@ fn parseHTML(
         return result;
     }
 
+    result = try self.parseHTMLCDATA(alloc, scratch);
+    if (result.maybe_node) |_| {
+        return result;
+    }
+
     return .{
         .maybe_node = null,
     };
@@ -1239,7 +1244,7 @@ fn parseHTMLProcessingInstruction(
                     _ = try content.writer.write("?>");
                     break;
                 } else {
-                    _ = try self.it.consume(scratch, &.{.hyphen});
+                    _ = try self.it.consume(scratch, &.{.question_mark});
                     _ = try content.writer.write(token.lexeme);
                 }
             },
@@ -1332,6 +1337,119 @@ fn parseHTMLDeclaration(
                 _ = try self.it.consume(scratch, &.{.r_angle_bracket});
                 _ = try content.writer.write(">");
                 break;
+            },
+            .close => {
+                _ = try self.it.consume(scratch, &.{.close});
+                saw_close_token = true;
+                break;
+            },
+            .newline => {
+                _ = try self.it.consume(scratch, &.{.newline});
+                _ = try content.writer.write("\n");
+            },
+            else => |t| {
+                _ = try self.it.consume(scratch, &.{t});
+                _ = try content.writer.write(token.lexeme);
+            },
+        }
+    }
+
+    // Handle content trailing content
+    if (!saw_close_token) {
+        while (try self.it.peek(scratch)) |token| {
+            switch (token.token_type) {
+                .newline => {
+                    _ = try self.it.consume(scratch, &.{.newline});
+                    break;
+                },
+                else => |t| {
+                    _ = try self.it.consume(scratch, &.{t});
+                    _ = try content.writer.write(token.lexeme);
+                },
+            }
+        }
+    }
+
+    const owned_value = try alloc.dupeZ(u8, content.written());
+    errdefer alloc.free(owned_value);
+
+    const node = try alloc.create(ast.Node);
+    node.* = .{
+        .html = .{
+            .value = owned_value,
+        },
+    };
+
+    did_parse = true;
+    return .{
+        .maybe_node = node,
+        .should_end = saw_close_token,
+    };
+}
+
+fn parseHTMLCDATA(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) !EndingParseResult {
+    var did_parse = false;
+    const checkpoint_index = self.it.checkpoint();
+    defer if (!did_parse) {
+        self.it.backtrack(checkpoint_index);
+    };
+
+    const fail: EndingParseResult = .{ .maybe_node = null };
+    var saw_close_token = false;
+    var content = Io.Writer.Allocating.init(scratch);
+
+    // start condition
+    _ = try self.it.consume(scratch, &.{.l_angle_bracket}) orelse return fail;
+    _ = try self.it.consume(scratch, &.{.exclamation_mark}) orelse return fail;
+    _ = try self.it.consume(scratch, &.{.l_square_bracket}) orelse return fail;
+    {
+        const token = try self.it.consume(scratch, &.{.text}) orelse
+            return fail;
+        if (!std.mem.eql(u8, token.lexeme, "CDATA")) {
+            return fail;
+        }
+    }
+    _ = try self.it.consume(scratch, &.{.l_square_bracket}) orelse return fail;
+    _ = try content.writer.write("<![CDATA[");
+
+    // Cannot start a new container in an HTML block.
+    self.interruptible = false;
+    defer self.interruptible = true;
+
+    // Handle content within declaration block
+    while (try self.it.peek(scratch)) |token| {
+        switch (token.token_type) {
+            .r_square_bracket => {
+                const have_end_condition: bool = blk: {
+                    if (try self.it.peekAhead(scratch, 2)) |t| {
+                        if (t.token_type != .r_square_bracket) {
+                            break :blk false;
+                        }
+                    }
+
+                    if (try self.it.peekAhead(scratch, 3)) |t| {
+                        if (t.token_type != .r_angle_bracket) {
+                            break :blk false;
+                        }
+                    }
+
+                    break :blk true;
+                };
+
+                if (have_end_condition) {
+                    _ = try self.it.consume(scratch, &.{.r_square_bracket});
+                    _ = try self.it.consume(scratch, &.{.r_square_bracket});
+                    _ = try self.it.consume(scratch, &.{.r_angle_bracket});
+                    _ = try content.writer.write("]]>");
+                    break;
+                } else {
+                    _ = try self.it.consume(scratch, &.{.r_square_bracket});
+                    _ = try content.writer.write(token.lexeme);
+                }
             },
             .close => {
                 _ = try self.it.consume(scratch, &.{.close});
@@ -3144,6 +3262,139 @@ test "HTML declaration interrupts paragraphs" {
     try testing.expectEqual(.html, @as(ast.NodeType, html_node.*));
     try testing.expectEqualStrings(
         "<!DOCTYPE html>",
+        html_node.html.value,
+    );
+}
+
+test "HTML CDATA" {
+    const md =
+        \\<![CDATA[foobar]]>
+        \\<![CDATA[
+        \\bimbat zam
+        \\]]>
+        \\
+    ;
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksMd(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(2, nodes.len);
+
+    const html_node_1 = nodes[0];
+    try testing.expectEqual(.html, @as(ast.NodeType, html_node_1.*));
+    try testing.expectEqualStrings(
+        "<![CDATA[foobar]]>",
+        html_node_1.html.value,
+    );
+
+    const html_node_2 = nodes[1];
+    try testing.expectEqual(.html, @as(ast.NodeType, html_node_2.*));
+    try testing.expectEqualStrings(
+        "<![CDATA[\nbimbat zam\n]]>",
+        html_node_2.html.value,
+    );
+}
+
+test "HTML CDATA with trailing text" {
+    const md =
+        \\<![CDATA[
+        \\bimbat zam
+        \\]]> foobar
+        \\
+    ;
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksMd(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(1, nodes.len);
+
+    const html_node = nodes[0];
+    try testing.expectEqual(.html, @as(ast.NodeType, html_node.*));
+    try testing.expectEqualStrings(
+        "<![CDATA[\nbimbat zam\n]]> foobar",
+        html_node.html.value,
+    );
+}
+
+test "HTML CDATA at container close" {
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksTokens(&.{
+        .{ .token_type = .l_angle_bracket },
+        .{ .token_type = .exclamation_mark },
+        .{ .token_type = .l_square_bracket },
+        .{
+            .token_type = .text,
+            .lexeme = "CDATA",
+        },
+        .{ .token_type = .l_square_bracket },
+        .{
+            .token_type = .text,
+            .lexeme = "foo",
+        },
+        .{ .token_type = .close },
+    }, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(1, nodes.len);
+
+    const html_node = nodes[0];
+    try testing.expectEqual(.html, @as(ast.NodeType, html_node.*));
+    try testing.expectEqualStrings(
+        "<![CDATA[foo",
+        html_node.html.value,
+    );
+}
+
+test "HTML CDATA interrupts paragraphs" {
+    const md =
+        \\Hi this is a paragraph.
+        \\<![CDATA[foobar]]>
+        \\
+    ;
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksMd(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(2, nodes.len);
+
+    const p_node = nodes[0];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node.*));
+
+    const html_node = nodes[1];
+    try testing.expectEqual(.html, @as(ast.NodeType, html_node.*));
+    try testing.expectEqualStrings(
+        "<![CDATA[foobar]]>",
         html_node.html.value,
     );
 }
