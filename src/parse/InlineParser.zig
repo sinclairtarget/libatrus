@@ -3349,19 +3349,8 @@ fn scanHTMLTagName(self: *Self, scratch: Allocator) !?[]const u8 {
     }
 
     const tag_name = try running_text.toOwnedSlice();
-
-    if (tag_name.len == 0) {
+    if (!cmark.html.isValidTagName(tag_name)) {
         return null;
-    }
-
-    if (!std.ascii.isAlphabetic(tag_name[0])) {
-        return null;
-    }
-
-    for (1..tag_name.len) |i| {
-        if (!std.ascii.isAlphanumeric(tag_name[i]) and tag_name[i] != '-') {
-            return null;
-        }
     }
 
     did_parse = true;
@@ -3467,23 +3456,8 @@ fn scanHTMLAttrName(self: *Self, scratch: Allocator) !?[]const u8 {
     }
 
     const attr_name = try running_text.toOwnedSlice();
-
-    if (attr_name.len == 0) {
+    if (!cmark.html.isValidAttributeName(attr_name)) {
         return null;
-    }
-
-    if (!std.ascii.isAlphabetic(attr_name[0]) and
-        !util.strings.containsScalar("_:", attr_name[0]))
-    {
-        return null;
-    }
-
-    for (1..attr_name.len) |i| {
-        if (!std.ascii.isAlphanumeric(attr_name[i]) and
-            !util.strings.containsScalar("_:.-", attr_name[i]))
-        {
-            return null;
-        }
     }
 
     did_parse = true;
