@@ -1105,6 +1105,11 @@ fn parseHTML(
         return result;
     }
 
+    result = try self.parseHTMLUnknownTag(alloc, scratch);
+    if (result.maybe_node) |_| {
+        return result;
+    }
+
     return .{
         .maybe_node = null,
     };
@@ -1151,7 +1156,7 @@ fn parseHTMLLiteralContent(
         &.{ .whitespace, .r_angle_bracket, .newline },
     ) orelse return fail;
     if (following_token.token_type == .newline) { // TODO: newline lexeme?
-        _ = try content.writer.print("<{s}\n", .{ open_tag_token.lexeme });
+        _ = try content.writer.print("<{s}\n", .{open_tag_token.lexeme});
     } else {
         _ = try content.writer.print(
             "<{s}{s}",
@@ -1201,7 +1206,7 @@ fn parseHTMLLiteralContent(
                     _ = try self.it.consume(scratch, &.{.r_angle_bracket});
                     _ = try content.writer.print(
                         "</{s}>",
-                        .{ close_tag_token.lexeme },
+                        .{close_tag_token.lexeme},
                     );
                     break;
                 } else {
@@ -1836,6 +1841,102 @@ fn parseHTMLKnownTag(
     };
 }
 
+/// Parse HTML block beginning with an unrecognized HTML tag.
+///
+/// Has to begin with the whole tag alone on its own line. Can be an opening or
+/// closing tag. End condition is a blank line.
+fn parseHTMLUnknownTag(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) !EndingParseResult {
+    var did_parse = false;
+    const checkpoint_index = self.it.checkpoint();
+    defer if (!did_parse) {
+        self.it.backtrack(checkpoint_index);
+    };
+
+    const fail: EndingParseResult = .{ .maybe_node = null };
+    var saw_close_token = false;
+    var content = Io.Writer.Allocating.init(scratch);
+
+    // start condition
+    _ = try self.it.consume(scratch, &.{.l_angle_bracket}) orelse return fail;
+    _ = try content.writer.write("<");
+    if (try self.it.consume(scratch, &.{.slash})) |_| {
+        _ = try content.writer.write("/");
+    }
+
+    const open_tag_token = try self.it.consume(scratch, &.{.text}) orelse
+        return fail;
+    if (isLiteralContentHTMLTagName(open_tag_token.lexeme)) {
+        return fail; // Can't be any of these tags
+    }
+    _ = try content.writer.write(open_tag_token.lexeme);
+
+    if (try self.it.consume(scratch, &.{.slash})) |_| {
+        _ = try content.writer.write("/");
+    }
+    _ = try self.it.consume(scratch, &.{.r_angle_bracket}) orelse return fail;
+    _ = try content.writer.write(">");
+
+    if (try self.it.consume(scratch, &.{.whitespace})) |ws| {
+        _ = try content.writer.write(ws.lexeme);
+    }
+    if (try self.it.peek(scratch)) |next_token| {
+        if (next_token.token_type != .newline) {
+            return fail;
+        }
+    } else {
+        return fail;
+    }
+
+    // Cannot start a new container in an HTML block.
+    self.interruptible = false;
+    defer self.interruptible = true;
+
+    // Handle content within block
+    while (try self.it.peek(scratch)) |token| {
+        switch (token.token_type) {
+            .close => {
+                _ = try self.it.consume(scratch, &.{.close});
+                saw_close_token = true;
+                break;
+            },
+            .newline => {
+                _ = try self.it.consume(scratch, &.{.newline});
+                if (try self.it.consume(scratch, &.{.newline})) |_| {
+                    // end condition
+                    break;
+                } else if (try self.it.peek(scratch)) |_| {
+                    // Only write newline if we haven't reached end of document
+                    _ = try content.writer.write("\n");
+                }
+            },
+            else => |t| {
+                _ = try self.it.consume(scratch, &.{t});
+                _ = try content.writer.write(token.lexeme);
+            },
+        }
+    }
+
+    const owned_value = try alloc.dupeZ(u8, content.written());
+    errdefer alloc.free(owned_value);
+
+    const node = try alloc.create(ast.Node);
+    node.* = .{
+        .html = .{
+            .value = owned_value,
+        },
+    };
+
+    did_parse = true;
+    return .{
+        .maybe_node = node,
+        .should_end = saw_close_token,
+    };
+}
+
 /// Parses a MyST directive.
 ///
 /// MyST directives are delimited by "fences" of three or more colons or
@@ -2157,9 +2258,42 @@ fn scanParagraphText(self: *Self, scratch: Allocator) !EndingScanResult {
                 .rule_equals,
                 .backtick_fence,
                 .tilde_fence,
-                .l_angle_bracket,
                 => {
                     // These tokens can interrupt a paragraph.
+                    break :fsm;
+                },
+                .l_angle_bracket => {
+                    // Interrupts a paragraph, but only if this isn't a type 7
+                    // HTML block.
+                    if (try self.it.peekAhead(scratch, 2)) |first_token| {
+                        const maybe_tag_token = blk: {
+                            if (first_token.token_type == .slash) {
+                                if (try self.it.peekAhead(
+                                    scratch,
+                                    3,
+                                )) |second_token| {
+                                    if (second_token.token_type == .text) {
+                                        break :blk second_token;
+                                    }
+                                    break :blk null;
+                                } else {
+                                    break :blk null;
+                                }
+                            } else if (first_token.token_type == .text) {
+                                break :blk first_token;
+                            } else {
+                                break :blk null;
+                            }
+                        };
+                        const tag_token = maybe_tag_token orelse break :fsm;
+                        if (!isLiteralContentHTMLTagName(tag_token.lexeme) and
+                            !isKnownHTMLTagName(tag_token.lexeme))
+                        {
+                            saw_close_token = false;
+                            continue :fsm .open;
+                        }
+                    }
+
                     break :fsm;
                 },
                 .close => {
@@ -3805,7 +3939,6 @@ test "HTML known-tag" {
         \\
     ;
 
-
     var link_defs: LinkDefMap = .empty;
     defer link_defs.deinit(testing.allocator);
 
@@ -3881,5 +4014,85 @@ test "HTML known-tag at container close" {
     try testing.expectEqualStrings(
         "<div>",
         html_node.html.value,
+    );
+}
+
+test "HTML unknown tag" {
+    const md =
+        \\<foobar>
+        \\<p>Hello</p>
+        \\</foobar>
+        \\
+        \\Bim bam.
+        \\
+    ;
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksMd(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(2, nodes.len);
+
+    const html_node = nodes[0];
+    try testing.expectEqual(.html, @as(ast.NodeType, html_node.*));
+    try testing.expectEqualStrings(
+        "<foobar>\n<p>Hello</p>\n</foobar>",
+        html_node.html.value,
+    );
+
+    const p_node = nodes[1];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node.*));
+}
+
+// These HTML tags should get parsed by the inline parser (and appear within
+// the paragraph) and not the block parser.
+//
+// "This restriction is intended to prevent unwanted interpretation of long
+// tags inside a wrapped paragraph as starting HTML blocks."
+test "HTML unknown tag cannot interrupt paragraph" {
+    const md =
+        \\The tag name is long so it ends up alone on the next line
+        \\<supercalifragaliciousexpialidocious>
+        \\</supercalifragaliciousexpialidocious> even though this is supposed
+        \\to be inline HTML.
+        \\
+    ;
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksMd(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(1, nodes.len);
+
+    const p_node = nodes[0];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node.*));
+
+    // After the inline parser parses this, the paragraph will have more
+    // children. But when output from the LeafBlockParser, all paragraph
+    // content is still a single blob of text.
+    try testing.expectEqual(1, p_node.paragraph.children.len);
+
+    const text_node = p_node.paragraph.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
+    try testing.expectEqualStrings(
+        "The tag name is long so it ends up alone on the next line\n" ++
+            "<supercalifragaliciousexpialidocious>\n" ++
+            "</supercalifragaliciousexpialidocious> even though this is " ++
+            "supposed\nto be inline HTML.",
+        text_node.text.value,
     );
 }
