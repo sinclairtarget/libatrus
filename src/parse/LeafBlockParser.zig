@@ -1100,12 +1100,17 @@ fn parseHTML(
         return result;
     }
 
+    result = try self.parseHTMLKnownTag(alloc, scratch);
+    if (result.maybe_node) |_| {
+        return result;
+    }
+
     return .{
         .maybe_node = null,
     };
 }
 
-fn isLiteralContentTagName(s: []const u8) bool {
+fn isLiteralContentHTMLTagName(s: []const u8) bool {
     if (std.ascii.eqlIgnoreCase(s, "pre") or
         std.ascii.eqlIgnoreCase(s, "script") or
         std.ascii.eqlIgnoreCase(s, "style") or
@@ -1138,7 +1143,7 @@ fn parseHTMLLiteralContent(
     _ = try self.it.consume(scratch, &.{.l_angle_bracket}) orelse return fail;
     const open_tag_token = try self.it.consume(scratch, &.{.text}) orelse
         return fail;
-    if (!isLiteralContentTagName(open_tag_token.lexeme)) {
+    if (!isLiteralContentHTMLTagName(open_tag_token.lexeme)) {
         return fail;
     }
     const following_token = try self.it.consume(
@@ -1171,7 +1176,7 @@ fn parseHTMLLiteralContent(
 
                     if (try self.it.peekAhead(scratch, 3)) |t| {
                         if (t.token_type != .text or
-                            !isLiteralContentTagName(t.lexeme))
+                            !isLiteralContentHTMLTagName(t.lexeme))
                         {
                             break :blk false;
                         }
@@ -1647,6 +1652,170 @@ fn parseHTMLCDATA(
                     _ = try content.writer.write(token.lexeme);
                 },
             }
+        }
+    }
+
+    const owned_value = try alloc.dupeZ(u8, content.written());
+    errdefer alloc.free(owned_value);
+
+    const node = try alloc.create(ast.Node);
+    node.* = .{
+        .html = .{
+            .value = owned_value,
+        },
+    };
+
+    did_parse = true;
+    return .{
+        .maybe_node = node,
+        .should_end = saw_close_token,
+    };
+}
+
+fn isKnownHTMLTagName(s: []const u8) bool {
+    if (std.ascii.eqlIgnoreCase(s, "address") or
+        std.ascii.eqlIgnoreCase(s, "article") or
+        std.ascii.eqlIgnoreCase(s, "aside") or
+        std.ascii.eqlIgnoreCase(s, "base") or
+        std.ascii.eqlIgnoreCase(s, "basefont") or
+        std.ascii.eqlIgnoreCase(s, "blockquote") or
+        std.ascii.eqlIgnoreCase(s, "body") or
+        std.ascii.eqlIgnoreCase(s, "caption") or
+        std.ascii.eqlIgnoreCase(s, "center") or
+        std.ascii.eqlIgnoreCase(s, "col") or
+        std.ascii.eqlIgnoreCase(s, "colgroup") or
+        std.ascii.eqlIgnoreCase(s, "dd") or
+        std.ascii.eqlIgnoreCase(s, "details") or
+        std.ascii.eqlIgnoreCase(s, "dialog") or
+        std.ascii.eqlIgnoreCase(s, "dir") or
+        std.ascii.eqlIgnoreCase(s, "div") or
+        std.ascii.eqlIgnoreCase(s, "dl") or
+        std.ascii.eqlIgnoreCase(s, "dt") or
+        std.ascii.eqlIgnoreCase(s, "fieldset") or
+        std.ascii.eqlIgnoreCase(s, "figcaption") or
+        std.ascii.eqlIgnoreCase(s, "figure") or
+        std.ascii.eqlIgnoreCase(s, "footer") or
+        std.ascii.eqlIgnoreCase(s, "form") or
+        std.ascii.eqlIgnoreCase(s, "frame") or
+        std.ascii.eqlIgnoreCase(s, "frameset") or
+        std.ascii.eqlIgnoreCase(s, "h1") or
+        std.ascii.eqlIgnoreCase(s, "h2") or
+        std.ascii.eqlIgnoreCase(s, "h3") or
+        std.ascii.eqlIgnoreCase(s, "h4") or
+        std.ascii.eqlIgnoreCase(s, "h5") or
+        std.ascii.eqlIgnoreCase(s, "h6") or
+        std.ascii.eqlIgnoreCase(s, "head") or
+        std.ascii.eqlIgnoreCase(s, "header") or
+        std.ascii.eqlIgnoreCase(s, "hr") or
+        std.ascii.eqlIgnoreCase(s, "html") or
+        std.ascii.eqlIgnoreCase(s, "iframe") or
+        std.ascii.eqlIgnoreCase(s, "legend") or
+        std.ascii.eqlIgnoreCase(s, "li") or
+        std.ascii.eqlIgnoreCase(s, "link") or
+        std.ascii.eqlIgnoreCase(s, "main") or
+        std.ascii.eqlIgnoreCase(s, "menu") or
+        std.ascii.eqlIgnoreCase(s, "menuitem") or
+        std.ascii.eqlIgnoreCase(s, "nav") or
+        std.ascii.eqlIgnoreCase(s, "noframes") or
+        std.ascii.eqlIgnoreCase(s, "ol") or
+        std.ascii.eqlIgnoreCase(s, "optgroup") or
+        std.ascii.eqlIgnoreCase(s, "option") or
+        std.ascii.eqlIgnoreCase(s, "p") or
+        std.ascii.eqlIgnoreCase(s, "param") or
+        std.ascii.eqlIgnoreCase(s, "section") or
+        std.ascii.eqlIgnoreCase(s, "source") or
+        std.ascii.eqlIgnoreCase(s, "summary") or
+        std.ascii.eqlIgnoreCase(s, "table") or
+        std.ascii.eqlIgnoreCase(s, "tbody") or
+        std.ascii.eqlIgnoreCase(s, "td") or
+        std.ascii.eqlIgnoreCase(s, "tfoot") or
+        std.ascii.eqlIgnoreCase(s, "th") or
+        std.ascii.eqlIgnoreCase(s, "thead") or
+        std.ascii.eqlIgnoreCase(s, "title") or
+        std.ascii.eqlIgnoreCase(s, "tr") or
+        std.ascii.eqlIgnoreCase(s, "track") or
+        std.ascii.eqlIgnoreCase(s, "ul"))
+    {
+        return true;
+    }
+
+    return false;
+}
+
+/// Parse HTML block using recognized HTML tags, e.g. "div", "table", "ul".
+///
+/// Start condition is a "<" or "</" followed by a recognized tag name, then
+/// whitespace, a newline, ">", or "/>". End condition is a blank line.
+fn parseHTMLKnownTag(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) !EndingParseResult {
+    var did_parse = false;
+    const checkpoint_index = self.it.checkpoint();
+    defer if (!did_parse) {
+        self.it.backtrack(checkpoint_index);
+    };
+
+    const fail: EndingParseResult = .{ .maybe_node = null };
+    var saw_close_token = false;
+    var content = Io.Writer.Allocating.init(scratch);
+
+    // start condition
+    _ = try self.it.consume(scratch, &.{.l_angle_bracket}) orelse return fail;
+    _ = try content.writer.write("<");
+    if (try self.it.consume(scratch, &.{.slash})) |_| {
+        _ = try content.writer.write("/");
+    }
+
+    const open_tag_token = try self.it.consume(scratch, &.{.text}) orelse
+        return fail;
+    if (!isKnownHTMLTagName(open_tag_token.lexeme)) {
+        return fail;
+    }
+    _ = try content.writer.write(open_tag_token.lexeme);
+
+    const following_token = try self.it.consume(
+        scratch,
+        &.{ .whitespace, .r_angle_bracket, .newline, .slash },
+    ) orelse return fail;
+    if (following_token.token_type == .newline) { // TODO: newline lexeme?
+        _ = try content.writer.write("\n");
+    } else if (following_token.token_type == .slash) {
+        _ = try self.it.consume(scratch, &.{.r_angle_bracket}) orelse
+            return fail;
+        _ = try content.writer.write("/>");
+    } else {
+        std.debug.assert(following_token.lexeme.len > 0);
+        _ = try content.writer.write(following_token.lexeme);
+    }
+
+    // Cannot start a new container in an HTML block.
+    self.interruptible = false;
+    defer self.interruptible = true;
+
+    // Handle content within block
+    while (try self.it.peek(scratch)) |token| {
+        switch (token.token_type) {
+            .close => {
+                _ = try self.it.consume(scratch, &.{.close});
+                saw_close_token = true;
+                break;
+            },
+            .newline => {
+                _ = try self.it.consume(scratch, &.{.newline});
+                if (try self.it.consume(scratch, &.{.newline})) |_| {
+                    // end condition
+                    break;
+                } else if (try self.it.peek(scratch)) |_| {
+                    // Only write newline if we haven't reached end of document
+                    _ = try content.writer.write("\n");
+                }
+            },
+            else => |t| {
+                _ = try self.it.consume(scratch, &.{t});
+                _ = try content.writer.write(token.lexeme);
+            },
         }
     }
 
@@ -3616,6 +3785,101 @@ test "HTML CDATA interrupts paragraphs" {
     try testing.expectEqual(.html, @as(ast.NodeType, html_node.*));
     try testing.expectEqualStrings(
         "<![CDATA[foobar]]>",
+        html_node.html.value,
+    );
+}
+
+test "HTML known-tag" {
+    const md =
+        \\<article>
+        \\
+        \\<div class="foo">
+        \\<p>Hello</p>
+        \\</div>
+        \\
+        \\<table>
+        \\<tr></tr>
+        \\</table>
+        \\
+        \\</article>
+        \\
+    ;
+
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksMd(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(4, nodes.len);
+
+    const html_node_1 = nodes[0];
+    try testing.expectEqual(.html, @as(ast.NodeType, html_node_1.*));
+    try testing.expectEqualStrings(
+        "<article>",
+        html_node_1.html.value,
+    );
+
+    const html_node_2 = nodes[1];
+    try testing.expectEqual(.html, @as(ast.NodeType, html_node_2.*));
+    try testing.expectEqualStrings(
+        "<div class=\"foo\">\n<p>Hello</p>\n</div>",
+        html_node_2.html.value,
+    );
+
+    const html_node_3 = nodes[2];
+    try testing.expectEqual(.html, @as(ast.NodeType, html_node_3.*));
+    try testing.expectEqualStrings(
+        "<table>\n<tr></tr>\n</table>",
+        html_node_3.html.value,
+    );
+
+    const html_node_4 = nodes[3];
+    try testing.expectEqual(.html, @as(ast.NodeType, html_node_4.*));
+    try testing.expectEqualStrings(
+        "</article>",
+        html_node_4.html.value,
+    );
+}
+
+test "HTML known-tag at container close" {
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksTokens(&.{
+        .{
+            .token_type = .l_angle_bracket,
+            .lexeme = "<",
+        },
+        .{
+            .token_type = .text,
+            .lexeme = "div",
+        },
+        .{
+            .token_type = .r_angle_bracket,
+            .lexeme = ">",
+        },
+        .{ .token_type = .close },
+    }, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(1, nodes.len);
+
+    const html_node = nodes[0];
+    try testing.expectEqual(.html, @as(ast.NodeType, html_node.*));
+    try testing.expectEqualStrings(
+        "<div>",
         html_node.html.value,
     );
 }
