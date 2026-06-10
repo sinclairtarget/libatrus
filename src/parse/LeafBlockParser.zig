@@ -921,9 +921,11 @@ fn scanLinkDefDestination(self: *Self, scratch: Allocator) !?[]const u8 {
                 .r_brace,
                 .double_quote,
                 .single_quote,
+                .hyphen,
+                .star,
+                .plus,
                 .exclamation_mark,
                 .question_mark,
-                .hyphen,
                 .slash,
                 => |t| {
                     _ = try self.it.consume(scratch, &.{t});
@@ -978,9 +980,11 @@ fn scanLinkDefDestination(self: *Self, scratch: Allocator) !?[]const u8 {
                 .r_brace,
                 .double_quote,
                 .single_quote,
+                .hyphen,
+                .star,
+                .plus,
                 .exclamation_mark,
                 .question_mark,
-                .hyphen,
                 .slash,
                 => |t| {
                     _ = try self.it.consume(scratch, &.{t});

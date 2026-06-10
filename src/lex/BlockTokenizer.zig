@@ -123,9 +123,11 @@ fn matchSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
         ':' => .colon,
         '"' => .double_quote,
         '\'' => .single_quote,
+        '-' => .hyphen,
+        '*' => .star,
+        '+' => .plus,
         '!' => .exclamation_mark,
         '?' => .question_mark,
-        '-' => .hyphen,
         '/' => .slash,
         else => return null,
     };
