@@ -61,8 +61,10 @@ pub fn printUsage(out: *Io.Writer) !void {
         \\Flags:
         \\  -h|--help  Ouptut this help text.
         \\  --block    Ouptut AST before inline parsing.
+        \\  --raw      Output AST before directive/role handling.
         \\  --pre      Output AST before post-process/resolution phase.
         \\  --html     Output HTML.
+        \\  --typst    Output Typst.
         \\  --version  Print version number.
         \\
     ;
