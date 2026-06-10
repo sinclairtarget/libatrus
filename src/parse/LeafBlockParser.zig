@@ -1144,6 +1144,11 @@ fn parseHTMLLiteralContent(
     var saw_close_token = false;
     var content = Io.Writer.Allocating.init(scratch);
 
+    // Handle allowed leading whitespace
+    if (try self.consumeOptionalLeadingWhitespace(scratch)) |token| {
+        _ = try content.writer.write(token.lexeme);
+    }
+
     // start condition
     _ = try self.it.consume(scratch, &.{.l_angle_bracket}) orelse return fail;
     const open_tag_token = try self.it.consume(scratch, &.{.text}) orelse
@@ -1283,6 +1288,11 @@ fn parseHTMLComment(
     var saw_close_token = false;
     var content = Io.Writer.Allocating.init(scratch);
 
+    // Handle allowed leading whitespace
+    if (try self.consumeOptionalLeadingWhitespace(scratch)) |token| {
+        _ = try content.writer.write(token.lexeme);
+    }
+
     // start condition
     _ = try self.it.consume(scratch, &.{.l_angle_bracket}) orelse return fail;
     _ = try self.it.consume(scratch, &.{.exclamation_mark}) orelse return fail;
@@ -1392,6 +1402,11 @@ fn parseHTMLProcessingInstruction(
     var saw_close_token = false;
     var content = Io.Writer.Allocating.init(scratch);
 
+    // Handle allowed leading whitespace
+    if (try self.consumeOptionalLeadingWhitespace(scratch)) |token| {
+        _ = try content.writer.write(token.lexeme);
+    }
+
     // start condition
     _ = try self.it.consume(scratch, &.{.l_angle_bracket}) orelse return fail;
     _ = try self.it.consume(scratch, &.{.question_mark}) orelse return fail;
@@ -1491,6 +1506,11 @@ fn parseHTMLDeclaration(
     var saw_close_token = false;
     var content = Io.Writer.Allocating.init(scratch);
 
+    // Handle allowed leading whitespace
+    if (try self.consumeOptionalLeadingWhitespace(scratch)) |token| {
+        _ = try content.writer.write(token.lexeme);
+    }
+
     // start condition
     _ = try self.it.consume(scratch, &.{.l_angle_bracket}) orelse return fail;
     _ = try self.it.consume(scratch, &.{.exclamation_mark}) orelse return fail;
@@ -1578,6 +1598,11 @@ fn parseHTMLCDATA(
     const fail: EndingParseResult = .{ .maybe_node = null };
     var saw_close_token = false;
     var content = Io.Writer.Allocating.init(scratch);
+
+    // Handle allowed leading whitespace
+    if (try self.consumeOptionalLeadingWhitespace(scratch)) |token| {
+        _ = try content.writer.write(token.lexeme);
+    }
 
     // start condition
     _ = try self.it.consume(scratch, &.{.l_angle_bracket}) orelse return fail;
@@ -1766,6 +1791,11 @@ fn parseHTMLKnownTag(
     var saw_close_token = false;
     var content = Io.Writer.Allocating.init(scratch);
 
+    // Handle allowed leading whitespace
+    if (try self.consumeOptionalLeadingWhitespace(scratch)) |token| {
+        _ = try content.writer.write(token.lexeme);
+    }
+
     // start condition
     _ = try self.it.consume(scratch, &.{.l_angle_bracket}) orelse return fail;
     _ = try content.writer.write("<");
@@ -1859,6 +1889,11 @@ fn parseHTMLUnknownTag(
     const fail: EndingParseResult = .{ .maybe_node = null };
     var saw_close_token = false;
     var content = Io.Writer.Allocating.init(scratch);
+
+    // Handle allowed leading whitespace
+    if (try self.consumeOptionalLeadingWhitespace(scratch)) |token| {
+        _ = try content.writer.write(token.lexeme);
+    }
 
     // start condition
     _ = try self.it.consume(scratch, &.{.l_angle_bracket}) orelse return fail;
