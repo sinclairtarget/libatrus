@@ -58,6 +58,8 @@ const NextResult = struct {
 const OpenContainer = union(enum) {
     root: OpenRoot,
     blockquote: OpenBlockquote,
+    bullet_list: OpenBulletList,
+    bullet_list_item: OpenBulletListItem,
 
     pub fn add(
         self: *OpenContainer,
@@ -72,6 +74,10 @@ const OpenContainer = union(enum) {
     }
 
     /// Handle the next token.
+    ///
+    /// The `interruptible` param determines whether a new open container is
+    /// allowed in the current context. (No containers can open in the middle
+    /// of a code block, for example.)
     pub fn next(
         self: *OpenContainer,
         scratch: Allocator,
@@ -139,13 +145,31 @@ const OpenRoot = struct {
         swtch: switch (token.token_type) {
             .r_angle_bracket => {
                 if (!interruptible) {
+                    // can't open container; go to fallback case
                     break :swtch;
                 }
+
+                // open new blockquote
                 return .{
                     .token = null,
                     .line_state = .start,
                     .container = .{
                         .blockquote = OpenBlockquote.init(1),
+                    },
+                };
+            },
+            .star => {
+                if (!interruptible) {
+                    // can't open container; go to fallback case
+                    break :swtch;
+                }
+
+                // open new bullet list
+                return .{
+                    .token = null,
+                    .line_state = .start,
+                    .container = .{
+                        .bullet_list = OpenBulletList.init(token),
                     },
                 };
             },
@@ -326,6 +350,175 @@ const OpenBlockquote = struct {
         const node = try alloc.create(ast.Node);
         node.* = .{
             .blockquote = .{
+                .children = children,
+            },
+        };
+        return node;
+    }
+};
+
+/// Bullet list container.
+const OpenBulletList = struct {
+    children: ArrayList(*ast.Node),
+    marker_token: BlockToken,
+
+    fn init(marker_token: BlockToken) OpenBulletList {
+        return .{
+            .children = .empty,
+            .marker_token = marker_token,
+        };
+    }
+
+    fn next(
+        self: *OpenBulletList,
+        scratch: Allocator,
+        it: *TokenIterator(BlockTokenType),
+        interruptible: bool,
+    ) !NextResult {
+        std.debug.assert(interruptible == true);
+
+        const eof: NextResult = .{
+            .token = null,
+            .line_state = .start,
+        };
+
+        // Handle initial token
+        const token = try it.peek(scratch) orelse return eof;
+        switch (token.token_type) {
+            .star => {
+                // Open new bullet list item
+                return .{
+                    .token = null,
+                    .line_state = .start,
+                    .container = .{
+                        .bullet_list_item = OpenBulletListItem.init(
+                            self.marker_token
+                        ),
+                    },
+                };
+            },
+            .newline => {
+                // Blank lines are allowed in lists
+                _ = try it.consume(scratch, &.{.newline});
+                return .{
+                    .token = token,
+                    .line_state = .start,
+                };
+            },
+            else => {
+                return .{
+                    .token = token,
+                    .send_close = true,
+                    .line_state = .trailing,
+                };
+            },
+        }
+    }
+
+    fn toNode(self: OpenBulletList, alloc: Allocator) !*ast.Node {
+        const children = try alloc.dupe(*ast.Node, self.children.items);
+        errdefer alloc.free(children);
+
+        const node = try alloc.create(ast.Node);
+        node.* = .{
+            .list = .{
+                .children = children,
+                .ordered = false,
+            },
+        };
+        return node;
+    }
+};
+
+/// Bullet list item container.
+const OpenBulletListItem = struct {
+    children: ArrayList(*ast.Node),
+    marker_token: BlockToken,
+    seen_starting_star: bool = false,
+
+    fn init(marker_token: BlockToken) OpenBulletListItem {
+        return .{
+            .children = .empty,
+            .marker_token = marker_token,
+        };
+    }
+
+    fn next(
+        self: *OpenBulletListItem,
+        scratch: Allocator,
+        it: *TokenIterator(BlockTokenType),
+        interruptible: bool,
+    ) !NextResult {
+        const eof: NextResult = .{
+            .token = null,
+            .line_state = .start,
+        };
+
+        // Handle initial token
+        var token = try it.peek(scratch) orelse return eof;
+        switch (token.token_type) {
+            .star => {
+                if (!interruptible) {
+                    // Just pass on the token
+                    return .{
+                        .token = token,
+                        .line_state = .trailing,
+                    };
+                }
+
+                if (self.seen_starting_star) {
+                    return .{
+                        .token = null,
+                        .line_state = .start,
+                    };
+                }
+
+                _ = try it.consume(scratch, &.{.star});
+                self.seen_starting_star = true;
+                try consumeWhitespaceUpTo(scratch, it, 3);
+            },
+            .newline => {
+                // TEMP: Blank lines end list items
+                _ = try it.consume(scratch, &.{.newline});
+                return .{
+                    .token = token,
+                    .line_state = .start,
+                    .send_close = true,
+                };
+            },
+            else => {
+                _ = try it.consume(scratch, &.{token.token_type});
+                return .{
+                    .token = token,
+                    .send_close = true,
+                    .line_state = .trailing,
+                };
+            },
+        }
+
+        // Handle next token
+        token = try it.peek(scratch) orelse return eof;
+        switch (token.token_type) {
+            .star => {
+                @panic("not implemented");
+            },
+            else => {
+                _ = try it.consume(scratch, &.{token.token_type});
+                return .{
+                    .token = token,
+                    .line_state = .trailing,
+                };
+            },
+        }
+    }
+
+    fn toNode(self: OpenBulletListItem, alloc: Allocator) !*ast.Node {
+        const children = try alloc.dupe(*ast.Node, self.children.items);
+        errdefer alloc.free(children);
+
+        const node = try alloc.create(ast.Node);
+        node.* = .{
+            .list_item = .{
                 .children = children,
             },
         };
@@ -847,4 +1040,36 @@ test "angle brackets in fenced code block" {
         "> foo",
         code.code.value,
     );
+}
+
+test "simple bullet list" {
+    const md =
+        \\* First
+        \\* Second
+        \\* Third
+        \\
+    ;
+
+    const root_node = try parseBlocks(md);
+    defer root_node.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
+    try testing.expectEqual(1, root_node.root.children.len);
+
+    const list_node = root_node.root.children[0];
+    try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
+    try testing.expectEqual(false, list_node.list.ordered);
+    try testing.expectEqual(3, list_node.list.children.len);
+
+    for (0..3) |i| {
+        const list_item_node = list_node.list.children[i];
+        try testing.expectEqual(
+            .list_item,
+            @as(ast.NodeType, list_item_node.*),
+        );
+        try testing.expectEqual(1, list_item_node.list_item.children.len);
+
+        const p_node = list_item_node.list_item.children[0];
+        try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node.*));
+    }
 }
