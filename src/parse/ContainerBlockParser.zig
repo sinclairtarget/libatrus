@@ -29,11 +29,23 @@ const Error = error{
     WriteFailed,
 } || Allocator.Error;
 
+/// Where we are in the current line.
 const LineState = enum {
     start,
     trailing,
 };
 
+/// The result of handling the next token using the current open container.
+///
+/// A few different things can happen depending on the token.
+///
+/// 1. The token might not be meaningful to the container block parser, in
+///    which case it gets returned in the `token` field to be parsed by a
+///    leaf block parser.
+/// 2. The token could open a new container, in which case the new container
+///    should be returned in the `container` field.
+/// 3. The token might result in the closing of the current container, in which
+///    case `send_close` should be true.
 const NextResult = struct {
     token: ?BlockToken,
     line_state: LineState,
@@ -41,7 +53,8 @@ const NextResult = struct {
     send_close: bool = false,
 };
 
-/// Generic open container block.
+/// Represents a container block that is open (can still have children added to
+/// it).
 const OpenContainer = union(enum) {
     root: OpenRoot,
     blockquote: OpenBlockquote,
@@ -58,6 +71,7 @@ const OpenContainer = union(enum) {
         }
     }
 
+    /// Handle the next token.
     pub fn next(
         self: *OpenContainer,
         scratch: Allocator,
@@ -96,6 +110,7 @@ const OpenContainer = union(enum) {
         }
     }
 
+    /// Close this container block, turning it into an AST node.
     pub fn toNode(self: OpenContainer, alloc: Allocator) !*ast.Node {
         switch (self) {
             inline else => |payload| return payload.toNode(alloc),
@@ -325,7 +340,7 @@ const debug_stream = false;
 it: *TokenIterator(BlockTokenType),
 container_stack: ArrayList(OpenContainer),
 line_state: LineState,
-maybe_staged_token: ?BlockToken,
+maybe_staged_token: ?BlockToken, // next token to be consumed by leaf parser
 leaf_parser: ?LeafBlockParser,
 
 const Self = @This();
