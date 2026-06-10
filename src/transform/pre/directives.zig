@@ -83,10 +83,6 @@ fn transformBuiltin(
         return try transformCode(alloc, node, args, options, value);
     }
 
-    if (std.mem.eql(u8, name, "deprecated-unsafe-html")) {
-        return try transformUnsafeHTML(alloc, node, value);
-    }
-
     return node;
 }
 
@@ -288,30 +284,6 @@ fn transformCode(
 
     std.debug.assert(node.myst_directive.children.len == 0);
     try node.appendChild(alloc, code_node);
-    return node;
-}
-
-/// Allows inserting an HTML node into the AST with content from a raw HTML
-/// string.
-///
-/// TODO: Remove.
-fn transformUnsafeHTML(
-    alloc: Allocator,
-    node: *ast.Node,
-    value: []const u8,
-) !*ast.Node {
-    const owned_value = try alloc.dupeZ(u8, value);
-    errdefer alloc.free(owned_value);
-
-    const html_node = try alloc.create(ast.Node);
-    html_node.* = .{
-        .html = .{
-            .value = owned_value,
-        },
-    };
-
-    std.debug.assert(node.myst_directive.children.len == 0);
-    try node.appendChild(alloc, html_node);
     return node;
 }
 
