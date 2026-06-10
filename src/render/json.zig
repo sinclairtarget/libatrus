@@ -74,6 +74,30 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
                     try renderChildren(stringify, n);
                 }
             },
+            .list => |n| {
+                try stringify.objectField("ordered");
+                try stringify.write(n.ordered);
+
+                if (n.ordered) {
+                    try stringify.objectField("start");
+                    try stringify.write(n.start);
+                }
+
+                try stringify.objectField("spread");
+                try stringify.write(n.spread);
+
+                if (n.children.len > 0) {
+                    try renderChildren(stringify, n);
+                }
+            },
+            .list_item => |n| {
+                try stringify.objectField("spread");
+                try stringify.write(n.spread);
+
+                if (n.children.len > 0) {
+                    try renderChildren(stringify, n);
+                }
+            },
             .myst_role => |n| {
                 try stringify.objectField("name");
                 try stringify.write(n.name);

@@ -32,6 +32,8 @@ pub const NodeType = enum(c_uint) {
     html = 15, // either an HTML block or a single inline HTML tag
     container = 25,
     caption = 26,
+    list = 27,
+    list_item = 28,
     // built-in roles
     myst_role = 16,
     myst_role_error = 17,
@@ -78,6 +80,8 @@ pub const Node = union(NodeType) {
     html: Text,
     container: Container,
     caption: Wrapper,
+    list: List,
+    list_item: ListItem,
     myst_role: MySTRole,
     myst_role_error: MySTRoleError,
     subscript: Wrapper,
@@ -304,6 +308,26 @@ pub const Container = struct {
     }
 };
 
+pub const List = struct {
+    children: []*Node,
+    ordered: bool,
+    start: u32 = 1,
+    spread: bool = false,
+
+    pub fn deinit(self: *List, alloc: Allocator) void {
+        freeChildren(alloc, self.children);
+    }
+};
+
+pub const ListItem = struct {
+    children: []*Node,
+    spread: bool = false,
+
+    pub fn deinit(self: *ListItem, alloc: Allocator) void {
+        freeChildren(alloc, self.children);
+    }
+};
+
 pub const MySTRole = struct {
     children: []*Node,
     name: [:0]const u8,
@@ -421,6 +445,8 @@ pub const AllowedChildren = enum {
             .blockquote,
             .container,
             .caption,
+            .list,
+            .list_item,
             .myst_role,
             .subscript,
             .superscript,

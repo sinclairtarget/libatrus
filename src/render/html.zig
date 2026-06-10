@@ -155,6 +155,36 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
             }
             _ = try out.writeAll("</figcaption>");
         },
+        .list => |n| {
+            if (n.ordered) {
+                if (n.start != 1) {
+                    try out.print("<ol start=\"{d}\">\n", .{ n.start });
+                } else {
+                    _ = try out.writeAll("<ol>\n");
+                }
+            } else {
+                _ = try out.writeAll("<ul>\n");
+            }
+
+            for (n.children) |child| {
+                _ = try renderNode(child, out);
+                _ = try out.writeAll("\n");
+            }
+
+            if (n.ordered) {
+                _ = try out.writeAll("</ol>");
+            } else {
+                _ = try out.writeAll("</ul>");
+            }
+        },
+        .list_item => |n| {
+            _ = try out.writeAll("<li>\n");
+            for (n.children) |child| {
+                _ = try renderNode(child, out);
+                _ = try out.writeAll("\n");
+            }
+            _ = try out.writeAll("</li>");
+        },
         .myst_role => |n| {
             if (n.children.len == 0) {
                 // unknown role
