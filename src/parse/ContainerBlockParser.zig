@@ -158,7 +158,7 @@ const OpenRoot = struct {
                     },
                 };
             },
-            .star => {
+            .star, .hyphen, .plus => {
                 if (!interruptible) {
                     // can't open container; go to fallback case
                     break :swtch;
@@ -375,6 +375,8 @@ const OpenBulletList = struct {
         it: *TokenIterator(BlockTokenType),
         interruptible: bool,
     ) !NextResult {
+        // If the leaf parser is parsing something that cannot be interrupted,
+        // then we should be in a list item or different kind of container.
         std.debug.assert(interruptible == true);
 
         const eof: NextResult = .{
@@ -385,17 +387,25 @@ const OpenBulletList = struct {
         // Handle initial token
         const token = try it.peek(scratch) orelse return eof;
         switch (token.token_type) {
-            .star => {
-                // Open new bullet list item
-                return .{
-                    .token = null,
-                    .line_state = .start,
-                    .container = .{
-                        .bullet_list_item = OpenBulletListItem.init(
-                            self.marker_token
-                        ),
-                    },
-                };
+            .star, .hyphen, .plus => {
+                if (token.token_type == self.marker_token.token_type) {
+                    // Open new bullet list item
+                    return .{
+                        .token = null,
+                        .line_state = .start,
+                        .container = .{
+                            .bullet_list_item = OpenBulletListItem.init(
+                                self.marker_token,
+                            ),
+                        },
+                    };
+                } else {
+                    // It's the start of a new list, so close the container
+                    return .{
+                        .token = null,
+                        .line_state = .start,
+                    };
+                }
             },
             .newline => {
                 // Blank lines are allowed in lists
@@ -434,7 +444,7 @@ const OpenBulletList = struct {
 const OpenBulletListItem = struct {
     children: ArrayList(*ast.Node),
     marker_token: BlockToken,
-    seen_starting_star: bool = false,
+    seen_starting_marker: bool = false,
 
     fn init(marker_token: BlockToken) OpenBulletListItem {
         return .{
@@ -454,10 +464,9 @@ const OpenBulletListItem = struct {
             .line_state = .start,
         };
 
-        // Handle initial token
         var token = try it.peek(scratch) orelse return eof;
         switch (token.token_type) {
-            .star => {
+            .star, .hyphen, .plus => {
                 if (!interruptible) {
                     // Just pass on the token
                     return .{
@@ -466,15 +475,19 @@ const OpenBulletListItem = struct {
                     };
                 }
 
-                if (self.seen_starting_star) {
+                if (self.seen_starting_marker) {
                     return .{
                         .token = null,
                         .line_state = .start,
                     };
                 }
 
-                _ = try it.consume(scratch, &.{.star});
-                self.seen_starting_star = true;
+                _ = try it.consume(
+                    scratch,
+                    &.{self.marker_token.token_type},
+                ) orelse
+                    @panic("bullet list item created with wrong marker token");
+                self.seen_starting_marker = true;
                 try consumeWhitespaceUpTo(scratch, it, 3);
             },
             .newline => {
@@ -496,7 +509,6 @@ const OpenBulletListItem = struct {
             },
         }
 
-        // Handle next token
         token = try it.peek(scratch) orelse return eof;
         switch (token.token_type) {
             .star => {
@@ -1072,4 +1084,29 @@ test "simple bullet list" {
         const p_node = list_item_node.list_item.children[0];
         try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node.*));
     }
+}
+
+test "bullet list markers" {
+    const md =
+        \\+ First
+        \\+ Second
+        \\- First
+        \\
+    ;
+
+    const root_node = try parseBlocks(md);
+    defer root_node.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
+    try testing.expectEqual(2, root_node.root.children.len);
+
+    const list_node_1 = root_node.root.children[0];
+    try testing.expectEqual(.list, @as(ast.NodeType, list_node_1.*));
+    try testing.expectEqual(false, list_node_1.list.ordered);
+    try testing.expectEqual(2, list_node_1.list.children.len);
+
+    const list_node_2 = root_node.root.children[1];
+    try testing.expectEqual(.list, @as(ast.NodeType, list_node_2.*));
+    try testing.expectEqual(false, list_node_2.list.ordered);
+    try testing.expectEqual(1, list_node_2.list.children.len);
 }
