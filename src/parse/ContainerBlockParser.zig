@@ -372,6 +372,10 @@ pub fn parse(
 
     var leaf_it = self.iterator();
     for (0..util.safety.loop_bound) |_| {
+        if (leaf_it.is_exhausted) {
+            leaf_it = self.iterator(); // reset iterator
+        }
+
         self.leaf_parser = .{ .it = &leaf_it };
         const loop_start_stack_len = self.container_stack.items.len;
 
@@ -394,7 +398,6 @@ pub fn parse(
         if (self.container_stack.items.len > loop_start_stack_len) {
             // We pushed a new container
             std.debug.assert(leaf_it.is_exhausted);
-            leaf_it = self.iterator(); // reset iterator
             continue;
         }
 
