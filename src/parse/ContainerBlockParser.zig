@@ -444,12 +444,13 @@ const OpenBulletList = struct {
 const OpenBulletListItem = struct {
     children: ArrayList(*ast.Node),
     marker_token: BlockToken,
-    seen_starting_marker: bool = false,
+    indent: usize,
 
     fn init(marker_token: BlockToken) OpenBulletListItem {
         return .{
             .children = .empty,
             .marker_token = marker_token,
+            .indent = 0,
         };
     }
 
@@ -464,7 +465,49 @@ const OpenBulletListItem = struct {
             .line_state = .start,
         };
 
-        var token = try it.peek(scratch) orelse return eof;
+        if (self.indent == 0) {
+            // Handle first line
+            const leading_ws_len = try consumeWhitespaceUpTo(scratch, it, 3);
+            _ = try it.consume(
+                scratch,
+                &.{self.marker_token.token_type},
+            ) orelse
+                @panic("bullet list item created with wrong marker token");
+            const following_ws_len = try consumeWhitespaceUpTo(scratch, it, 4);
+            self.indent = leading_ws_len + 1 + following_ws_len;
+        } else {
+            const start_token = try it.peek(scratch) orelse return eof;
+            switch (start_token.token_type) {
+                .whitespace => {
+                    if (start_token.lexeme.len < self.indent) {
+                        // Not indented enough; end list item
+                        return .{
+                            .token = null,
+                            .line_state = .start,
+                        };
+                    }
+
+                    _ = try it.consume(scratch, &.{.whitespace});
+                },
+                .newline => {
+                    // Blank line; allowed in list item
+                    _ = try it.consume(scratch, &.{.newline});
+                    return .{
+                        .token = start_token,
+                        .line_state = .start,
+                    };
+                },
+                else => {
+                    // End list item
+                    return .{
+                        .token = null,
+                        .line_state = .start,
+                    };
+                },
+            }
+        }
+
+        const token = try it.peek(scratch) orelse return eof;
         switch (token.token_type) {
             .star, .hyphen, .plus => {
                 if (!interruptible) {
@@ -475,44 +518,11 @@ const OpenBulletListItem = struct {
                     };
                 }
 
-                if (self.seen_starting_marker) {
-                    return .{
-                        .token = null,
-                        .line_state = .start,
-                    };
-                }
-
-                _ = try it.consume(
-                    scratch,
-                    &.{self.marker_token.token_type},
-                ) orelse
-                    @panic("bullet list item created with wrong marker token");
-                self.seen_starting_marker = true;
-                try consumeWhitespaceUpTo(scratch, it, 3);
-            },
-            .newline => {
-                // TEMP: Blank lines end list items
-                _ = try it.consume(scratch, &.{.newline});
+                // Can't yet nest lists
                 return .{
-                    .token = token,
+                    .token = null,
                     .line_state = .start,
-                    .send_close = true,
                 };
-            },
-            else => {
-                _ = try it.consume(scratch, &.{token.token_type});
-                return .{
-                    .token = token,
-                    .send_close = true,
-                    .line_state = .trailing,
-                };
-            },
-        }
-
-        token = try it.peek(scratch) orelse return eof;
-        switch (token.token_type) {
-            .star => {
-                @panic("not implemented");
             },
             else => {
                 _ = try it.consume(scratch, &.{token.token_type});
@@ -686,22 +696,24 @@ fn top(self: *Self) *OpenContainer {
 }
 
 /// Consumes a whitespace token, but only if it's no longer than the given len
-/// (in spaces).
+/// (in spaces). Returns the length of the consumed token (or zero).
 fn consumeWhitespaceUpTo(
     scratch: Allocator,
     it: *TokenIterator(BlockTokenType),
     len: usize,
-) !void {
-    const token = try it.peek(scratch) orelse return;
+) !usize {
+    const token = try it.peek(scratch) orelse return 0;
     if (token.token_type != .whitespace) {
-        return;
+        return 0;
     }
 
     if (util.strings.whitespaceIndentLen(token.lexeme) > len) {
-        return;
+        return 0;
     }
 
-    _ = try it.consume(scratch, &.{.whitespace});
+    const ws_token = try it.consume(scratch, &.{.whitespace}) orelse
+        unreachable;
+    return ws_token.lexeme.len;
 }
 
 // ----------------------------------------------------------------------------
@@ -1109,4 +1121,47 @@ test "bullet list markers" {
     try testing.expectEqual(.list, @as(ast.NodeType, list_node_2.*));
     try testing.expectEqual(false, list_node_2.list.ordered);
     try testing.expectEqual(1, list_node_2.list.children.len);
+}
+
+test "bullet list match indent" {
+    const md =
+        \\*    First
+        \\
+        \\     Still first!
+        \\
+        \\  No longer in list.
+        \\
+    ;
+
+    const root_node = try parseBlocks(md);
+    defer root_node.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
+    try testing.expectEqual(2, root_node.root.children.len);
+
+    const list_node = root_node.root.children[0];
+    try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
+    try testing.expectEqual(false, list_node.list.ordered);
+    try testing.expectEqual(1, list_node.list.children.len);
+
+    const list_item_node = list_node.list.children[0];
+    try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node.*));
+    try testing.expectEqual(2, list_item_node.list_item.children.len);
+
+    const item_p_node_1 = list_item_node.list_item.children[0];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, item_p_node_1.*));
+    try testing.expectEqualStrings(
+        "First",
+        item_p_node_1.paragraph.children[0].text.value,
+    );
+
+    const item_p_node_2 = list_item_node.list_item.children[1];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, item_p_node_2.*));
+    try testing.expectEqualStrings(
+        "Still first!",
+        item_p_node_2.paragraph.children[0].text.value,
+    );
+
+    const p_node = root_node.root.children[1];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node.*));
 }
