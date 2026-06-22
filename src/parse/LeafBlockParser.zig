@@ -503,12 +503,16 @@ fn parseIndentedCode(
         lines.items[start_index..end_index],
     );
     const value = try alloc.dupeZ(u8, buf); // move to heap, sentinel-terminate
+    errdefer alloc.free(value);
+
+    const lang = try alloc.dupeZ(u8, "");
+    errdefer alloc.free(lang);
 
     const node = try alloc.create(ast.Node);
     node.* = .{
         .code = .{
             .value = value,
-            .lang = "",
+            .lang = lang,
         },
     };
     did_parse = true;
@@ -2698,6 +2702,35 @@ test "link reference definition" {
     try testing.expectEqualStrings("foo", definition.label);
     try testing.expectEqualStrings("/bar", definition.url);
     try testing.expectEqualStrings("baz bot", definition.title);
+}
+
+test "indented code block" {
+    const md =
+        \\    def foo():
+        \\        pass
+        \\
+    ;
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksMd(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(1, nodes.len);
+
+    const code_node = nodes[0];
+    try testing.expectEqual(.code, @as(ast.NodeType, code_node.*));
+    try testing.expectEqualStrings(
+        "def foo():\n    pass",
+        code_node.code.value,
+    );
+    try testing.expectEqualStrings("", code_node.code.lang);
 }
 
 test "empty code fence" {
