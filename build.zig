@@ -250,7 +250,7 @@ fn addTests(
         }),
     });
     const spec_tests_cmd = b.addRunArtifact(spec_tests_exe);
-    const spec_cases_path = b.path("tests/myst_spec/myst.tests.json");
+    const spec_cases_path = b.path("tests/myst_spec/myst-0.0.5.tests.json");
     spec_tests_cmd.addFileArg(spec_cases_path);
     if (test_filter) |f| {
         spec_tests_cmd.addArg(f);
