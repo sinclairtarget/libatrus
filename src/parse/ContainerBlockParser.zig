@@ -448,6 +448,7 @@ const OpenBulletList = struct {
             .list = .{
                 .children = children,
                 .ordered = false,
+                .spread = false,
             },
         };
         return node;
@@ -459,12 +460,14 @@ const OpenBulletListItem = struct {
     children: ArrayList(*ast.Node),
     marker_token: BlockToken,
     indent: usize,
+    spread: bool,
 
     fn init(marker_token: BlockToken) OpenBulletListItem {
         return .{
             .children = .empty,
             .marker_token = marker_token,
             .indent = 0,
+            .spread = false,
         };
     }
 
@@ -523,6 +526,7 @@ const OpenBulletListItem = struct {
                 .newline => {
                     // Blank line; allowed in list item
                     _ = try it.consume(scratch, &.{.newline});
+                    self.spread = true;
                     return .{
                         .token = start_token,
                         .line_state = .start,
@@ -591,6 +595,7 @@ const OpenBulletListItem = struct {
         node.* = .{
             .list_item = .{
                 .children = children,
+                .spread = self.spread,
             },
         };
         return node;
@@ -1132,6 +1137,7 @@ test "simple bullet list" {
     const list_node = root_node.root.children[0];
     try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
     try testing.expectEqual(false, list_node.list.ordered);
+    try testing.expectEqual(false, list_node.list.spread);
     try testing.expectEqual(3, list_node.list.children.len);
 
     for (0..3) |i| {
@@ -1140,6 +1146,7 @@ test "simple bullet list" {
             .list_item,
             @as(ast.NodeType, list_item_node.*),
         );
+        try testing.expectEqual(false, list_item_node.list_item.spread);
         try testing.expectEqual(1, list_item_node.list_item.children.len);
 
         const txt_node = list_item_node.list_item.children[0];
@@ -1164,11 +1171,13 @@ test "bullet list markers" {
     const list_node_1 = root_node.root.children[0];
     try testing.expectEqual(.list, @as(ast.NodeType, list_node_1.*));
     try testing.expectEqual(false, list_node_1.list.ordered);
+    try testing.expectEqual(false, list_node_1.list.spread);
     try testing.expectEqual(2, list_node_1.list.children.len);
 
     const list_node_2 = root_node.root.children[1];
     try testing.expectEqual(.list, @as(ast.NodeType, list_node_2.*));
     try testing.expectEqual(false, list_node_2.list.ordered);
+    try testing.expectEqual(false, list_node_2.list.spread);
     try testing.expectEqual(1, list_node_2.list.children.len);
 }
 
@@ -1191,10 +1200,12 @@ test "bullet list match indent" {
     const list_node = root_node.root.children[0];
     try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
     try testing.expectEqual(false, list_node.list.ordered);
+    try testing.expectEqual(false, list_node.list.spread);
     try testing.expectEqual(1, list_node.list.children.len);
 
     const list_item_node = list_node.list.children[0];
     try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node.*));
+    try testing.expectEqual(true, list_item_node.list_item.spread);
     try testing.expectEqual(2, list_item_node.list_item.children.len);
 
     const item_p_node_1 = list_item_node.list_item.children[0];
