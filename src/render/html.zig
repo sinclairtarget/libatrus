@@ -178,10 +178,9 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
             }
         },
         .list_item => |n| {
-            _ = try out.writeAll("<li>\n");
+            _ = try out.writeAll("<li>");
             for (n.children) |child| {
                 _ = try renderNode(child, out);
-                _ = try out.writeAll("\n");
             }
             _ = try out.writeAll("</li>");
         },
