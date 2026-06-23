@@ -55,6 +55,7 @@ pub const NodeType = enum(c_uint) {
             .myst_directive => "mystDirective",
             .myst_directive_error => "mystDirectiveError",
             .admonition_title => "admonitionTitle",
+            .list_item => "listItem",
             else => @tagName(self),
         };
     }
