@@ -566,7 +566,25 @@ const OpenBulletListItem = struct {
     }
 
     fn toNode(self: OpenBulletListItem, alloc: Allocator) !*ast.Node {
-        const children = try alloc.dupe(*ast.Node, self.children.items);
+        // If we have just a single paragraph, unwrap it.
+        // In the 0.0.5 MyST spec test cases, this is required. But as of June
+        // 2026 the online MyST sandbox does NOT do this unwrapping.
+        //
+        // In CommonMark, this kind of unwrapping is expected by the spec but
+        // appears (in the online CommonMark sandbox) to be implemented in the
+        // HTML renderer.
+        const children = blk: {
+            if (self.children.items.len == 1 and
+                @as(ast.NodeType, self.children.items[0].*) == .paragraph)
+            {
+                const p_node = self.children.items[0];
+                defer alloc.destroy(p_node);
+
+                break :blk p_node.paragraph.children;
+            }
+
+            break :blk try alloc.dupe(*ast.Node, self.children.items);
+        };
         errdefer alloc.free(children);
 
         const node = try alloc.create(ast.Node);
@@ -1124,8 +1142,8 @@ test "simple bullet list" {
         );
         try testing.expectEqual(1, list_item_node.list_item.children.len);
 
-        const p_node = list_item_node.list_item.children[0];
-        try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node.*));
+        const txt_node = list_item_node.list_item.children[0];
+        try testing.expectEqual(.text, @as(ast.NodeType, txt_node.*));
     }
 }
 
