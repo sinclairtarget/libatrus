@@ -138,17 +138,8 @@ const OpenRoot = struct {
     ) !NextResult {
         _ = self;
 
-        const token = try it.peek(scratch) orelse return .{
-            .token = null,
-            .line_state = .start,
-        };
-        swtch: switch (token.token_type) {
-            .r_angle_bracket => {
-                if (!interruptible) {
-                    // can't open container; go to fallback case
-                    break :swtch;
-                }
-
+        if (interruptible) {
+            if (try OpenBlockquote.peekBlockquote(scratch, it)) {
                 // open new blockquote
                 return .{
                     .token = null,
@@ -157,22 +148,28 @@ const OpenRoot = struct {
                         .blockquote = OpenBlockquote.init(1),
                     },
                 };
-            },
-            .star, .hyphen, .plus => {
-                if (!interruptible) {
-                    // can't open container; go to fallback case
-                    break :swtch;
-                }
+            }
 
+            if (try OpenBulletList.peekBulletList(
+                scratch,
+                it,
+            )) |marker_token| {
                 // open new bullet list
                 return .{
                     .token = null,
                     .line_state = .start,
                     .container = .{
-                        .bullet_list = OpenBulletList.init(token),
+                        .bullet_list = OpenBulletList.init(marker_token),
                     },
                 };
-            },
+            }
+        }
+
+        const token = try it.peek(scratch) orelse return .{
+            .token = null,
+            .line_state = .start,
+        };
+        switch (token.token_type) {
             .newline => {
                 _ = try it.consume(scratch, &.{.newline});
                 return .{
@@ -180,34 +177,14 @@ const OpenRoot = struct {
                     .line_state = .start,
                 };
             },
-            .whitespace => {
-                if (util.strings.whitespaceIndentLen(token.lexeme) >= 4 or
-                    !interruptible)
-                {
-                    break :swtch;
-                }
-
-                if (try it.peekAhead(scratch, 2)) |next_token| {
-                    if (next_token.token_type == .r_angle_bracket) {
-                        return .{
-                            .token = null,
-                            .line_state = .start,
-                            .container = .{
-                                .blockquote = OpenBlockquote.init(1),
-                            },
-                        };
-                    }
-                }
+            else => {
+                _ = try it.consume(scratch, &.{token.token_type});
+                return .{
+                    .token = token,
+                    .line_state = .trailing,
+                };
             },
-            else => {},
         }
-
-        // Fallback case
-        _ = try it.consume(scratch, &.{token.token_type});
-        return .{
-            .token = token,
-            .line_state = .trailing,
-        };
     }
 
     pub fn toNode(self: OpenRoot, alloc: Allocator) !*ast.Node {
@@ -234,6 +211,19 @@ const OpenBlockquote = struct {
             .children = .empty,
             .depth = depth,
         };
+    }
+
+    /// Returns true if the next sequence of tokens can open a blockquote.
+    fn peekBlockquote(
+        scratch: Allocator,
+        it: *TokenIterator(BlockTokenType),
+    ) !bool {
+        const checkpoint_index = it.checkpoint();
+        defer it.backtrack(checkpoint_index);
+
+        _ = try consumeWhitespaceUpTo(scratch, it, 3);
+        _ = try it.consume(scratch, &.{.r_angle_bracket}) orelse return false;
+        return true;
     }
 
     pub fn next(
@@ -363,10 +353,37 @@ const OpenBulletList = struct {
     marker_token: BlockToken,
 
     fn init(marker_token: BlockToken) OpenBulletList {
+        // TODO: Use enum subset?
+        std.debug.assert(marker_token.token_type == .star or
+            marker_token.token_type == .hyphen or
+            marker_token.token_type == .plus);
+
         return .{
             .children = .empty,
             .marker_token = marker_token,
         };
+    }
+
+    /// Returns the marker token if the next sequence of tokens can open a
+    /// bullet list.
+    ///
+    /// Returns null otherwise.
+    fn peekBulletList(
+        scratch: Allocator,
+        it: *TokenIterator(BlockTokenType),
+    ) !?BlockToken {
+        const checkpoint_index = it.checkpoint();
+        defer it.backtrack(checkpoint_index);
+
+        _ = try consumeWhitespaceUpTo(scratch, it, 3);
+        const marker_token = try it.consume(
+            scratch,
+            &.{ .hyphen, .star, .plus },
+        ) orelse
+            return null;
+        _ = try it.consume(scratch, &.{.whitespace}) orelse return null;
+
+        return marker_token;
     }
 
     fn next(
@@ -384,38 +401,35 @@ const OpenBulletList = struct {
             .line_state = .start,
         };
 
-        // Handle initial token
+        if (try OpenBulletListItem.peekBulletListItem(
+            scratch,
+            it,
+            self.marker_token.token_type,
+        )) {
+            // Open new bullet list item
+            return .{
+                .token = null,
+                .line_state = .start,
+                .container = .{
+                    .bullet_list_item = OpenBulletListItem.init(
+                        self.marker_token,
+                    ),
+                },
+            };
+        }
+
         const token = try it.peek(scratch) orelse return eof;
         switch (token.token_type) {
             .star, .hyphen, .plus => {
-                if (token.token_type == self.marker_token.token_type) {
-                    // Open new bullet list item
-                    return .{
-                        .token = null,
-                        .line_state = .start,
-                        .container = .{
-                            .bullet_list_item = OpenBulletListItem.init(
-                                self.marker_token,
-                            ),
-                        },
-                    };
-                } else {
-                    // It's the start of a new list, so close the container
-                    return .{
-                        .token = null,
-                        .line_state = .start,
-                    };
-                }
-            },
-            .newline => {
-                // Blank lines are allowed in lists
-                _ = try it.consume(scratch, &.{.newline});
+                // It's the start of a new list, so close the container
                 return .{
-                    .token = token,
+                    .token = null,
                     .line_state = .start,
                 };
             },
             else => {
+                // end of list
+                _ = try it.consume(scratch, &.{token.token_type});
                 return .{
                     .token = token,
                     .send_close = true,
@@ -452,6 +466,23 @@ const OpenBulletListItem = struct {
             .marker_token = marker_token,
             .indent = 0,
         };
+    }
+
+    /// Returns true if the next sequence of tokens can open a bullet list
+    /// item.
+    fn peekBulletListItem(
+        scratch: Allocator,
+        it: *TokenIterator(BlockTokenType),
+        marker_token_type: BlockTokenType,
+    ) !bool {
+        const checkpoint_index = it.checkpoint();
+        defer it.backtrack(checkpoint_index);
+
+        _ = try consumeWhitespaceUpTo(scratch, it, 3);
+        _ = try it.consume(scratch, &.{marker_token_type}) orelse
+            return false;
+        _ = try it.consume(scratch, &.{.whitespace}) orelse return false;
+        return true;
     }
 
     fn next(
