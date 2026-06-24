@@ -60,6 +60,8 @@ const OpenContainer = union(enum) {
     blockquote: OpenBlockquote,
     bullet_list: OpenBulletList,
     bullet_list_item: OpenBulletListItem,
+    ordered_list: OpenOrderedList,
+    ordered_list_item: OpenOrderedListItem,
 
     pub fn add(
         self: *OpenContainer,
@@ -160,6 +162,17 @@ const OpenRoot = struct {
                     .line_state = .start,
                     .container = .{
                         .bullet_list = OpenBulletList.init(marker_token),
+                    },
+                };
+            }
+
+            if (try OpenOrderedList.peekOrderedList(scratch, it)) {
+                // open new ordered list
+                return .{
+                    .token = null,
+                    .line_state = .start,
+                    .container = .{
+                        .ordered_list = OpenOrderedList.init(),
                     },
                 };
             }
@@ -576,6 +589,238 @@ const OpenBulletListItem = struct {
         //
         // In CommonMark, this kind of unwrapping is expected by the spec:
         // https://spec.commonmark.org/0.30/#loose
+        const children = blk: {
+            if (!self.spread and
+                self.children.items.len == 1 and
+                @as(ast.NodeType, self.children.items[0].*) == .paragraph)
+            {
+                const p_node = self.children.items[0];
+                defer alloc.destroy(p_node);
+
+                break :blk p_node.paragraph.children;
+            }
+
+            break :blk try alloc.dupe(*ast.Node, self.children.items);
+        };
+        errdefer alloc.free(children);
+
+        const node = try alloc.create(ast.Node);
+        node.* = .{
+            .list_item = .{
+                .children = children,
+                .spread = self.spread,
+            },
+        };
+        return node;
+    }
+};
+
+const OpenOrderedList = struct {
+    children: ArrayList(*ast.Node),
+
+    fn init() OpenOrderedList {
+        return .{
+            .children = .empty,
+        };
+    }
+
+    // Returns true if the next sequence of tokens can open an ordered list.
+    //
+    // Returns false otherwise.
+    fn peekOrderedList(
+        scratch: Allocator,
+        it: *TokenIterator(BlockTokenType),
+    ) !bool {
+        const checkpoint_index = it.checkpoint();
+        defer it.backtrack(checkpoint_index);
+
+        _ = try consumeWhitespaceUpTo(scratch, it, 3);
+        _ = try it.consume(scratch, &.{.text}) orelse return false;
+        _ = try it.consume(scratch, &.{ .period, .r_paren }) orelse return false;
+        _ = try it.consume(scratch, &.{.whitespace}) orelse return false;
+
+        // TODO: Check text token is all arabic numerals and the right length
+
+        return true;
+    }
+
+    fn next(
+        self: *OpenOrderedList,
+        scratch: Allocator,
+        it: *TokenIterator(BlockTokenType),
+        interruptible: bool,
+    ) !NextResult {
+        _ = self;
+
+        // If the leaf parser is parsing something that cannot be interrupted,
+        // then we should be in a list item or different kind of container.
+        std.debug.assert(interruptible == true);
+
+        const eof: NextResult = .{
+            .token = null,
+            .line_state = .start,
+        };
+
+        if (try OpenOrderedListItem.peekOrderedListItem(scratch, it)) {
+            // Open new ordered list item
+            return .{
+                .token = null,
+                .line_state = .start,
+                .container = .{
+                    .ordered_list_item = OpenOrderedListItem.init(),
+                },
+            };
+        }
+
+        const token = try it.peek(scratch) orelse return eof;
+        switch (token.token_type) {
+            .star, .hyphen, .plus => {
+                // It's the start of a new bullet list, so close the container
+                return .{
+                    .token = null,
+                    .line_state = .start,
+                };
+            },
+            else => {
+                // end of list
+                _ = try it.consume(scratch, &.{token.token_type});
+                return .{
+                    .token = token,
+                    .send_close = true,
+                    .line_state = .trailing,
+                };
+            },
+        }
+    }
+
+    fn toNode(self: OpenOrderedList, alloc: Allocator) !*ast.Node {
+        const children = try alloc.dupe(*ast.Node, self.children.items);
+        errdefer alloc.free(children);
+
+        const node = try alloc.create(ast.Node);
+        node.* = .{
+            .list = .{
+                .children = children,
+                .ordered = true,
+                .spread = false,
+            },
+        };
+        return node;
+    }
+};
+
+const OpenOrderedListItem = struct {
+    children: ArrayList(*ast.Node),
+    indent: usize,
+    spread: bool,
+
+    fn init() OpenOrderedListItem {
+        return .{
+            .children = .empty,
+            .indent = 0,
+            .spread = false,
+        };
+    }
+
+    fn peekOrderedListItem(
+        scratch: Allocator,
+        it: *TokenIterator(BlockTokenType),
+    ) !bool {
+        const checkpoint_index = it.checkpoint();
+        defer it.backtrack(checkpoint_index);
+
+        _ = try consumeWhitespaceUpTo(scratch, it, 3);
+        _ = try it.consume(scratch, &.{.text}) orelse return false;
+        _ = try it.consume(scratch, &.{ .period, .r_paren }) orelse return false;
+        _ = try it.consume(scratch, &.{.whitespace}) orelse return false;
+
+        // TODO: Check text token is all arabic numerals and the right length
+
+        return true;
+    }
+
+    fn next(
+        self: *OpenOrderedListItem,
+        scratch: Allocator,
+        it: *TokenIterator(BlockTokenType),
+        interruptible: bool,
+    ) !NextResult {
+        const eof: NextResult = .{
+            .token = null,
+            .line_state = .start,
+        };
+
+        if (self.indent == 0) {
+            // Handle first line
+            const leading_ws_len = try consumeWhitespaceUpTo(scratch, it, 3);
+            const text_token = try it.consume(scratch, &.{.text}) orelse
+                unreachable;
+            _ = try it.consume(scratch, &.{ .period, .r_paren }) orelse
+                unreachable;
+            const following_ws_len = try consumeWhitespaceUpTo(scratch, it, 4);
+            self.indent = leading_ws_len + text_token.lexeme.len + 1 +
+                following_ws_len;
+        } else {
+            const start_token = try it.peek(scratch) orelse return eof;
+            switch (start_token.token_type) {
+                .whitespace => {
+                    if (start_token.lexeme.len < self.indent) {
+                        // Not indented enough; end list item
+                        return .{
+                            .token = null,
+                            .line_state = .start,
+                        };
+                    }
+
+                    _ = try it.consume(scratch, &.{.whitespace});
+                },
+                .newline => {
+                    // Blank line; allowed in list item
+                    _ = try it.consume(scratch, &.{.newline});
+                    self.spread = true;
+                    return .{
+                        .token = start_token,
+                        .line_state = .start,
+                    };
+                },
+                else => {
+                    // End list item
+                    return .{
+                        .token = null,
+                        .line_state = .start,
+                    };
+                },
+            }
+        }
+
+        const token = try it.peek(scratch) orelse return eof;
+        switch (token.token_type) {
+            .star, .hyphen, .plus => {
+                if (!interruptible) {
+                    // Just pass on the token
+                    return .{
+                        .token = token,
+                        .line_state = .trailing,
+                    };
+                }
+
+                // Can't yet nest lists
+                return .{
+                    .token = null,
+                    .line_state = .start,
+                };
+            },
+            else => {
+                _ = try it.consume(scratch, &.{token.token_type});
+                return .{
+                    .token = token,
+                    .line_state = .trailing,
+                };
+            },
+        }
+    }
+
+    fn toNode(self: OpenOrderedListItem, alloc: Allocator) !*ast.Node {
         const children = blk: {
             if (!self.spread and
                 self.children.items.len == 1 and
@@ -1137,6 +1382,40 @@ test "simple bullet list" {
     const list_node = root_node.root.children[0];
     try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
     try testing.expectEqual(false, list_node.list.ordered);
+    try testing.expectEqual(false, list_node.list.spread);
+    try testing.expectEqual(3, list_node.list.children.len);
+
+    for (0..3) |i| {
+        const list_item_node = list_node.list.children[i];
+        try testing.expectEqual(
+            .list_item,
+            @as(ast.NodeType, list_item_node.*),
+        );
+        try testing.expectEqual(false, list_item_node.list_item.spread);
+        try testing.expectEqual(1, list_item_node.list_item.children.len);
+
+        const txt_node = list_item_node.list_item.children[0];
+        try testing.expectEqual(.text, @as(ast.NodeType, txt_node.*));
+    }
+}
+
+test "simple ordered list" {
+    const md =
+        \\1. First
+        \\2. Second
+        \\3. Third
+        \\
+    ;
+
+    const root_node = try parseBlocks(md);
+    defer root_node.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
+    try testing.expectEqual(1, root_node.root.children.len);
+
+    const list_node = root_node.root.children[0];
+    try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
+    try testing.expectEqual(true, list_node.list.ordered);
     try testing.expectEqual(false, list_node.list.spread);
     try testing.expectEqual(3, list_node.list.children.len);
 
