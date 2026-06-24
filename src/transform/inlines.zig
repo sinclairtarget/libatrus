@@ -16,7 +16,7 @@ pub fn transform(
     link_defs: LinkDefMap,
 ) !*ast.Node {
     switch (original_node.*) {
-        inline .root, .block, .blockquote => |n| {
+        inline .root, .block, .blockquote, .list => |n| {
             for (0..n.children.len) |i| {
                 n.children[i] = try transform(
                     alloc,
@@ -26,6 +26,36 @@ pub fn transform(
                 );
             }
             return original_node;
+        },
+        .list_item => |n| {
+            for (0..n.children.len) |i| {
+                n.children[i] = try transform(
+                    alloc,
+                    scratch_arena,
+                    n.children[i],
+                    link_defs,
+                );
+            }
+
+            const new_children = try parseInline(
+                alloc,
+                scratch_arena,
+                n.children,
+                link_defs,
+            );
+            if (new_children.ptr == n.children.ptr) {
+                return original_node; // nothing was changed
+            }
+            defer original_node.deinit(alloc);
+
+            const node = try alloc.create(ast.Node);
+            node.* = .{
+                .list_item = .{
+                    .children = new_children,
+                    .spread = n.spread,
+                },
+            };
+            return node;
         },
         .paragraph => |n| {
             for (0..n.children.len) |i| {
