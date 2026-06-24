@@ -574,11 +574,11 @@ const OpenBulletListItem = struct {
         // In the 0.0.5 MyST spec test cases, this is required. But as of June
         // 2026 the online MyST sandbox does NOT do this unwrapping.
         //
-        // In CommonMark, this kind of unwrapping is expected by the spec but
-        // appears (in the online CommonMark sandbox) to be implemented in the
-        // HTML renderer.
+        // In CommonMark, this kind of unwrapping is expected by the spec:
+        // https://spec.commonmark.org/0.30/#loose
         const children = blk: {
-            if (self.children.items.len == 1 and
+            if (!self.spread and
+                self.children.items.len == 1 and
                 @as(ast.NodeType, self.children.items[0].*) == .paragraph)
             {
                 const p_node = self.children.items[0];
