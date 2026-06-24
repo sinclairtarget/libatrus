@@ -20,6 +20,7 @@ pub const BlockTokenType = enum {
     hyphen,
     star,
     plus,
+    period,
     exclamation_mark, // used only for HTML parsing
     question_mark, // used only for HTML parsing
     slash, // used only for HTML parsing

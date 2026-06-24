@@ -129,6 +129,7 @@ fn matchSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
         '!' => .exclamation_mark,
         '?' => .question_mark,
         '/' => .slash,
+        '.' => .period,
         else => return null,
     };
 
@@ -442,6 +443,7 @@ fn matchText(self: Self, scratch: Allocator) !TokenizeResult {
                 '\n',
                 ' ',
                 '\t',
+                '.',
                 => break :fsm,
                 '\\' => {
                     lookahead_i += 1;
@@ -537,22 +539,39 @@ test "pound paragraph" {
     ;
 
     try expectEqualTokens(&.{
-        .pound,           .whitespace,      .text,             .newline,
-        .pound,           .whitespace,      .text,             .newline,
-        .text,            .whitespace,      .text,             .whitespace,
-        .text,            .whitespace,      .text,             .newline,
-        .text,            .whitespace,      .text,             .whitespace,
-        .text,            .whitespace,      .text,             .newline,
-        .newline,         .text,            .whitespace,       .text,
-        .whitespace,      .text,            .whitespace,       .text,
-        .whitespace,      .text,            .newline,          .text,
-        .whitespace,      .text,            .whitespace,       .double_quote,
-        .text,            .double_quote,    .whitespace,       .text,
-        .whitespace,      .l_paren,         .l_square_bracket, .r_square_bracket,
-        .l_angle_bracket, .r_angle_bracket, .r_paren,          .whitespace,
-        .text,            .whitespace,      .text,             .whitespace,
-        .text,            .whitespace,      .text,             .whitespace,
-        .text,            .newline,
+        // #                                Header
+        .pound,           .whitespace,       .text,             .newline,
+        // ##                               Subheader
+        .pound,           .whitespace,       .text,             .newline,
+        // This                             is
+        .text,            .whitespace,       .text,             .whitespace,
+        // a                                paragraph          .
+        .text,            .whitespace,       .text,             .period,
+        //                  It                                 has
+        .newline,         .text,             .whitespace,       .text,
+        //                 multiple                            lines
+        .whitespace,      .text,             .whitespace,       .text,
+        // .                                                    This
+        .period,          .newline,          .newline,          .text,
+        //                 is                                   a
+        .whitespace,      .text,             .whitespace,       .text,
+        //                 new                                  paragraph
+        .whitespace,      .text,             .whitespace,       .text,
+        // .                                 It
+        .period,          .newline,          .text,             .whitespace,
+        // has                               "                  symbols
+        .text,            .whitespace,       .double_quote,     .text,
+        // "                                 like
+        .double_quote,    .whitespace,       .text,             .whitespace,
+        // (              [                  ]                  <
+        .l_paren,         .l_square_bracket, .r_square_bracket, .l_angle_bracket,
+        // >              )                                     that
+        .r_angle_bracket, .r_paren,          .whitespace,       .text,
+        //                still                                 count
+        .whitespace,      .text,             .whitespace,       .text,
+        //                as                                    text
+        .whitespace,      .text,             .whitespace,       .text,
+        .period,          .newline,
     }, md);
 }
 
@@ -628,6 +647,7 @@ test "escaping" {
         .text,
         .whitespace,
         .text,
+        .period,
         .newline,
     }, md);
 }
@@ -689,6 +709,17 @@ test "fence tokenization later in line" {
         .backtick_fence,
         .colon_fence,
         .tilde_fence,
+        .newline,
+    }, md);
+}
+
+test "period tokenization" {
+    const md = "hello...\n";
+    try expectEqualTokens(&.{
+        .text,
+        .period,
+        .period,
+        .period,
         .newline,
     }, md);
 }
