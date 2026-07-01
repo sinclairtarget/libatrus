@@ -64,7 +64,7 @@ const OpenContainer = union(enum) {
     ordered_list: OpenOrderedList,
     ordered_list_item: OpenOrderedListItem,
 
-    pub fn add(
+    fn add(
         self: *OpenContainer,
         scratch: Allocator,
         child: *ast.Node,
@@ -81,7 +81,7 @@ const OpenContainer = union(enum) {
     /// The `interruptible` param determines whether a new open container is
     /// allowed in the current context. (No containers can open in the middle
     /// of a code block, for example.)
-    pub fn next(
+    fn next(
         self: *OpenContainer,
         scratch: Allocator,
         it: *TokenIterator(BlockTokenType),
@@ -120,7 +120,7 @@ const OpenContainer = union(enum) {
     }
 
     /// Close this container block, turning it into an AST node.
-    pub fn toNode(self: OpenContainer, alloc: Allocator) !*ast.Node {
+    fn toNode(self: OpenContainer, alloc: Allocator) !*ast.Node {
         switch (self) {
             inline else => |payload| return payload.toNode(alloc),
         }
@@ -131,9 +131,9 @@ const OpenContainer = union(enum) {
 const OpenRoot = struct {
     children: ArrayList(*ast.Node),
 
-    pub const empty: OpenRoot = .{ .children = .empty };
+    const empty: OpenRoot = .{ .children = .empty };
 
-    pub fn next(
+    fn next(
         self: *OpenRoot,
         scratch: Allocator,
         it: *TokenIterator(BlockTokenType),
@@ -201,7 +201,7 @@ const OpenRoot = struct {
         }
     }
 
-    pub fn toNode(self: OpenRoot, alloc: Allocator) !*ast.Node {
+    fn toNode(self: OpenRoot, alloc: Allocator) !*ast.Node {
         const children = try alloc.dupe(*ast.Node, self.children.items);
         errdefer alloc.free(children);
 
@@ -220,7 +220,7 @@ const OpenBlockquote = struct {
     children: ArrayList(*ast.Node),
     depth: usize,
 
-    pub fn init(depth: usize) OpenBlockquote {
+    fn init(depth: usize) OpenBlockquote {
         return .{
             .children = .empty,
             .depth = depth,
@@ -240,7 +240,7 @@ const OpenBlockquote = struct {
         return true;
     }
 
-    pub fn next(
+    fn next(
         self: *OpenBlockquote,
         scratch: Allocator,
         it: *TokenIterator(BlockTokenType),
@@ -347,7 +347,7 @@ const OpenBlockquote = struct {
         }
     }
 
-    pub fn toNode(self: OpenBlockquote, alloc: Allocator) !*ast.Node {
+    fn toNode(self: OpenBlockquote, alloc: Allocator) !*ast.Node {
         const children = try alloc.dupe(*ast.Node, self.children.items);
         errdefer alloc.free(children);
 
