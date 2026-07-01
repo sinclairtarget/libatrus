@@ -671,7 +671,7 @@ const OrderedList = struct {
         ) orelse return null;
         _ = try it.consume(scratch, &.{.whitespace}) orelse return null;
 
-        const start = OrderedList.parseNumber(
+        const start = parseOrderedListNumber(
             numeral_token.lexeme,
         ) catch return null;
 
@@ -679,21 +679,6 @@ const OrderedList = struct {
             .marker_token = marker_token,
             .start = start,
         };
-    }
-
-    /// Sequence of 1 to 9 arabic digits. Can begin with 0s.
-    fn parseNumber(s: []const u8) !u32 {
-        if (s.len > 9) {
-            return error.TooManyDigits;
-        }
-
-        for (s) |c| {
-            if (!std.ascii.isDigit(c)) {
-                return error.ContainedNonDigit;
-            }
-        }
-
-        return try fmt.parseInt(u32, s, 10);
     }
 
     fn next(
@@ -785,13 +770,15 @@ const OrderedListItem = struct {
         defer it.backtrack(checkpoint_index);
 
         _ = try consumeWhitespaceUpTo(scratch, it, 3);
-        _ = try it.consume(scratch, &.{.text}) orelse return null;
-        _ = try it.consume(scratch, &.{ .period, .r_paren }) orelse
+        const numeral_token = try it.consume(scratch, &.{.text}) orelse
             return null;
+        _ = try it.consume(
+            scratch,
+            &.{ .period, .r_paren },
+        ) orelse return null;
         _ = try it.consume(scratch, &.{.whitespace}) orelse return null;
 
-        // TODO: Check text token is all arabic numerals and the right length
-
+        _ = parseOrderedListNumber(numeral_token.lexeme) catch return null;
         return .{};
     }
 
@@ -1070,6 +1057,22 @@ fn consumeWhitespaceUpTo(
         unreachable;
     return ws_token.lexeme.len;
 }
+
+/// Sequence of 1 to 9 arabic digits. Can begin with 0s.
+fn parseOrderedListNumber(s: []const u8) !u32 {
+    if (s.len > 9) {
+        return error.TooManyDigits;
+    }
+
+    for (s) |c| {
+        if (!std.ascii.isDigit(c)) {
+            return error.ContainedNonDigit;
+        }
+    }
+
+    return try fmt.parseInt(u32, s, 10);
+}
+
 
 // ----------------------------------------------------------------------------
 // Unit Tests
@@ -1582,4 +1585,22 @@ test "ordered list different start" {
     try testing.expectEqual(false, list_node.list.spread);
     try testing.expectEqual(3, list_node.list.children.len);
     try testing.expectEqual(2, list_node.list.start);
+}
+
+test "ordered list invalid number not at start" {
+    const md =
+        \\1. First
+        \\1234567890. Second
+        \\3. Third
+        \\
+    ;
+
+    const root_node = try parseBlocks(md);
+    defer root_node.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
+    try testing.expect(root_node.root.children.len != 1);
+
+    // TODO: Expand this test when we can handle lazy continuation lines in
+    // list items.
 }
