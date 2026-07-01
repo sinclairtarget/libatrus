@@ -57,12 +57,12 @@ const NextResult = struct {
 /// Represents a container block that is open (can still have children added to
 /// it).
 const OpenContainer = union(enum) {
-    root: OpenRoot,
-    blockquote: OpenBlockquote,
-    bullet_list: OpenBulletList,
-    bullet_list_item: OpenBulletListItem,
-    ordered_list: OpenOrderedList,
-    ordered_list_item: OpenOrderedListItem,
+    root: Root,
+    blockquote: Blockquote,
+    bullet_list: BulletList,
+    bullet_list_item: BulletListItem,
+    ordered_list: OrderedList,
+    ordered_list_item: OrderedListItem,
 
     fn add(
         self: *OpenContainer,
@@ -128,13 +128,13 @@ const OpenContainer = union(enum) {
 };
 
 /// Root container.
-const OpenRoot = struct {
+const Root = struct {
     children: ArrayList(*ast.Node),
 
-    const empty: OpenRoot = .{ .children = .empty };
+    const empty: Root = .{ .children = .empty };
 
     fn next(
-        self: *OpenRoot,
+        self: *Root,
         scratch: Allocator,
         it: *TokenIterator(BlockTokenType),
         interruptible: bool,
@@ -142,38 +142,43 @@ const OpenRoot = struct {
         _ = self;
 
         if (interruptible) {
-            if (try OpenBlockquote.peekBlockquote(scratch, it)) {
+            if (try Blockquote.canOpen(scratch, it)) |_| {
                 // open new blockquote
                 return .{
                     .token = null,
                     .line_state = .start,
                     .container = .{
-                        .blockquote = OpenBlockquote.init(1),
+                        .blockquote = Blockquote.init(1),
                     },
                 };
             }
 
-            if (try OpenBulletList.peekBulletList(
+            if (try BulletList.canOpen(
                 scratch,
                 it,
-            )) |marker_token| {
+            )) |result| {
                 // open new bullet list
                 return .{
                     .token = null,
                     .line_state = .start,
                     .container = .{
-                        .bullet_list = OpenBulletList.init(marker_token),
+                        .bullet_list = BulletList.init(
+                            result.marker_token,
+                        ),
                     },
                 };
             }
 
-            if (try OpenOrderedList.peekOrderedList(scratch, it)) |container| {
+            if (try OrderedList.canOpen(scratch, it)) |result| {
                 // open new ordered list
                 return .{
                     .token = null,
                     .line_state = .start,
                     .container = .{
-                        .ordered_list = container,
+                        .ordered_list = OrderedList.init(
+                            result.marker_token,
+                            result.start,
+                        ),
                     },
                 };
             }
@@ -201,7 +206,7 @@ const OpenRoot = struct {
         }
     }
 
-    fn toNode(self: OpenRoot, alloc: Allocator) !*ast.Node {
+    fn toNode(self: Root, alloc: Allocator) !*ast.Node {
         const children = try alloc.dupe(*ast.Node, self.children.items);
         errdefer alloc.free(children);
 
@@ -216,32 +221,35 @@ const OpenRoot = struct {
 };
 
 /// Blockquote container.
-const OpenBlockquote = struct {
+const Blockquote = struct {
     children: ArrayList(*ast.Node),
     depth: usize,
 
-    fn init(depth: usize) OpenBlockquote {
+    const OpenResult = struct {};
+
+    fn init(depth: usize) Blockquote {
         return .{
             .children = .empty,
             .depth = depth,
         };
     }
 
-    /// Returns true if the next sequence of tokens can open a blockquote.
-    fn peekBlockquote(
+    /// If the next tokens can open a blockquote, return an open result.
+    /// Otherwise, return null.
+    fn canOpen(
         scratch: Allocator,
         it: *TokenIterator(BlockTokenType),
-    ) !bool {
+    ) !?OpenResult {
         const checkpoint_index = it.checkpoint();
         defer it.backtrack(checkpoint_index);
 
         _ = try consumeWhitespaceUpTo(scratch, it, 3);
-        _ = try it.consume(scratch, &.{.r_angle_bracket}) orelse return false;
-        return true;
+        _ = try it.consume(scratch, &.{.r_angle_bracket}) orelse return null;
+        return .{};
     }
 
     fn next(
-        self: *OpenBlockquote,
+        self: *Blockquote,
         scratch: Allocator,
         it: *TokenIterator(BlockTokenType),
         interruptible: bool,
@@ -289,7 +297,7 @@ const OpenBlockquote = struct {
                         .token = null,
                         .line_state = .start,
                         .container = .{
-                            .blockquote = OpenBlockquote.init(self.depth + 1),
+                            .blockquote = Blockquote.init(self.depth + 1),
                         },
                     };
                 },
@@ -347,7 +355,7 @@ const OpenBlockquote = struct {
         }
     }
 
-    fn toNode(self: OpenBlockquote, alloc: Allocator) !*ast.Node {
+    fn toNode(self: Blockquote, alloc: Allocator) !*ast.Node {
         const children = try alloc.dupe(*ast.Node, self.children.items);
         errdefer alloc.free(children);
 
@@ -362,11 +370,15 @@ const OpenBlockquote = struct {
 };
 
 /// Bullet list container.
-const OpenBulletList = struct {
+const BulletList = struct {
     children: ArrayList(*ast.Node),
     marker_token: BlockToken,
 
-    fn init(marker_token: BlockToken) OpenBulletList {
+    const OpenResult = struct {
+        marker_token: BlockToken,
+    };
+
+    fn init(marker_token: BlockToken) BulletList {
         // TODO: Use enum subset?
         std.debug.assert(marker_token.token_type == .star or
             marker_token.token_type == .hyphen or
@@ -379,13 +391,11 @@ const OpenBulletList = struct {
     }
 
     /// Returns the marker token if the next sequence of tokens can open a
-    /// bullet list.
-    ///
-    /// Returns null otherwise.
-    fn peekBulletList(
+    /// bullet list. Returns null otherwise.
+    fn canOpen(
         scratch: Allocator,
         it: *TokenIterator(BlockTokenType),
-    ) !?BlockToken {
+    ) !?OpenResult {
         const checkpoint_index = it.checkpoint();
         defer it.backtrack(checkpoint_index);
 
@@ -397,11 +407,13 @@ const OpenBulletList = struct {
             return null;
         _ = try it.consume(scratch, &.{.whitespace}) orelse return null;
 
-        return marker_token;
+        return .{
+            .marker_token = marker_token,
+        };
     }
 
     fn next(
-        self: *OpenBulletList,
+        self: *BulletList,
         scratch: Allocator,
         it: *TokenIterator(BlockTokenType),
         interruptible: bool,
@@ -415,17 +427,17 @@ const OpenBulletList = struct {
             .line_state = .start,
         };
 
-        if (try OpenBulletListItem.peekBulletListItem(
+        if (try BulletListItem.canOpen(
             scratch,
             it,
             self.marker_token.token_type,
-        )) {
+        )) |_| {
             // Open new bullet list item
             return .{
                 .token = null,
                 .line_state = .start,
                 .container = .{
-                    .bullet_list_item = OpenBulletListItem.init(
+                    .bullet_list_item = BulletListItem.init(
                         self.marker_token,
                     ),
                 },
@@ -453,7 +465,7 @@ const OpenBulletList = struct {
         }
     }
 
-    fn toNode(self: OpenBulletList, alloc: Allocator) !*ast.Node {
+    fn toNode(self: BulletList, alloc: Allocator) !*ast.Node {
         const children = try alloc.dupe(*ast.Node, self.children.items);
         errdefer alloc.free(children);
 
@@ -470,13 +482,15 @@ const OpenBulletList = struct {
 };
 
 /// Bullet list item container.
-const OpenBulletListItem = struct {
+const BulletListItem = struct {
     children: ArrayList(*ast.Node),
     marker_token: BlockToken,
     indent: usize,
     spread: bool,
 
-    fn init(marker_token: BlockToken) OpenBulletListItem {
+    const OpenResult = struct {};
+
+    fn init(marker_token: BlockToken) BulletListItem {
         return .{
             .children = .empty,
             .marker_token = marker_token,
@@ -485,25 +499,25 @@ const OpenBulletListItem = struct {
         };
     }
 
-    /// Returns true if the next sequence of tokens can open a bullet list
-    /// item.
-    fn peekBulletListItem(
+    /// Returns an empty open result if the next tokens can open a list item,
+    /// otherwise null.
+    fn canOpen(
         scratch: Allocator,
         it: *TokenIterator(BlockTokenType),
         marker_token_type: BlockTokenType,
-    ) !bool {
+    ) !?OpenResult {
         const checkpoint_index = it.checkpoint();
         defer it.backtrack(checkpoint_index);
 
         _ = try consumeWhitespaceUpTo(scratch, it, 3);
         _ = try it.consume(scratch, &.{marker_token_type}) orelse
-            return false;
-        _ = try it.consume(scratch, &.{.whitespace}) orelse return false;
-        return true;
+            return null;
+        _ = try it.consume(scratch, &.{.whitespace}) orelse return null;
+        return .{};
     }
 
     fn next(
-        self: *OpenBulletListItem,
+        self: *BulletListItem,
         scratch: Allocator,
         it: *TokenIterator(BlockTokenType),
         interruptible: bool,
@@ -583,7 +597,7 @@ const OpenBulletListItem = struct {
         }
     }
 
-    fn toNode(self: OpenBulletListItem, alloc: Allocator) !*ast.Node {
+    fn toNode(self: BulletListItem, alloc: Allocator) !*ast.Node {
         // If we have just a single paragraph, unwrap it.
         // In the 0.0.5 MyST spec test cases, this is required. But as of June
         // 2026 the online MyST sandbox does NOT do this unwrapping.
@@ -616,19 +630,35 @@ const OpenBulletListItem = struct {
     }
 };
 
-const OpenOrderedList = struct {
+const OrderedList = struct {
     children: ArrayList(*ast.Node),
     marker_token: BlockToken,
     start: u32,
+
+    const OpenResult = struct {
+        marker_token: BlockToken,
+        start: u32,
+    };
+
+    fn init(marker_token: BlockToken, start: u32) OrderedList {
+        std.debug.assert(marker_token.token_type == .period or
+            marker_token.token_type == .r_paren);
+
+        return .{
+            .children = .empty,
+            .marker_token = marker_token,
+            .start = start,
+        };
+    }
 
     // Returns the ordered list container that would result if the next
     // sequence of tokens opens an ordered list.
     //
     // Returns null otherwise.
-    fn peekOrderedList(
+    fn canOpen(
         scratch: Allocator,
         it: *TokenIterator(BlockTokenType),
-    ) !?OpenOrderedList {
+    ) !?OpenResult {
         const checkpoint_index = it.checkpoint();
         defer it.backtrack(checkpoint_index);
 
@@ -641,12 +671,11 @@ const OpenOrderedList = struct {
         ) orelse return null;
         _ = try it.consume(scratch, &.{.whitespace}) orelse return null;
 
-        const start = OpenOrderedList.parseNumber(
+        const start = OrderedList.parseNumber(
             numeral_token.lexeme,
         ) catch return null;
 
         return .{
-            .children = .empty,
             .marker_token = marker_token,
             .start = start,
         };
@@ -668,7 +697,7 @@ const OpenOrderedList = struct {
     }
 
     fn next(
-        self: *OpenOrderedList,
+        self: *OrderedList,
         scratch: Allocator,
         it: *TokenIterator(BlockTokenType),
         interruptible: bool,
@@ -684,13 +713,13 @@ const OpenOrderedList = struct {
             .line_state = .start,
         };
 
-        if (try OpenOrderedListItem.peekOrderedListItem(scratch, it)) {
+        if (try OrderedListItem.canOpen(scratch, it)) |_| {
             // Open new ordered list item
             return .{
                 .token = null,
                 .line_state = .start,
                 .container = .{
-                    .ordered_list_item = OpenOrderedListItem.init(),
+                    .ordered_list_item = OrderedListItem.init(),
                 },
             };
         }
@@ -716,7 +745,7 @@ const OpenOrderedList = struct {
         }
     }
 
-    fn toNode(self: OpenOrderedList, alloc: Allocator) !*ast.Node {
+    fn toNode(self: OrderedList, alloc: Allocator) !*ast.Node {
         const children = try alloc.dupe(*ast.Node, self.children.items);
         errdefer alloc.free(children);
 
@@ -733,12 +762,14 @@ const OpenOrderedList = struct {
     }
 };
 
-const OpenOrderedListItem = struct {
+const OrderedListItem = struct {
     children: ArrayList(*ast.Node),
     indent: usize,
     spread: bool,
 
-    fn init() OpenOrderedListItem {
+    const OpenResult = struct {};
+
+    fn init() OrderedListItem {
         return .{
             .children = .empty,
             .indent = 0,
@@ -746,26 +777,26 @@ const OpenOrderedListItem = struct {
         };
     }
 
-    fn peekOrderedListItem(
+    fn canOpen(
         scratch: Allocator,
         it: *TokenIterator(BlockTokenType),
-    ) !bool {
+    ) !?OpenResult {
         const checkpoint_index = it.checkpoint();
         defer it.backtrack(checkpoint_index);
 
         _ = try consumeWhitespaceUpTo(scratch, it, 3);
-        _ = try it.consume(scratch, &.{.text}) orelse return false;
+        _ = try it.consume(scratch, &.{.text}) orelse return null;
         _ = try it.consume(scratch, &.{ .period, .r_paren }) orelse
-            return false;
-        _ = try it.consume(scratch, &.{.whitespace}) orelse return false;
+            return null;
+        _ = try it.consume(scratch, &.{.whitespace}) orelse return null;
 
         // TODO: Check text token is all arabic numerals and the right length
 
-        return true;
+        return .{};
     }
 
     fn next(
-        self: *OpenOrderedListItem,
+        self: *OrderedListItem,
         scratch: Allocator,
         it: *TokenIterator(BlockTokenType),
         interruptible: bool,
@@ -845,7 +876,7 @@ const OpenOrderedListItem = struct {
         }
     }
 
-    fn toNode(self: OpenOrderedListItem, alloc: Allocator) !*ast.Node {
+    fn toNode(self: OrderedListItem, alloc: Allocator) !*ast.Node {
         const children = blk: {
             if (!self.spread and
                 self.children.items.len == 1 and
@@ -906,7 +937,7 @@ pub fn parse(
     link_defs: *LinkDefMap,
 ) Error!*ast.Node {
     try self.container_stack.append(scratch, .{
-        .root = OpenRoot.empty,
+        .root = Root.empty,
     });
 
     var leaf_it = self.iterator();
