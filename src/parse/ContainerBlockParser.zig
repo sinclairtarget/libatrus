@@ -370,6 +370,10 @@ const Blockquote = struct {
 };
 
 /// Bullet list container.
+///
+/// As of version 0.0.5 of the MyST spec, if a list is loose according to the
+/// CommonMark definition of "loose", then all list items must have `spread =
+/// true` while the containing list always has `spread = false`.
 const BulletList = struct {
     children: ArrayList(*ast.Node),
     marker_token: BlockToken,
@@ -466,6 +470,8 @@ const BulletList = struct {
     }
 
     fn toNode(self: BulletList, alloc: Allocator) !*ast.Node {
+        handleListTightness(alloc, self.children.items);
+
         const children = try alloc.dupe(*ast.Node, self.children.items);
         errdefer alloc.free(children);
 
@@ -486,7 +492,7 @@ const BulletListItem = struct {
     children: ArrayList(*ast.Node),
     marker_token: BlockToken,
     indent: usize,
-    spread: bool,
+    saw_blank_line: bool,
 
     const OpenResult = struct {};
 
@@ -495,7 +501,7 @@ const BulletListItem = struct {
             .children = .empty,
             .marker_token = marker_token,
             .indent = 0,
-            .spread = false,
+            .saw_blank_line = false,
         };
     }
 
@@ -522,7 +528,7 @@ const BulletListItem = struct {
         it: *TokenIterator(BlockTokenType),
         interruptible: bool,
     ) !NextResult {
-        const eof: NextResult = .{
+        const end: NextResult = .{
             .token = null,
             .line_state = .start,
         };
@@ -538,15 +544,12 @@ const BulletListItem = struct {
             const following_ws_len = try consumeWhitespaceUpTo(scratch, it, 4);
             self.indent = leading_ws_len + 1 + following_ws_len;
         } else {
-            const start_token = try it.peek(scratch) orelse return eof;
+            const start_token = try it.peek(scratch) orelse return end;
             switch (start_token.token_type) {
                 .whitespace => {
                     if (start_token.lexeme.len < self.indent) {
                         // Not indented enough; end list item
-                        return .{
-                            .token = null,
-                            .line_state = .start,
-                        };
+                        return end;
                     }
 
                     _ = try it.consume(scratch, &.{.whitespace});
@@ -554,7 +557,7 @@ const BulletListItem = struct {
                 .newline => {
                     // Blank line; allowed in list item
                     _ = try it.consume(scratch, &.{.newline});
-                    self.spread = true;
+                    self.saw_blank_line = true;
                     return .{
                         .token = start_token,
                         .line_state = .start,
@@ -562,15 +565,12 @@ const BulletListItem = struct {
                 },
                 else => {
                     // End list item
-                    return .{
-                        .token = null,
-                        .line_state = .start,
-                    };
+                    return end;
                 },
             }
         }
 
-        const token = try it.peek(scratch) orelse return eof;
+        const token = try it.peek(scratch) orelse return end;
         switch (token.token_type) {
             .star, .hyphen, .plus => {
                 if (!interruptible) {
@@ -582,8 +582,13 @@ const BulletListItem = struct {
                 }
 
                 // Can't yet nest lists
+                return end;
+            },
+            .newline => {
+                _ = try it.consume(scratch, &.{.newline});
+                self.saw_blank_line = true;
                 return .{
-                    .token = null,
+                    .token = token,
                     .line_state = .start,
                 };
             },
@@ -598,38 +603,25 @@ const BulletListItem = struct {
     }
 
     fn toNode(self: BulletListItem, alloc: Allocator) !*ast.Node {
-        // If we have just a single paragraph, unwrap it.
-        // In the 0.0.5 MyST spec test cases, this is required. But as of June
-        // 2026 the online MyST sandbox does NOT do this unwrapping.
-        //
-        // In CommonMark, this kind of unwrapping is expected by the spec:
-        // https://spec.commonmark.org/0.30/#loose
-        const children = blk: {
-            if (!self.spread and
-                self.children.items.len == 1 and
-                @as(ast.NodeType, self.children.items[0].*) == .paragraph)
-            {
-                const p_node = self.children.items[0];
-                defer alloc.destroy(p_node);
-
-                break :blk p_node.paragraph.children;
-            }
-
-            break :blk try alloc.dupe(*ast.Node, self.children.items);
-        };
+        const children = try alloc.dupe(*ast.Node, self.children.items);
         errdefer alloc.free(children);
 
         const node = try alloc.create(ast.Node);
         node.* = .{
             .list_item = .{
                 .children = children,
-                .spread = self.spread,
+                .spread = self.saw_blank_line,
             },
         };
         return node;
     }
 };
 
+/// Container for a numbered list.
+///
+/// As of version 0.0.5 of the MyST spec, if a list is loose according to the
+/// CommonMark definition of "loose", then all list items must have `spread =
+/// true` while the containing list always has `spread = false`.
 const OrderedList = struct {
     children: ArrayList(*ast.Node),
     marker_token: BlockToken,
@@ -731,6 +723,8 @@ const OrderedList = struct {
     }
 
     fn toNode(self: OrderedList, alloc: Allocator) !*ast.Node {
+        handleListTightness(alloc, self.children.items);
+
         const children = try alloc.dupe(*ast.Node, self.children.items);
         errdefer alloc.free(children);
 
@@ -750,7 +744,7 @@ const OrderedList = struct {
 const OrderedListItem = struct {
     children: ArrayList(*ast.Node),
     indent: usize,
-    spread: bool,
+    saw_blank_line: bool,
 
     const OpenResult = struct {};
 
@@ -758,7 +752,7 @@ const OrderedListItem = struct {
         return .{
             .children = .empty,
             .indent = 0,
-            .spread = false,
+            .saw_blank_line = false,
         };
     }
 
@@ -820,7 +814,7 @@ const OrderedListItem = struct {
                 .newline => {
                     // Blank line; allowed in list item
                     _ = try it.consume(scratch, &.{.newline});
-                    self.spread = true;
+                    self.saw_blank_line = true;
                     return .{
                         .token = start_token,
                         .line_state = .start,
@@ -853,6 +847,15 @@ const OrderedListItem = struct {
                     .line_state = .start,
                 };
             },
+            .newline => {
+                // Blank line; allowed in list item
+                _ = try it.consume(scratch, &.{.newline});
+                self.saw_blank_line = true;
+                return .{
+                    .token = token,
+                    .line_state = .start,
+                };
+            },
             else => {
                 _ = try it.consume(scratch, &.{token.token_type});
                 return .{
@@ -864,26 +867,14 @@ const OrderedListItem = struct {
     }
 
     fn toNode(self: OrderedListItem, alloc: Allocator) !*ast.Node {
-        const children = blk: {
-            if (!self.spread and
-                self.children.items.len == 1 and
-                @as(ast.NodeType, self.children.items[0].*) == .paragraph)
-            {
-                const p_node = self.children.items[0];
-                defer alloc.destroy(p_node);
-
-                break :blk p_node.paragraph.children;
-            }
-
-            break :blk try alloc.dupe(*ast.Node, self.children.items);
-        };
+        const children = try alloc.dupe(*ast.Node, self.children.items);
         errdefer alloc.free(children);
 
         const node = try alloc.create(ast.Node);
         node.* = .{
             .list_item = .{
                 .children = children,
-                .spread = self.spread,
+                .spread = self.saw_blank_line,
             },
         };
         return node;
@@ -1056,6 +1047,62 @@ fn consumeWhitespaceUpTo(
     const ws_token = try it.consume(scratch, &.{.whitespace}) orelse
         unreachable;
     return ws_token.lexeme.len;
+}
+
+fn handleListTightness(alloc: Allocator, list_items: []*ast.Node) void {
+    // find index of last spread child
+    var maybe_last_spread_i: ?usize = null;
+    for (list_items, 0..) |child, i| {
+        if (child.list_item.spread) {
+            maybe_last_spread_i = i;
+        }
+    }
+
+    const is_tight_list: bool = blk: {
+        if (maybe_last_spread_i) |last_spread_i| {
+            if (last_spread_i < list_items.len - 1) {
+                // Spread item that isn't the last child, definitely loose
+                break :blk false;
+            }
+
+            // Only spread item is the last item in the list.
+            // We are a tight list if the last item has no more than one
+            // child (the spread would have come from trailing blank
+            // lines).
+            // Otherwise we are loose.
+            const last_item = list_items[last_spread_i];
+            break :blk last_item.list_item.children.len <= 1;
+        } else {
+            // No spread children, so we must be a tight list
+            break :blk true;
+        }
+    };
+
+    if (is_tight_list) {
+        // Eliminate redundant paragraph nodes in tight list
+        for (list_items) |child| {
+            unwrapTightListItem(alloc, child);
+        }
+    } else {
+        // Make sure all list items are marked spread
+        for (list_items) |child| {
+            child.list_item.spread = true;
+        }
+    }
+}
+
+/// For tight lists, we want list items to have a single text node child rather
+/// than a single paragraph node child containing a text node.
+fn unwrapTightListItem(alloc: Allocator, item: *ast.Node) void {
+    const children = item.list_item.children;
+    if (children.len == 1 and @as(ast.NodeType, children[0].*) == .paragraph)
+    {
+        const p_node = children[0];
+        defer alloc.destroy(p_node);
+        defer alloc.free(children);
+
+        item.list_item.children = p_node.paragraph.children;
+    }
 }
 
 /// Sequence of 1 to 9 arabic digits. Can begin with 0s.
@@ -1485,6 +1532,131 @@ test "bullet list markers" {
     try testing.expectEqual(1, list_node_2.list.children.len);
 }
 
+test "bullet list spread item" {
+    const md =
+        \\* This contains a blank line.
+        \\
+        \\  Blank line above.
+        \\* Second
+        \\
+    ;
+
+    const root_node = try parseBlocks(md);
+    defer root_node.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
+    try testing.expectEqual(1, root_node.root.children.len);
+
+    const list_node = root_node.root.children[0];
+    try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
+    try testing.expectEqual(false, list_node.list.ordered);
+    try testing.expectEqual(false, list_node.list.spread);
+    try testing.expectEqual(2, list_node.list.children.len);
+
+    const list_item_node_1 = list_node.list.children[0];
+    try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node_1.*));
+    try testing.expectEqual(true, list_item_node_1.list_item.spread);
+    try testing.expectEqual(2, list_item_node_1.list_item.children.len);
+
+    const list_item_node_2 = list_node.list.children[1];
+    try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node_2.*));
+    try testing.expectEqual(true, list_item_node_2.list_item.spread);
+    try testing.expectEqual(1, list_item_node_2.list_item.children.len);
+
+    const p_node_2 = list_item_node_2.list_item.children[0];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node_2.*));
+    try testing.expectEqual(1, p_node_2.paragraph.children.len);
+    const txt_node_2 = p_node_2.paragraph.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, txt_node_2.*));
+    try testing.expectEqualStrings("Second", txt_node_2.text.value);
+}
+
+test "bullet list spread list" {
+    const md =
+        \\* First
+        \\
+        \\* Second
+        \\
+    ;
+
+    const root_node = try parseBlocks(md);
+    defer root_node.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
+    try testing.expectEqual(1, root_node.root.children.len);
+
+    const list_node = root_node.root.children[0];
+    try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
+    try testing.expectEqual(false, list_node.list.ordered);
+    try testing.expectEqual(false, list_node.list.spread);
+    try testing.expectEqual(2, list_node.list.children.len);
+
+    const list_item_node_1 = list_node.list.children[0];
+    try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node_1.*));
+    try testing.expectEqual(true, list_item_node_1.list_item.spread);
+    try testing.expectEqual(1, list_item_node_1.list_item.children.len);
+
+    const p_node_1 = list_item_node_1.list_item.children[0];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node_1.*));
+    try testing.expectEqual(1, p_node_1.paragraph.children.len);
+    const txt_node_1 = p_node_1.paragraph.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, txt_node_1.*));
+    try testing.expectEqualStrings("First", txt_node_1.text.value);
+
+    const list_item_node_2 = list_node.list.children[1];
+    try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node_2.*));
+    try testing.expectEqual(true, list_item_node_2.list_item.spread);
+
+    const p_node_2 = list_item_node_2.list_item.children[0];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node_2.*));
+    try testing.expectEqual(1, p_node_2.paragraph.children.len);
+    const txt_node_2 = p_node_2.paragraph.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, txt_node_2.*));
+    try testing.expectEqualStrings("Second", txt_node_2.text.value);
+}
+
+// This list should be tight. The trailing blank lines are after the list.
+test "bullet list trailing blank lines" {
+    const md =
+        \\* First
+        \\* Second
+        \\
+        \\This is a paragraph.
+        \\
+    ;
+
+    const root_node = try parseBlocks(md);
+    defer root_node.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
+    try testing.expectEqual(2, root_node.root.children.len);
+
+    const list_node = root_node.root.children[0];
+    try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
+    try testing.expectEqual(false, list_node.list.spread);
+    try testing.expectEqual(2, list_node.list.children.len);
+
+    {
+        const child = list_node.list.children[0];
+        try testing.expectEqual(.list_item, @as(ast.NodeType, child.*));
+        try testing.expectEqual(false, child.list_item.spread);
+        try testing.expectEqual(1, child.list_item.children.len);
+
+        const txt_node = child.list_item.children[0];
+        try testing.expectEqual(.text, @as(ast.NodeType, txt_node.*));
+    }
+
+    {
+        const child = list_node.list.children[1];
+        try testing.expectEqual(.list_item, @as(ast.NodeType, child.*));
+        try testing.expectEqual(true, child.list_item.spread);
+        try testing.expectEqual(1, child.list_item.children.len);
+
+        const txt_node = child.list_item.children[0];
+        try testing.expectEqual(.text, @as(ast.NodeType, txt_node.*));
+    }
+}
+
 test "bullet list match indent" {
     const md =
         \\*    First
@@ -1603,4 +1775,127 @@ test "ordered list invalid number not at start" {
 
     // TODO: Expand this test when we can handle lazy continuation lines in
     // list items.
+}
+
+test "ordered list spread item" {
+    const md =
+        \\1. This contains a blank line.
+        \\
+        \\   Blank line above.
+        \\2. Second
+        \\
+    ;
+
+    const root_node = try parseBlocks(md);
+    defer root_node.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
+    try testing.expectEqual(1, root_node.root.children.len);
+
+    const list_node = root_node.root.children[0];
+    try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
+    try testing.expectEqual(true, list_node.list.ordered);
+    try testing.expectEqual(false, list_node.list.spread);
+    try testing.expectEqual(2, list_node.list.children.len);
+
+    const list_item_node_1 = list_node.list.children[0];
+    try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node_1.*));
+    try testing.expectEqual(true, list_item_node_1.list_item.spread);
+    try testing.expectEqual(2, list_item_node_1.list_item.children.len);
+
+    const list_item_node_2 = list_node.list.children[1];
+    try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node_2.*));
+    try testing.expectEqual(true, list_item_node_2.list_item.spread);
+
+    const p_node_2 = list_item_node_2.list_item.children[0];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node_2.*));
+    try testing.expectEqual(1, p_node_2.paragraph.children.len);
+    const txt_node_2 = p_node_2.paragraph.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, txt_node_2.*));
+    try testing.expectEqualStrings("Second", txt_node_2.text.value);
+}
+
+test "ordered list spread list" {
+    const md =
+        \\1. First
+        \\
+        \\2. Second
+        \\
+    ;
+
+    const root_node = try parseBlocks(md);
+    defer root_node.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
+    try testing.expectEqual(1, root_node.root.children.len);
+
+    const list_node = root_node.root.children[0];
+    try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
+    try testing.expectEqual(true, list_node.list.ordered);
+    try testing.expectEqual(false, list_node.list.spread);
+    try testing.expectEqual(2, list_node.list.children.len);
+
+    const list_item_node_1 = list_node.list.children[0];
+    try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node_1.*));
+    try testing.expectEqual(true, list_item_node_1.list_item.spread);
+
+    const p_node_1 = list_item_node_1.list_item.children[0];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node_1.*));
+    try testing.expectEqual(1, p_node_1.paragraph.children.len);
+    const txt_node_1 = p_node_1.paragraph.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, txt_node_1.*));
+    try testing.expectEqualStrings("First", txt_node_1.text.value);
+
+    const list_item_node_2 = list_node.list.children[1];
+    try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node_2.*));
+    try testing.expectEqual(true, list_item_node_2.list_item.spread);
+
+    const p_node_2 = list_item_node_2.list_item.children[0];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node_2.*));
+    try testing.expectEqual(1, p_node_2.paragraph.children.len);
+    const txt_node_2 = p_node_2.paragraph.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, txt_node_2.*));
+    try testing.expectEqualStrings("Second", txt_node_2.text.value);
+}
+
+// This list should be tight. The trailing blank lines are after the list.
+test "ordered list trailing blank lines" {
+    const md =
+        \\1. First
+        \\2. Second
+        \\
+        \\This is a paragraph.
+        \\
+    ;
+
+    const root_node = try parseBlocks(md);
+    defer root_node.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
+    try testing.expectEqual(2, root_node.root.children.len);
+
+    const list_node = root_node.root.children[0];
+    try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
+    try testing.expectEqual(false, list_node.list.spread);
+    try testing.expectEqual(2, list_node.list.children.len);
+
+    {
+        const child = list_node.list.children[0];
+        try testing.expectEqual(.list_item, @as(ast.NodeType, child.*));
+        try testing.expectEqual(false, child.list_item.spread);
+        try testing.expectEqual(1, child.list_item.children.len);
+
+        const txt_node = child.list_item.children[0];
+        try testing.expectEqual(.text, @as(ast.NodeType, txt_node.*));
+    }
+
+    {
+        const child = list_node.list.children[1];
+        try testing.expectEqual(.list_item, @as(ast.NodeType, child.*));
+        try testing.expectEqual(true, child.list_item.spread);
+        try testing.expectEqual(1, child.list_item.children.len);
+
+        const txt_node = child.list_item.children[0];
+        try testing.expectEqual(.text, @as(ast.NodeType, txt_node.*));
+    }
 }
