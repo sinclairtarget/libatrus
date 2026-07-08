@@ -2270,28 +2270,29 @@ fn scanParagraphText(self: *Self, scratch: Allocator) !EndingScanResult {
     _ = try self.it.consume(scratch, &.{start_token.token_type});
     _ = try running_text.writer.write(start_token.lexeme);
 
-    const State = enum { open, maybe_close };
-    fsm: switch (State.open) {
-        .open => {
+    const State = enum { continuing, maybe_end };
+    fsm: switch (State.continuing) {
+        .continuing => {
             const token = try self.it.peek(scratch) orelse break :fsm;
             switch (token.token_type) {
                 .newline => {
                     _ = try self.it.consume(scratch, &.{.newline});
                     _ = try running_text.writer.write("\n");
-                    continue :fsm .maybe_close;
+                    continue :fsm .maybe_end;
                 },
                 .close => {
                     _ = try self.it.consume(scratch, &.{.close});
-                    continue :fsm .maybe_close;
+                    saw_close_token = true;
+                    continue :fsm .maybe_end;
                 },
                 else => |t| {
                     _ = try self.it.consume(scratch, &.{t});
                     _ = try running_text.writer.write(token.lexeme);
-                    continue :fsm .open;
+                    continue :fsm .continuing;
                 },
             }
         },
-        .maybe_close => {
+        .maybe_end => {
             const token = try self.it.peek(scratch) orelse break :fsm;
             switch (token.token_type) {
                 .newline,
@@ -2335,7 +2336,7 @@ fn scanParagraphText(self: *Self, scratch: Allocator) !EndingScanResult {
                             !isKnownHTMLTagName(tag_token.lexeme))
                         {
                             saw_close_token = false;
-                            continue :fsm .open;
+                            continue :fsm .continuing;
                         }
                     }
 
@@ -2344,11 +2345,10 @@ fn scanParagraphText(self: *Self, scratch: Allocator) !EndingScanResult {
                 .close => {
                     _ = try self.it.consume(scratch, &.{.close});
                     saw_close_token = true;
-                    continue :fsm .maybe_close;
+                    continue :fsm .maybe_end;
                 },
                 else => {
-                    saw_close_token = false;
-                    continue :fsm .open;
+                    continue :fsm .continuing;
                 },
             }
         },

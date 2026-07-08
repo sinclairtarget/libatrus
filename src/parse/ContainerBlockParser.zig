@@ -8,7 +8,18 @@
 //! * This parser maintains a stack of open container blocks, adding parsed
 //!   leaf nodes to the container topmost on the stack.
 //!
-//! This is a predictive parser with no backtracking.
+//! Containers can nest arbitrarily. We support this using the following
+//! approach.
+//!
+//! At the beginning of each new line, we ask each container in the stack,
+//! starting from the bottom container, to "establish" itself. This means that
+//! the container consumes tokens from the tokens stream necessary to keep that
+//! container open. If this is successful, the container stays open and the
+//! topmost container processes all remaining tokens in the line. If any
+//! container cannot establish itself, that container and all containers above
+//! it in the stack are closed.
+//!
+//! Only the topmost container can push new containers onto the stack.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -30,190 +41,79 @@ const Error = error{
     WriteFailed,
 } || Allocator.Error;
 
-/// Where we are in the current line.
-const LineState = enum {
-    start,
-    trailing,
-};
-
-/// The result of handling the next token using the current open container.
-///
-/// A few different things can happen depending on the token.
-///
-/// 1. The token might not be meaningful to the container block parser, in
-///    which case it gets returned in the `token` field to be parsed by a
-///    leaf block parser.
-/// 2. The token could open a new container, in which case the new container
-///    should be returned in the `container` field.
-/// 3. The token might result in the closing of the current container, in which
-///    case `send_close` should be true.
-const NextResult = struct {
-    token: ?BlockToken,
-    line_state: LineState,
-    container: ?OpenContainer = null,
-    send_close: bool = false,
-};
-
 /// Represents a container block that is open (can still have children added to
 /// it).
-const OpenContainer = union(enum) {
-    root: Root,
-    blockquote: Blockquote,
-    bullet_list: BulletList,
-    bullet_list_item: BulletListItem,
-    ordered_list: OrderedList,
-    ordered_list_item: OrderedListItem,
+const Container = struct {
+    children: ArrayList(*ast.Node) = .empty,
+    closed: bool = false,
+    container_type: union(enum) {
+        root: Root,
+        blockquote: Blockquote,
+        //     bullet_list: BulletList,
+        //     bullet_list_item: BulletListItem,
+        //     ordered_list: OrderedList,
+        //     ordered_list_item: OrderedListItem,
+    },
 
-    fn add(
-        self: *OpenContainer,
+    fn addChild(
+        self: *Container,
         scratch: Allocator,
         child: *ast.Node,
     ) !void {
-        switch (self.*) {
-            inline else => |*payload| {
-                try payload.children.append(scratch, child);
-            },
-        }
+        try self.children.append(scratch, child);
     }
 
-    /// Handle the next token.
-    ///
-    /// The `interruptible` param determines whether a new open container is
-    /// allowed in the current context. (No containers can open in the middle
-    /// of a code block, for example.)
-    fn next(
-        self: *OpenContainer,
+    fn establish(
+        self: Container,
         scratch: Allocator,
         it: *TokenIterator(BlockTokenType),
-        line_state: LineState,
-        interruptible: bool,
-    ) !NextResult {
-        // This case is the same for all containers, so handle it here
-        if (line_state == .trailing) {
-            const token = try it.peek(scratch) orelse return .{
-                .token = null,
-                .line_state = .start,
-            };
-            _ = try it.consume(scratch, &.{token.token_type});
-
-            switch (token.token_type) {
-                .newline => {
-                    return .{
-                        .token = token,
-                        .line_state = .start,
-                    };
-                },
-                else => {
-                    return .{
-                        .token = token,
-                        .line_state = .trailing,
-                    };
-                },
-            }
-        }
-
-        switch (self.*) {
-            inline else => |*payload| {
-                return try payload.next(scratch, it, interruptible);
+    ) !bool {
+        switch (self.container_type) {
+            inline else => |payload| {
+                return try payload.establish(scratch, it);
             },
         }
     }
 
     /// Close this container block, turning it into an AST node.
-    fn toNode(self: OpenContainer, alloc: Allocator) !*ast.Node {
-        switch (self) {
-            inline else => |payload| return payload.toNode(alloc),
+    fn toNode(self: Container, alloc: Allocator) !*ast.Node {
+        switch (self.container_type) {
+            inline else => |payload| {
+                return payload.toNode(alloc, self.children.items);
+            },
         }
     }
 };
 
 /// Root container.
 const Root = struct {
-    children: ArrayList(*ast.Node),
-
-    const empty: Root = .{ .children = .empty };
-
-    fn next(
-        self: *Root,
+    fn establish(
+        self: Root,
         scratch: Allocator,
         it: *TokenIterator(BlockTokenType),
-        interruptible: bool,
-    ) !NextResult {
+    ) !bool {
         _ = self;
+        _ = scratch;
+        _ = it;
 
-        if (interruptible) {
-            if (try Blockquote.canOpen(scratch, it)) |_| {
-                // open new blockquote
-                return .{
-                    .token = null,
-                    .line_state = .start,
-                    .container = .{
-                        .blockquote = Blockquote.init(1),
-                    },
-                };
-            }
-
-            if (try BulletList.canOpen(
-                scratch,
-                it,
-            )) |result| {
-                // open new bullet list
-                return .{
-                    .token = null,
-                    .line_state = .start,
-                    .container = .{
-                        .bullet_list = BulletList.init(
-                            result.marker_token,
-                        ),
-                    },
-                };
-            }
-
-            if (try OrderedList.canOpen(scratch, it)) |result| {
-                // open new ordered list
-                return .{
-                    .token = null,
-                    .line_state = .start,
-                    .container = .{
-                        .ordered_list = OrderedList.init(
-                            result.marker_token,
-                            result.start,
-                        ),
-                    },
-                };
-            }
-        }
-
-        const token = try it.peek(scratch) orelse return .{
-            .token = null,
-            .line_state = .start,
-        };
-        switch (token.token_type) {
-            .newline => {
-                _ = try it.consume(scratch, &.{.newline});
-                return .{
-                    .token = token,
-                    .line_state = .start,
-                };
-            },
-            else => {
-                _ = try it.consume(scratch, &.{token.token_type});
-                return .{
-                    .token = token,
-                    .line_state = .trailing,
-                };
-            },
-        }
+        // Root container is by definition always established.
+        return true;
     }
 
-    fn toNode(self: Root, alloc: Allocator) !*ast.Node {
-        const children = try alloc.dupe(*ast.Node, self.children.items);
-        errdefer alloc.free(children);
+    fn toNode(
+        self: Root,
+        alloc: Allocator,
+        children: []*ast.Node,
+    ) !*ast.Node {
+        _ = self;
+
+        const owned_children = try alloc.dupe(*ast.Node, children);
+        errdefer alloc.free(owned_children);
 
         const node = try alloc.create(ast.Node);
         node.* = .{
             .root = .{
-                .children = children,
+                .children = owned_children,
             },
         };
         return node;
@@ -222,659 +122,34 @@ const Root = struct {
 
 /// Blockquote container.
 const Blockquote = struct {
-    children: ArrayList(*ast.Node),
-    depth: usize,
-
-    const OpenResult = struct {};
-
-    fn init(depth: usize) Blockquote {
-        return .{
-            .children = .empty,
-            .depth = depth,
-        };
-    }
-
-    /// If the next tokens can open a blockquote, return an open result.
-    /// Otherwise, return null.
-    fn canOpen(
+    fn establish(
+        self: Blockquote,
         scratch: Allocator,
         it: *TokenIterator(BlockTokenType),
-    ) !?OpenResult {
-        const checkpoint_index = it.checkpoint();
-        defer it.backtrack(checkpoint_index);
+    ) !bool {
+        _ = self;
 
-        _ = try consumeWhitespaceUpTo(scratch, it, 3);
-        _ = try it.consume(scratch, &.{.r_angle_bracket}) orelse return null;
-        return .{};
+        if (try parseBlockquote(scratch, it)) |_| {
+            return true;
+        }
+
+        return false;
     }
 
-    fn next(
-        self: *Blockquote,
-        scratch: Allocator,
-        it: *TokenIterator(BlockTokenType),
-        interruptible: bool,
-    ) !NextResult {
-        const eof: NextResult = .{
-            .token = null,
-            .line_state = .start,
-        };
+    fn toNode(
+        self: Blockquote,
+        alloc: Allocator,
+        children: []*ast.Node,
+    ) !*ast.Node {
+        _ = self;
 
-        // Consume leading '>' tokens
-        const checkpoint_index = it.checkpoint();
-        const maybe_next_token = try it.peekAhead(scratch, 2);
-        if (maybe_next_token) |next_token| {
-            if (next_token.token_type == .r_angle_bracket) {
-                // Up to 3 leading spaces allowed before first '>'
-                _ = try consumeWhitespaceUpTo(scratch, it, 3);
-            }
-        }
-        const met_depth = for (0..self.depth) |_| {
-            if (try it.consume(scratch, &.{.r_angle_bracket})) |_| {
-                // Trailing space allowed after each '>', up to four spaces
-                _ = try consumeWhitespaceUpTo(scratch, it, 4);
-            } else {
-                break false;
-            }
-        } else true;
-
-        if (met_depth) {
-            const token = try it.peek(scratch) orelse return eof;
-            switch (token.token_type) {
-                .r_angle_bracket => {
-                    if (!interruptible) {
-                        // Just pass on the token
-                        _ = try it.consume(scratch, &.{token.token_type});
-                        return .{
-                            .token = token,
-                            .line_state = .trailing,
-                        };
-                    }
-
-                    // Another level of blockquote! We backtrack and let the
-                    // new blockquote container parse the whole line.
-                    it.backtrack(checkpoint_index);
-                    return .{
-                        .token = null,
-                        .line_state = .start,
-                        .container = .{
-                            .blockquote = Blockquote.init(self.depth + 1),
-                        },
-                    };
-                },
-                .newline => {
-                    // Blank line after '>'
-                    _ = try it.consume(scratch, &.{.newline});
-                    return .{
-                        .token = token,
-                        .line_state = .start,
-                    };
-                },
-                .whitespace => {
-                    // Enough whitespace following the '>' to be significant
-                    // We need to trim one allowed space from the token
-                    _ = try it.consume(scratch, &.{.whitespace});
-                    return .{
-                        .token = .{
-                            .token_type = .whitespace,
-                            .lexeme = try scratch.dupe(u8, token.lexeme[1..]),
-                        },
-                        .line_state = .start,
-                    };
-                },
-                else => {
-                    // Beginning of line proper
-                    _ = try it.consume(scratch, &.{token.token_type});
-                    return .{
-                        .token = token,
-                        .line_state = .trailing,
-                    };
-                },
-            }
-        } else {
-            const token = try it.peek(scratch) orelse return eof;
-            switch (token.token_type) {
-                .newline => {
-                    // Blank line
-                    _ = try it.consume(scratch, &.{.newline});
-                    return .{
-                        .token = token,
-                        .send_close = true,
-                        .line_state = .start,
-                    };
-                },
-                else => {
-                    // Line starting without enough leading >
-                    _ = try it.consume(scratch, &.{token.token_type});
-                    return .{
-                        .token = token,
-                        .send_close = true,
-                        .line_state = .trailing,
-                    };
-                },
-            }
-        }
-    }
-
-    fn toNode(self: Blockquote, alloc: Allocator) !*ast.Node {
-        const children = try alloc.dupe(*ast.Node, self.children.items);
-        errdefer alloc.free(children);
+        const owned_children = try alloc.dupe(*ast.Node, children);
+        errdefer alloc.free(owned_children);
 
         const node = try alloc.create(ast.Node);
         node.* = .{
             .blockquote = .{
-                .children = children,
-            },
-        };
-        return node;
-    }
-};
-
-/// Bullet list container.
-///
-/// As of version 0.0.5 of the MyST spec, if a list is loose according to the
-/// CommonMark definition of "loose", then all list items must have `spread =
-/// true` while the containing list always has `spread = false`.
-const BulletList = struct {
-    children: ArrayList(*ast.Node),
-    marker_token: BlockToken,
-
-    const OpenResult = struct {
-        marker_token: BlockToken,
-    };
-
-    fn init(marker_token: BlockToken) BulletList {
-        // TODO: Use enum subset?
-        std.debug.assert(marker_token.token_type == .star or
-            marker_token.token_type == .hyphen or
-            marker_token.token_type == .plus);
-
-        return .{
-            .children = .empty,
-            .marker_token = marker_token,
-        };
-    }
-
-    /// Returns the marker token if the next sequence of tokens can open a
-    /// bullet list. Returns null otherwise.
-    fn canOpen(
-        scratch: Allocator,
-        it: *TokenIterator(BlockTokenType),
-    ) !?OpenResult {
-        const checkpoint_index = it.checkpoint();
-        defer it.backtrack(checkpoint_index);
-
-        _ = try consumeWhitespaceUpTo(scratch, it, 3);
-        const marker_token = try it.consume(
-            scratch,
-            &.{ .hyphen, .star, .plus },
-        ) orelse
-            return null;
-        _ = try it.consume(scratch, &.{.whitespace}) orelse return null;
-
-        return .{
-            .marker_token = marker_token,
-        };
-    }
-
-    fn next(
-        self: *BulletList,
-        scratch: Allocator,
-        it: *TokenIterator(BlockTokenType),
-        interruptible: bool,
-    ) !NextResult {
-        // If the leaf parser is parsing something that cannot be interrupted,
-        // then we should be in a list item or different kind of container.
-        std.debug.assert(interruptible == true);
-
-        const eof: NextResult = .{
-            .token = null,
-            .line_state = .start,
-        };
-
-        if (try BulletListItem.canOpen(
-            scratch,
-            it,
-            self.marker_token.token_type,
-        )) |_| {
-            // Open new bullet list item
-            return .{
-                .token = null,
-                .line_state = .start,
-                .container = .{
-                    .bullet_list_item = BulletListItem.init(
-                        self.marker_token,
-                    ),
-                },
-            };
-        }
-
-        const token = try it.peek(scratch) orelse return eof;
-        switch (token.token_type) {
-            .star, .hyphen, .plus => {
-                // It's the start of a new list, so close the container
-                return .{
-                    .token = null,
-                    .line_state = .start,
-                };
-            },
-            else => {
-                // end of list
-                _ = try it.consume(scratch, &.{token.token_type});
-                return .{
-                    .token = token,
-                    .send_close = true,
-                    .line_state = .trailing,
-                };
-            },
-        }
-    }
-
-    fn toNode(self: BulletList, alloc: Allocator) !*ast.Node {
-        handleListTightness(alloc, self.children.items);
-
-        const children = try alloc.dupe(*ast.Node, self.children.items);
-        errdefer alloc.free(children);
-
-        const node = try alloc.create(ast.Node);
-        node.* = .{
-            .list = .{
-                .children = children,
-                .ordered = false,
-                .spread = false,
-            },
-        };
-        return node;
-    }
-};
-
-/// Bullet list item container.
-const BulletListItem = struct {
-    children: ArrayList(*ast.Node),
-    marker_token: BlockToken,
-    indent: usize,
-    saw_blank_line: bool,
-
-    const OpenResult = struct {};
-
-    fn init(marker_token: BlockToken) BulletListItem {
-        return .{
-            .children = .empty,
-            .marker_token = marker_token,
-            .indent = 0,
-            .saw_blank_line = false,
-        };
-    }
-
-    /// Returns an empty open result if the next tokens can open a list item,
-    /// otherwise null.
-    fn canOpen(
-        scratch: Allocator,
-        it: *TokenIterator(BlockTokenType),
-        marker_token_type: BlockTokenType,
-    ) !?OpenResult {
-        const checkpoint_index = it.checkpoint();
-        defer it.backtrack(checkpoint_index);
-
-        _ = try consumeWhitespaceUpTo(scratch, it, 3);
-        _ = try it.consume(scratch, &.{marker_token_type}) orelse
-            return null;
-        _ = try it.consume(scratch, &.{.whitespace}) orelse return null;
-        return .{};
-    }
-
-    fn next(
-        self: *BulletListItem,
-        scratch: Allocator,
-        it: *TokenIterator(BlockTokenType),
-        interruptible: bool,
-    ) !NextResult {
-        const end: NextResult = .{
-            .token = null,
-            .line_state = .start,
-        };
-
-        if (self.indent == 0) {
-            // Handle first line
-            const leading_ws_len = try consumeWhitespaceUpTo(scratch, it, 3);
-            _ = try it.consume(
-                scratch,
-                &.{self.marker_token.token_type},
-            ) orelse
-                @panic("bullet list item created with wrong marker token");
-            const following_ws_len = try consumeWhitespaceUpTo(scratch, it, 4);
-            self.indent = leading_ws_len + 1 + following_ws_len;
-        } else {
-            const start_token = try it.peek(scratch) orelse return end;
-            switch (start_token.token_type) {
-                .whitespace => {
-                    if (start_token.lexeme.len < self.indent) {
-                        // Not indented enough; end list item
-                        return end;
-                    }
-
-                    _ = try it.consume(scratch, &.{.whitespace});
-                },
-                .newline => {
-                    // Blank line; allowed in list item
-                    _ = try it.consume(scratch, &.{.newline});
-                    self.saw_blank_line = true;
-                    return .{
-                        .token = start_token,
-                        .line_state = .start,
-                    };
-                },
-                else => {
-                    // End list item
-                    return end;
-                },
-            }
-        }
-
-        const token = try it.peek(scratch) orelse return end;
-        switch (token.token_type) {
-            .star, .hyphen, .plus => {
-                if (!interruptible) {
-                    // Just pass on the token
-                    return .{
-                        .token = token,
-                        .line_state = .trailing,
-                    };
-                }
-
-                // Can't yet nest lists
-                return end;
-            },
-            .newline => {
-                _ = try it.consume(scratch, &.{.newline});
-                self.saw_blank_line = true;
-                return .{
-                    .token = token,
-                    .line_state = .start,
-                };
-            },
-            else => {
-                _ = try it.consume(scratch, &.{token.token_type});
-                return .{
-                    .token = token,
-                    .line_state = .trailing,
-                };
-            },
-        }
-    }
-
-    fn toNode(self: BulletListItem, alloc: Allocator) !*ast.Node {
-        const children = try alloc.dupe(*ast.Node, self.children.items);
-        errdefer alloc.free(children);
-
-        const node = try alloc.create(ast.Node);
-        node.* = .{
-            .list_item = .{
-                .children = children,
-                .spread = self.saw_blank_line,
-            },
-        };
-        return node;
-    }
-};
-
-/// Container for a numbered list.
-///
-/// As of version 0.0.5 of the MyST spec, if a list is loose according to the
-/// CommonMark definition of "loose", then all list items must have `spread =
-/// true` while the containing list always has `spread = false`.
-const OrderedList = struct {
-    children: ArrayList(*ast.Node),
-    marker_token: BlockToken,
-    start: u32,
-
-    const OpenResult = struct {
-        marker_token: BlockToken,
-        start: u32,
-    };
-
-    fn init(marker_token: BlockToken, start: u32) OrderedList {
-        std.debug.assert(marker_token.token_type == .period or
-            marker_token.token_type == .r_paren);
-
-        return .{
-            .children = .empty,
-            .marker_token = marker_token,
-            .start = start,
-        };
-    }
-
-    // Returns the ordered list container that would result if the next
-    // sequence of tokens opens an ordered list.
-    //
-    // Returns null otherwise.
-    fn canOpen(
-        scratch: Allocator,
-        it: *TokenIterator(BlockTokenType),
-    ) !?OpenResult {
-        const checkpoint_index = it.checkpoint();
-        defer it.backtrack(checkpoint_index);
-
-        _ = try consumeWhitespaceUpTo(scratch, it, 3);
-        const numeral_token = try it.consume(scratch, &.{.text}) orelse
-            return null;
-        const marker_token = try it.consume(
-            scratch,
-            &.{ .period, .r_paren },
-        ) orelse return null;
-        _ = try it.consume(scratch, &.{.whitespace}) orelse return null;
-
-        const start = parseOrderedListNumber(
-            numeral_token.lexeme,
-        ) catch return null;
-
-        return .{
-            .marker_token = marker_token,
-            .start = start,
-        };
-    }
-
-    fn next(
-        self: *OrderedList,
-        scratch: Allocator,
-        it: *TokenIterator(BlockTokenType),
-        interruptible: bool,
-    ) !NextResult {
-        _ = self;
-
-        // If the leaf parser is parsing something that cannot be interrupted,
-        // then we should be in a list item or different kind of container.
-        std.debug.assert(interruptible == true);
-
-        const eof: NextResult = .{
-            .token = null,
-            .line_state = .start,
-        };
-
-        if (try OrderedListItem.canOpen(scratch, it)) |_| {
-            // Open new ordered list item
-            return .{
-                .token = null,
-                .line_state = .start,
-                .container = .{
-                    .ordered_list_item = OrderedListItem.init(),
-                },
-            };
-        }
-
-        const token = try it.peek(scratch) orelse return eof;
-        switch (token.token_type) {
-            .star, .hyphen, .plus => {
-                // It's the start of a new bullet list, so close the container
-                return .{
-                    .token = null,
-                    .line_state = .start,
-                };
-            },
-            else => {
-                // end of list
-                _ = try it.consume(scratch, &.{token.token_type});
-                return .{
-                    .token = token,
-                    .send_close = true,
-                    .line_state = .trailing,
-                };
-            },
-        }
-    }
-
-    fn toNode(self: OrderedList, alloc: Allocator) !*ast.Node {
-        handleListTightness(alloc, self.children.items);
-
-        const children = try alloc.dupe(*ast.Node, self.children.items);
-        errdefer alloc.free(children);
-
-        const node = try alloc.create(ast.Node);
-        node.* = .{
-            .list = .{
-                .children = children,
-                .ordered = true,
-                .spread = false,
-                .start = self.start,
-            },
-        };
-        return node;
-    }
-};
-
-const OrderedListItem = struct {
-    children: ArrayList(*ast.Node),
-    indent: usize,
-    saw_blank_line: bool,
-
-    const OpenResult = struct {};
-
-    fn init() OrderedListItem {
-        return .{
-            .children = .empty,
-            .indent = 0,
-            .saw_blank_line = false,
-        };
-    }
-
-    fn canOpen(
-        scratch: Allocator,
-        it: *TokenIterator(BlockTokenType),
-    ) !?OpenResult {
-        const checkpoint_index = it.checkpoint();
-        defer it.backtrack(checkpoint_index);
-
-        _ = try consumeWhitespaceUpTo(scratch, it, 3);
-        const numeral_token = try it.consume(scratch, &.{.text}) orelse
-            return null;
-        _ = try it.consume(
-            scratch,
-            &.{ .period, .r_paren },
-        ) orelse return null;
-        _ = try it.consume(scratch, &.{.whitespace}) orelse return null;
-
-        _ = parseOrderedListNumber(numeral_token.lexeme) catch return null;
-        return .{};
-    }
-
-    fn next(
-        self: *OrderedListItem,
-        scratch: Allocator,
-        it: *TokenIterator(BlockTokenType),
-        interruptible: bool,
-    ) !NextResult {
-        const eof: NextResult = .{
-            .token = null,
-            .line_state = .start,
-        };
-
-        if (self.indent == 0) {
-            // Handle first line
-            const leading_ws_len = try consumeWhitespaceUpTo(scratch, it, 3);
-            const text_token = try it.consume(scratch, &.{.text}) orelse
-                unreachable;
-            _ = try it.consume(scratch, &.{ .period, .r_paren }) orelse
-                unreachable;
-            const following_ws_len = try consumeWhitespaceUpTo(scratch, it, 4);
-            self.indent = leading_ws_len + text_token.lexeme.len + 1 +
-                following_ws_len;
-        } else {
-            const start_token = try it.peek(scratch) orelse return eof;
-            switch (start_token.token_type) {
-                .whitespace => {
-                    if (start_token.lexeme.len < self.indent) {
-                        // Not indented enough; end list item
-                        return .{
-                            .token = null,
-                            .line_state = .start,
-                        };
-                    }
-
-                    _ = try it.consume(scratch, &.{.whitespace});
-                },
-                .newline => {
-                    // Blank line; allowed in list item
-                    _ = try it.consume(scratch, &.{.newline});
-                    self.saw_blank_line = true;
-                    return .{
-                        .token = start_token,
-                        .line_state = .start,
-                    };
-                },
-                else => {
-                    // End list item
-                    return .{
-                        .token = null,
-                        .line_state = .start,
-                    };
-                },
-            }
-        }
-
-        const token = try it.peek(scratch) orelse return eof;
-        switch (token.token_type) {
-            .star, .hyphen, .plus => {
-                if (!interruptible) {
-                    // Just pass on the token
-                    return .{
-                        .token = token,
-                        .line_state = .trailing,
-                    };
-                }
-
-                // Can't yet nest lists
-                return .{
-                    .token = null,
-                    .line_state = .start,
-                };
-            },
-            .newline => {
-                // Blank line; allowed in list item
-                _ = try it.consume(scratch, &.{.newline});
-                self.saw_blank_line = true;
-                return .{
-                    .token = token,
-                    .line_state = .start,
-                };
-            },
-            else => {
-                _ = try it.consume(scratch, &.{token.token_type});
-                return .{
-                    .token = token,
-                    .line_state = .trailing,
-                };
-            },
-        }
-    }
-
-    fn toNode(self: OrderedListItem, alloc: Allocator) !*ast.Node {
-        const children = try alloc.dupe(*ast.Node, self.children.items);
-        errdefer alloc.free(children);
-
-        const node = try alloc.create(ast.Node);
-        node.* = .{
-            .list_item = .{
-                .children = children,
-                .spread = self.saw_blank_line,
+                .children = owned_children,
             },
         };
         return node;
@@ -886,20 +161,22 @@ const debug_stream = false;
 
 // Iterator that the container block parser consumes
 it: *TokenIterator(BlockTokenType),
-container_stack: ArrayList(OpenContainer),
-line_state: LineState,
-maybe_staged_token: ?BlockToken, // next token to be consumed by leaf parser
 leaf_parser: ?LeafBlockParser,
+container_stack: ArrayList(Container),
+unestablished_container_i: usize,
+can_open_containers: bool,
+maybe_staged_token: ?BlockToken,
 
 const Self = @This();
 
 pub fn init(it: *TokenIterator(BlockTokenType)) Self {
     return .{
         .it = it,
-        .container_stack = .empty,
-        .line_state = .start,
-        .maybe_staged_token = null,
         .leaf_parser = null,
+        .container_stack = .empty,
+        .unestablished_container_i = 0,
+        .can_open_containers = true,
+        .maybe_staged_token = null,
     };
 }
 
@@ -915,8 +192,10 @@ pub fn parse(
     link_defs: *LinkDefMap,
 ) Error!*ast.Node {
     try self.container_stack.append(scratch, .{
-        .root = Root.empty,
+        .container_type = .{ .root = .{} },
     });
+    self.unestablished_container_i = 0;
+    self.can_open_containers = true;
 
     var leaf_it = self.iterator();
     for (0..util.safety.loop_bound) |_| {
@@ -940,7 +219,7 @@ pub fn parse(
             loop_start_stack_len - 1
         ];
         for (nodes) |node| {
-            try original_top.add(scratch, node);
+            try original_top.addChild(scratch, node);
         }
 
         if (self.container_stack.items.len > loop_start_stack_len) {
@@ -954,7 +233,7 @@ pub fn parse(
             const popped = self.container_stack.pop() orelse unreachable;
             const node = try popped.toNode(alloc);
             errdefer node.deinit(alloc);
-            try self.top().add(scratch, node);
+            try self.top().addChild(scratch, node);
         } else {
             break;
         }
@@ -990,28 +269,70 @@ fn next(self: *Self, scratch: Allocator) Error!?BlockToken {
         return staged_token;
     }
 
-    const result = try self.top().next(
-        scratch,
-        self.it,
-        self.line_state,
-        self.leaf_parser.?.interruptible,
-    );
+    if (self.unestablished_container_i == 0) {
+        for (self.container_stack.items) |container| {
+            if (!try container.establish(scratch, self.it)) {
+                break;
+            }
 
-    self.line_state = result.line_state;
-    if (result.container) |container| {
-        // Pushing a new container should coincide with ending the token stream
-        std.debug.assert(result.token == null);
-        std.debug.assert(!result.send_close);
-
-        try self.container_stack.append(scratch, container);
+            self.unestablished_container_i += 1;
+        }
     }
 
-    if (result.send_close) {
-        self.maybe_staged_token = result.token;
-        return .{ .token_type = .close };
+    if (self.unestablished_container_i < self.container_stack.items.len) {
+        const top_container = self.top();
+        if (!top_container.closed) {
+            top_container.closed = true;
+            return .{ .token_type = .close };
+        }
     }
 
-    return result.token;
+    // Handle opening new containers.
+    // Pushing a new container should coincide with ending the token stream for
+    // the current container.
+    if (self.can_open_containers and self.leaf_parser.?.interruptible) {
+        const maybe_container: ?Container = blk: {
+            if (try parseBlockquote(scratch, self.it)) |container| {
+                // If whitespace follows the '>', consume one space.
+                // This is a little awkward! We have to split the token.
+                const next_token = try self.it.peek(scratch);
+                if (next_token) |token| {
+                    if (token.token_type == .whitespace and
+                        std.mem.startsWith(u8, token.lexeme, " ")) {
+                        _ = try self.it.consume(scratch, &.{.whitespace});
+                        self.maybe_staged_token = .{
+                            .token_type = .whitespace,
+                            .lexeme = try scratch.dupe(
+                                u8,
+                                token.lexeme[1..],
+                            ),
+                        };
+                    }
+                }
+
+                break :blk container;
+            }
+
+            break :blk null;
+        };
+
+        if (maybe_container) |container| {
+            try self.container_stack.append(scratch, container);
+            self.unestablished_container_i += 1;
+            return null;
+        }
+    }
+
+    self.can_open_containers = false;
+
+    const next_token = try self.it.peek(scratch) orelse return null;
+    if (next_token.token_type == .newline) {
+        self.unestablished_container_i = 0;
+        self.can_open_containers = true;
+    }
+
+    _ = try self.it.consume(scratch, &.{next_token.token_type});
+    return next_token;
 }
 
 /// Returns pointer to last container in stack.
@@ -1021,11 +342,33 @@ fn next(self: *Self, scratch: Allocator) Error!?BlockToken {
 ///
 /// TODO: Maybe the ArrayList should hold pointers to the containers and not
 /// the containers themselves.
-fn top(self: *Self) *OpenContainer {
+fn top(self: *Self) *Container {
     std.debug.assert(self.container_stack.items.len > 0);
     return &self.container_stack.items[
         self.container_stack.items.len - 1
     ];
+}
+
+fn parseBlockquote(
+    scratch: Allocator,
+    it: *TokenIterator(BlockTokenType),
+) !?Container {
+    const checkpoint_index = it.checkpoint();
+    var did_parse = false;
+    defer if (!did_parse) {
+        it.backtrack(checkpoint_index);
+    };
+
+    // Up to 3 leading spaces allowed before '>'
+    _ = try consumeWhitespaceUpTo(scratch, it, 3);
+    _ = try it.consume(scratch, &.{.r_angle_bracket}) orelse return null;
+
+    did_parse = true;
+    return .{
+        .container_type = .{
+            .blockquote = .{},
+        },
+    };
 }
 
 /// Consumes a whitespace token, but only if it's no longer than the given len
@@ -1095,8 +438,7 @@ fn handleListTightness(alloc: Allocator, list_items: []*ast.Node) void {
 /// than a single paragraph node child containing a text node.
 fn unwrapTightListItem(alloc: Allocator, item: *ast.Node) void {
     const children = item.list_item.children;
-    if (children.len == 1 and @as(ast.NodeType, children[0].*) == .paragraph)
-    {
+    if (children.len == 1 and @as(ast.NodeType, children[0].*) == .paragraph) {
         const p_node = children[0];
         defer alloc.destroy(p_node);
         defer alloc.free(children);
@@ -1119,7 +461,6 @@ fn parseOrderedListNumber(s: []const u8) !u32 {
 
     return try fmt.parseInt(u32, s, 10);
 }
-
 
 // ----------------------------------------------------------------------------
 // Unit Tests
@@ -1471,431 +812,945 @@ test "angle brackets in fenced code block" {
     );
 }
 
-test "simple bullet list" {
-    const md =
-        \\* First
-        \\* Second
-        \\* Third
-        \\
-    ;
-
-    const root_node = try parseBlocks(md);
-    defer root_node.deinit(testing.allocator);
-
-    try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
-    try testing.expectEqual(1, root_node.root.children.len);
-
-    const list_node = root_node.root.children[0];
-    try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
-    try testing.expectEqual(false, list_node.list.ordered);
-    try testing.expectEqual(false, list_node.list.spread);
-    try testing.expectEqual(3, list_node.list.children.len);
-
-    for (0..3) |i| {
-        const list_item_node = list_node.list.children[i];
-        try testing.expectEqual(
-            .list_item,
-            @as(ast.NodeType, list_item_node.*),
-        );
-        try testing.expectEqual(false, list_item_node.list_item.spread);
-        try testing.expectEqual(1, list_item_node.list_item.children.len);
-
-        const txt_node = list_item_node.list_item.children[0];
-        try testing.expectEqual(.text, @as(ast.NodeType, txt_node.*));
-    }
-}
-
-test "bullet list markers" {
-    const md =
-        \\+ First
-        \\+ Second
-        \\- First
-        \\
-    ;
-
-    const root_node = try parseBlocks(md);
-    defer root_node.deinit(testing.allocator);
-
-    try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
-    try testing.expectEqual(2, root_node.root.children.len);
-
-    const list_node_1 = root_node.root.children[0];
-    try testing.expectEqual(.list, @as(ast.NodeType, list_node_1.*));
-    try testing.expectEqual(false, list_node_1.list.ordered);
-    try testing.expectEqual(false, list_node_1.list.spread);
-    try testing.expectEqual(2, list_node_1.list.children.len);
-
-    const list_node_2 = root_node.root.children[1];
-    try testing.expectEqual(.list, @as(ast.NodeType, list_node_2.*));
-    try testing.expectEqual(false, list_node_2.list.ordered);
-    try testing.expectEqual(false, list_node_2.list.spread);
-    try testing.expectEqual(1, list_node_2.list.children.len);
-}
-
-test "bullet list spread item" {
-    const md =
-        \\* This contains a blank line.
-        \\
-        \\  Blank line above.
-        \\* Second
-        \\
-    ;
-
-    const root_node = try parseBlocks(md);
-    defer root_node.deinit(testing.allocator);
-
-    try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
-    try testing.expectEqual(1, root_node.root.children.len);
-
-    const list_node = root_node.root.children[0];
-    try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
-    try testing.expectEqual(false, list_node.list.ordered);
-    try testing.expectEqual(false, list_node.list.spread);
-    try testing.expectEqual(2, list_node.list.children.len);
-
-    const list_item_node_1 = list_node.list.children[0];
-    try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node_1.*));
-    try testing.expectEqual(true, list_item_node_1.list_item.spread);
-    try testing.expectEqual(2, list_item_node_1.list_item.children.len);
-
-    const list_item_node_2 = list_node.list.children[1];
-    try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node_2.*));
-    try testing.expectEqual(true, list_item_node_2.list_item.spread);
-    try testing.expectEqual(1, list_item_node_2.list_item.children.len);
-
-    const p_node_2 = list_item_node_2.list_item.children[0];
-    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node_2.*));
-    try testing.expectEqual(1, p_node_2.paragraph.children.len);
-    const txt_node_2 = p_node_2.paragraph.children[0];
-    try testing.expectEqual(.text, @as(ast.NodeType, txt_node_2.*));
-    try testing.expectEqualStrings("Second", txt_node_2.text.value);
-}
-
-test "bullet list spread list" {
-    const md =
-        \\* First
-        \\
-        \\* Second
-        \\
-    ;
-
-    const root_node = try parseBlocks(md);
-    defer root_node.deinit(testing.allocator);
-
-    try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
-    try testing.expectEqual(1, root_node.root.children.len);
-
-    const list_node = root_node.root.children[0];
-    try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
-    try testing.expectEqual(false, list_node.list.ordered);
-    try testing.expectEqual(false, list_node.list.spread);
-    try testing.expectEqual(2, list_node.list.children.len);
-
-    const list_item_node_1 = list_node.list.children[0];
-    try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node_1.*));
-    try testing.expectEqual(true, list_item_node_1.list_item.spread);
-    try testing.expectEqual(1, list_item_node_1.list_item.children.len);
-
-    const p_node_1 = list_item_node_1.list_item.children[0];
-    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node_1.*));
-    try testing.expectEqual(1, p_node_1.paragraph.children.len);
-    const txt_node_1 = p_node_1.paragraph.children[0];
-    try testing.expectEqual(.text, @as(ast.NodeType, txt_node_1.*));
-    try testing.expectEqualStrings("First", txt_node_1.text.value);
-
-    const list_item_node_2 = list_node.list.children[1];
-    try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node_2.*));
-    try testing.expectEqual(true, list_item_node_2.list_item.spread);
-
-    const p_node_2 = list_item_node_2.list_item.children[0];
-    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node_2.*));
-    try testing.expectEqual(1, p_node_2.paragraph.children.len);
-    const txt_node_2 = p_node_2.paragraph.children[0];
-    try testing.expectEqual(.text, @as(ast.NodeType, txt_node_2.*));
-    try testing.expectEqualStrings("Second", txt_node_2.text.value);
-}
-
-// This list should be tight. The trailing blank lines are after the list.
-test "bullet list trailing blank lines" {
-    const md =
-        \\* First
-        \\* Second
-        \\
-        \\This is a paragraph.
-        \\
-    ;
-
-    const root_node = try parseBlocks(md);
-    defer root_node.deinit(testing.allocator);
-
-    try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
-    try testing.expectEqual(2, root_node.root.children.len);
-
-    const list_node = root_node.root.children[0];
-    try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
-    try testing.expectEqual(false, list_node.list.spread);
-    try testing.expectEqual(2, list_node.list.children.len);
-
-    {
-        const child = list_node.list.children[0];
-        try testing.expectEqual(.list_item, @as(ast.NodeType, child.*));
-        try testing.expectEqual(false, child.list_item.spread);
-        try testing.expectEqual(1, child.list_item.children.len);
-
-        const txt_node = child.list_item.children[0];
-        try testing.expectEqual(.text, @as(ast.NodeType, txt_node.*));
-    }
-
-    {
-        const child = list_node.list.children[1];
-        try testing.expectEqual(.list_item, @as(ast.NodeType, child.*));
-        try testing.expectEqual(true, child.list_item.spread);
-        try testing.expectEqual(1, child.list_item.children.len);
-
-        const txt_node = child.list_item.children[0];
-        try testing.expectEqual(.text, @as(ast.NodeType, txt_node.*));
-    }
-}
-
-test "bullet list match indent" {
-    const md =
-        \\*    First
-        \\
-        \\     Still first!
-        \\
-        \\  No longer in list.
-        \\
-    ;
-
-    const root_node = try parseBlocks(md);
-    defer root_node.deinit(testing.allocator);
-
-    try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
-    try testing.expectEqual(2, root_node.root.children.len);
-
-    const list_node = root_node.root.children[0];
-    try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
-    try testing.expectEqual(false, list_node.list.ordered);
-    try testing.expectEqual(false, list_node.list.spread);
-    try testing.expectEqual(1, list_node.list.children.len);
-
-    const list_item_node = list_node.list.children[0];
-    try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node.*));
-    try testing.expectEqual(true, list_item_node.list_item.spread);
-    try testing.expectEqual(2, list_item_node.list_item.children.len);
-
-    const item_p_node_1 = list_item_node.list_item.children[0];
-    try testing.expectEqual(.paragraph, @as(ast.NodeType, item_p_node_1.*));
-    try testing.expectEqualStrings(
-        "First",
-        item_p_node_1.paragraph.children[0].text.value,
-    );
-
-    const item_p_node_2 = list_item_node.list_item.children[1];
-    try testing.expectEqual(.paragraph, @as(ast.NodeType, item_p_node_2.*));
-    try testing.expectEqualStrings(
-        "Still first!",
-        item_p_node_2.paragraph.children[0].text.value,
-    );
-
-    const p_node = root_node.root.children[1];
-    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node.*));
-}
-
-test "simple ordered list" {
-    const md =
-        \\1. First
-        \\2. Second
-        \\3. Third
-        \\
-    ;
-
-    const root_node = try parseBlocks(md);
-    defer root_node.deinit(testing.allocator);
-
-    try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
-    try testing.expectEqual(1, root_node.root.children.len);
-
-    const list_node = root_node.root.children[0];
-    try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
-    try testing.expectEqual(true, list_node.list.ordered);
-    try testing.expectEqual(false, list_node.list.spread);
-    try testing.expectEqual(3, list_node.list.children.len);
-    try testing.expectEqual(1, list_node.list.start);
-
-    for (0..3) |i| {
-        const list_item_node = list_node.list.children[i];
-        try testing.expectEqual(
-            .list_item,
-            @as(ast.NodeType, list_item_node.*),
-        );
-        try testing.expectEqual(false, list_item_node.list_item.spread);
-        try testing.expectEqual(1, list_item_node.list_item.children.len);
-
-        const txt_node = list_item_node.list_item.children[0];
-        try testing.expectEqual(.text, @as(ast.NodeType, txt_node.*));
-    }
-}
-
-test "ordered list different start" {
-    const md =
-        \\2. First
-        \\3. Second
-        \\4. Third
-        \\
-    ;
-
-    const root_node = try parseBlocks(md);
-    defer root_node.deinit(testing.allocator);
-
-    try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
-    try testing.expectEqual(1, root_node.root.children.len);
-
-    const list_node = root_node.root.children[0];
-    try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
-    try testing.expectEqual(true, list_node.list.ordered);
-    try testing.expectEqual(false, list_node.list.spread);
-    try testing.expectEqual(3, list_node.list.children.len);
-    try testing.expectEqual(2, list_node.list.start);
-}
-
-test "ordered list invalid number not at start" {
-    const md =
-        \\1. First
-        \\1234567890. Second
-        \\3. Third
-        \\
-    ;
-
-    const root_node = try parseBlocks(md);
-    defer root_node.deinit(testing.allocator);
-
-    try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
-    try testing.expect(root_node.root.children.len != 1);
-
-    // TODO: Expand this test when we can handle lazy continuation lines in
-    // list items.
-}
-
-test "ordered list spread item" {
-    const md =
-        \\1. This contains a blank line.
-        \\
-        \\   Blank line above.
-        \\2. Second
-        \\
-    ;
-
-    const root_node = try parseBlocks(md);
-    defer root_node.deinit(testing.allocator);
-
-    try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
-    try testing.expectEqual(1, root_node.root.children.len);
-
-    const list_node = root_node.root.children[0];
-    try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
-    try testing.expectEqual(true, list_node.list.ordered);
-    try testing.expectEqual(false, list_node.list.spread);
-    try testing.expectEqual(2, list_node.list.children.len);
-
-    const list_item_node_1 = list_node.list.children[0];
-    try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node_1.*));
-    try testing.expectEqual(true, list_item_node_1.list_item.spread);
-    try testing.expectEqual(2, list_item_node_1.list_item.children.len);
-
-    const list_item_node_2 = list_node.list.children[1];
-    try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node_2.*));
-    try testing.expectEqual(true, list_item_node_2.list_item.spread);
-
-    const p_node_2 = list_item_node_2.list_item.children[0];
-    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node_2.*));
-    try testing.expectEqual(1, p_node_2.paragraph.children.len);
-    const txt_node_2 = p_node_2.paragraph.children[0];
-    try testing.expectEqual(.text, @as(ast.NodeType, txt_node_2.*));
-    try testing.expectEqualStrings("Second", txt_node_2.text.value);
-}
-
-test "ordered list spread list" {
-    const md =
-        \\1. First
-        \\
-        \\2. Second
-        \\
-    ;
-
-    const root_node = try parseBlocks(md);
-    defer root_node.deinit(testing.allocator);
-
-    try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
-    try testing.expectEqual(1, root_node.root.children.len);
-
-    const list_node = root_node.root.children[0];
-    try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
-    try testing.expectEqual(true, list_node.list.ordered);
-    try testing.expectEqual(false, list_node.list.spread);
-    try testing.expectEqual(2, list_node.list.children.len);
-
-    const list_item_node_1 = list_node.list.children[0];
-    try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node_1.*));
-    try testing.expectEqual(true, list_item_node_1.list_item.spread);
-
-    const p_node_1 = list_item_node_1.list_item.children[0];
-    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node_1.*));
-    try testing.expectEqual(1, p_node_1.paragraph.children.len);
-    const txt_node_1 = p_node_1.paragraph.children[0];
-    try testing.expectEqual(.text, @as(ast.NodeType, txt_node_1.*));
-    try testing.expectEqualStrings("First", txt_node_1.text.value);
-
-    const list_item_node_2 = list_node.list.children[1];
-    try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node_2.*));
-    try testing.expectEqual(true, list_item_node_2.list_item.spread);
-
-    const p_node_2 = list_item_node_2.list_item.children[0];
-    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node_2.*));
-    try testing.expectEqual(1, p_node_2.paragraph.children.len);
-    const txt_node_2 = p_node_2.paragraph.children[0];
-    try testing.expectEqual(.text, @as(ast.NodeType, txt_node_2.*));
-    try testing.expectEqualStrings("Second", txt_node_2.text.value);
-}
-
-// This list should be tight. The trailing blank lines are after the list.
-test "ordered list trailing blank lines" {
-    const md =
-        \\1. First
-        \\2. Second
-        \\
-        \\This is a paragraph.
-        \\
-    ;
-
-    const root_node = try parseBlocks(md);
-    defer root_node.deinit(testing.allocator);
-
-    try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
-    try testing.expectEqual(2, root_node.root.children.len);
-
-    const list_node = root_node.root.children[0];
-    try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
-    try testing.expectEqual(false, list_node.list.spread);
-    try testing.expectEqual(2, list_node.list.children.len);
-
-    {
-        const child = list_node.list.children[0];
-        try testing.expectEqual(.list_item, @as(ast.NodeType, child.*));
-        try testing.expectEqual(false, child.list_item.spread);
-        try testing.expectEqual(1, child.list_item.children.len);
-
-        const txt_node = child.list_item.children[0];
-        try testing.expectEqual(.text, @as(ast.NodeType, txt_node.*));
-    }
-
-    {
-        const child = list_node.list.children[1];
-        try testing.expectEqual(.list_item, @as(ast.NodeType, child.*));
-        try testing.expectEqual(true, child.list_item.spread);
-        try testing.expectEqual(1, child.list_item.children.len);
-
-        const txt_node = child.list_item.children[0];
-        try testing.expectEqual(.text, @as(ast.NodeType, txt_node.*));
-    }
-}
+//
+// test "simple bullet list" {
+//     const md =
+//         \\* First
+//         \\* Second
+//         \\* Third
+//         \\
+//     ;
+//
+//     const root_node = try parseBlocks(md);
+//     defer root_node.deinit(testing.allocator);
+//
+//     try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
+//     try testing.expectEqual(1, root_node.root.children.len);
+//
+//     const list_node = root_node.root.children[0];
+//     try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
+//     try testing.expectEqual(false, list_node.list.ordered);
+//     try testing.expectEqual(false, list_node.list.spread);
+//     try testing.expectEqual(3, list_node.list.children.len);
+//
+//     for (0..3) |i| {
+//         const list_item_node = list_node.list.children[i];
+//         try testing.expectEqual(
+//             .list_item,
+//             @as(ast.NodeType, list_item_node.*),
+//         );
+//         try testing.expectEqual(false, list_item_node.list_item.spread);
+//         try testing.expectEqual(1, list_item_node.list_item.children.len);
+//
+//         const txt_node = list_item_node.list_item.children[0];
+//         try testing.expectEqual(.text, @as(ast.NodeType, txt_node.*));
+//     }
+// }
+//
+// test "bullet list markers" {
+//     const md =
+//         \\+ First
+//         \\+ Second
+//         \\- First
+//         \\
+//     ;
+//
+//     const root_node = try parseBlocks(md);
+//     defer root_node.deinit(testing.allocator);
+//
+//     try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
+//     try testing.expectEqual(2, root_node.root.children.len);
+//
+//     const list_node_1 = root_node.root.children[0];
+//     try testing.expectEqual(.list, @as(ast.NodeType, list_node_1.*));
+//     try testing.expectEqual(false, list_node_1.list.ordered);
+//     try testing.expectEqual(false, list_node_1.list.spread);
+//     try testing.expectEqual(2, list_node_1.list.children.len);
+//
+//     const list_node_2 = root_node.root.children[1];
+//     try testing.expectEqual(.list, @as(ast.NodeType, list_node_2.*));
+//     try testing.expectEqual(false, list_node_2.list.ordered);
+//     try testing.expectEqual(false, list_node_2.list.spread);
+//     try testing.expectEqual(1, list_node_2.list.children.len);
+// }
+//
+// test "bullet list spread item" {
+//     const md =
+//         \\* This contains a blank line.
+//         \\
+//         \\  Blank line above.
+//         \\* Second
+//         \\
+//     ;
+//
+//     const root_node = try parseBlocks(md);
+//     defer root_node.deinit(testing.allocator);
+//
+//     try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
+//     try testing.expectEqual(1, root_node.root.children.len);
+//
+//     const list_node = root_node.root.children[0];
+//     try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
+//     try testing.expectEqual(false, list_node.list.ordered);
+//     try testing.expectEqual(false, list_node.list.spread);
+//     try testing.expectEqual(2, list_node.list.children.len);
+//
+//     const list_item_node_1 = list_node.list.children[0];
+//     try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node_1.*));
+//     try testing.expectEqual(true, list_item_node_1.list_item.spread);
+//     try testing.expectEqual(2, list_item_node_1.list_item.children.len);
+//
+//     const list_item_node_2 = list_node.list.children[1];
+//     try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node_2.*));
+//     try testing.expectEqual(true, list_item_node_2.list_item.spread);
+//     try testing.expectEqual(1, list_item_node_2.list_item.children.len);
+//
+//     const p_node_2 = list_item_node_2.list_item.children[0];
+//     try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node_2.*));
+//     try testing.expectEqual(1, p_node_2.paragraph.children.len);
+//     const txt_node_2 = p_node_2.paragraph.children[0];
+//     try testing.expectEqual(.text, @as(ast.NodeType, txt_node_2.*));
+//     try testing.expectEqualStrings("Second", txt_node_2.text.value);
+// }
+//
+// test "bullet list spread list" {
+//     const md =
+//         \\* First
+//         \\
+//         \\* Second
+//         \\
+//     ;
+//
+//     const root_node = try parseBlocks(md);
+//     defer root_node.deinit(testing.allocator);
+//
+//     try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
+//     try testing.expectEqual(1, root_node.root.children.len);
+//
+//     const list_node = root_node.root.children[0];
+//     try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
+//     try testing.expectEqual(false, list_node.list.ordered);
+//     try testing.expectEqual(false, list_node.list.spread);
+//     try testing.expectEqual(2, list_node.list.children.len);
+//
+//     const list_item_node_1 = list_node.list.children[0];
+//     try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node_1.*));
+//     try testing.expectEqual(true, list_item_node_1.list_item.spread);
+//     try testing.expectEqual(1, list_item_node_1.list_item.children.len);
+//
+//     const p_node_1 = list_item_node_1.list_item.children[0];
+//     try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node_1.*));
+//     try testing.expectEqual(1, p_node_1.paragraph.children.len);
+//     const txt_node_1 = p_node_1.paragraph.children[0];
+//     try testing.expectEqual(.text, @as(ast.NodeType, txt_node_1.*));
+//     try testing.expectEqualStrings("First", txt_node_1.text.value);
+//
+//     const list_item_node_2 = list_node.list.children[1];
+//     try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node_2.*));
+//     try testing.expectEqual(true, list_item_node_2.list_item.spread);
+//
+//     const p_node_2 = list_item_node_2.list_item.children[0];
+//     try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node_2.*));
+//     try testing.expectEqual(1, p_node_2.paragraph.children.len);
+//     const txt_node_2 = p_node_2.paragraph.children[0];
+//     try testing.expectEqual(.text, @as(ast.NodeType, txt_node_2.*));
+//     try testing.expectEqualStrings("Second", txt_node_2.text.value);
+// }
+//
+// // This list should be tight. The trailing blank lines are after the list.
+// test "bullet list trailing blank lines" {
+//     const md =
+//         \\* First
+//         \\* Second
+//         \\
+//         \\This is a paragraph.
+//         \\
+//     ;
+//
+//     const root_node = try parseBlocks(md);
+//     defer root_node.deinit(testing.allocator);
+//
+//     try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
+//     try testing.expectEqual(2, root_node.root.children.len);
+//
+//     const list_node = root_node.root.children[0];
+//     try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
+//     try testing.expectEqual(false, list_node.list.spread);
+//     try testing.expectEqual(2, list_node.list.children.len);
+//
+//     {
+//         const child = list_node.list.children[0];
+//         try testing.expectEqual(.list_item, @as(ast.NodeType, child.*));
+//         try testing.expectEqual(false, child.list_item.spread);
+//         try testing.expectEqual(1, child.list_item.children.len);
+//
+//         const txt_node = child.list_item.children[0];
+//         try testing.expectEqual(.text, @as(ast.NodeType, txt_node.*));
+//     }
+//
+//     {
+//         const child = list_node.list.children[1];
+//         try testing.expectEqual(.list_item, @as(ast.NodeType, child.*));
+//         try testing.expectEqual(true, child.list_item.spread);
+//         try testing.expectEqual(1, child.list_item.children.len);
+//
+//         const txt_node = child.list_item.children[0];
+//         try testing.expectEqual(.text, @as(ast.NodeType, txt_node.*));
+//     }
+// }
+//
+// test "bullet list match indent" {
+//     const md =
+//         \\*    First
+//         \\
+//         \\     Still first!
+//         \\
+//         \\  No longer in list.
+//         \\
+//     ;
+//
+//     const root_node = try parseBlocks(md);
+//     defer root_node.deinit(testing.allocator);
+//
+//     try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
+//     try testing.expectEqual(2, root_node.root.children.len);
+//
+//     const list_node = root_node.root.children[0];
+//     try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
+//     try testing.expectEqual(false, list_node.list.ordered);
+//     try testing.expectEqual(false, list_node.list.spread);
+//     try testing.expectEqual(1, list_node.list.children.len);
+//
+//     const list_item_node = list_node.list.children[0];
+//     try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node.*));
+//     try testing.expectEqual(true, list_item_node.list_item.spread);
+//     try testing.expectEqual(2, list_item_node.list_item.children.len);
+//
+//     const item_p_node_1 = list_item_node.list_item.children[0];
+//     try testing.expectEqual(.paragraph, @as(ast.NodeType, item_p_node_1.*));
+//     try testing.expectEqualStrings(
+//         "First",
+//         item_p_node_1.paragraph.children[0].text.value,
+//     );
+//
+//     const item_p_node_2 = list_item_node.list_item.children[1];
+//     try testing.expectEqual(.paragraph, @as(ast.NodeType, item_p_node_2.*));
+//     try testing.expectEqualStrings(
+//         "Still first!",
+//         item_p_node_2.paragraph.children[0].text.value,
+//     );
+//
+//     const p_node = root_node.root.children[1];
+//     try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node.*));
+// }
+//
+// test "simple ordered list" {
+//     const md =
+//         \\1. First
+//         \\2. Second
+//         \\3. Third
+//         \\
+//     ;
+//
+//     const root_node = try parseBlocks(md);
+//     defer root_node.deinit(testing.allocator);
+//
+//     try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
+//     try testing.expectEqual(1, root_node.root.children.len);
+//
+//     const list_node = root_node.root.children[0];
+//     try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
+//     try testing.expectEqual(true, list_node.list.ordered);
+//     try testing.expectEqual(false, list_node.list.spread);
+//     try testing.expectEqual(3, list_node.list.children.len);
+//     try testing.expectEqual(1, list_node.list.start);
+//
+//     for (0..3) |i| {
+//         const list_item_node = list_node.list.children[i];
+//         try testing.expectEqual(
+//             .list_item,
+//             @as(ast.NodeType, list_item_node.*),
+//         );
+//         try testing.expectEqual(false, list_item_node.list_item.spread);
+//         try testing.expectEqual(1, list_item_node.list_item.children.len);
+//
+//         const txt_node = list_item_node.list_item.children[0];
+//         try testing.expectEqual(.text, @as(ast.NodeType, txt_node.*));
+//     }
+// }
+//
+// test "ordered list different start" {
+//     const md =
+//         \\2. First
+//         \\3. Second
+//         \\4. Third
+//         \\
+//     ;
+//
+//     const root_node = try parseBlocks(md);
+//     defer root_node.deinit(testing.allocator);
+//
+//     try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
+//     try testing.expectEqual(1, root_node.root.children.len);
+//
+//     const list_node = root_node.root.children[0];
+//     try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
+//     try testing.expectEqual(true, list_node.list.ordered);
+//     try testing.expectEqual(false, list_node.list.spread);
+//     try testing.expectEqual(3, list_node.list.children.len);
+//     try testing.expectEqual(2, list_node.list.start);
+// }
+//
+// test "ordered list invalid number not at start" {
+//     const md =
+//         \\1. First
+//         \\1234567890. Second
+//         \\3. Third
+//         \\
+//     ;
+//
+//     const root_node = try parseBlocks(md);
+//     defer root_node.deinit(testing.allocator);
+//
+//     try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
+//     try testing.expect(root_node.root.children.len != 1);
+//
+//     // TODO: Expand this test when we can handle lazy continuation lines in
+//     // list items.
+// }
+//
+// test "ordered list spread item" {
+//     const md =
+//         \\1. This contains a blank line.
+//         \\
+//         \\   Blank line above.
+//         \\2. Second
+//         \\
+//     ;
+//
+//     const root_node = try parseBlocks(md);
+//     defer root_node.deinit(testing.allocator);
+//
+//     try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
+//     try testing.expectEqual(1, root_node.root.children.len);
+//
+//     const list_node = root_node.root.children[0];
+//     try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
+//     try testing.expectEqual(true, list_node.list.ordered);
+//     try testing.expectEqual(false, list_node.list.spread);
+//     try testing.expectEqual(2, list_node.list.children.len);
+//
+//     const list_item_node_1 = list_node.list.children[0];
+//     try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node_1.*));
+//     try testing.expectEqual(true, list_item_node_1.list_item.spread);
+//     try testing.expectEqual(2, list_item_node_1.list_item.children.len);
+//
+//     const list_item_node_2 = list_node.list.children[1];
+//     try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node_2.*));
+//     try testing.expectEqual(true, list_item_node_2.list_item.spread);
+//
+//     const p_node_2 = list_item_node_2.list_item.children[0];
+//     try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node_2.*));
+//     try testing.expectEqual(1, p_node_2.paragraph.children.len);
+//     const txt_node_2 = p_node_2.paragraph.children[0];
+//     try testing.expectEqual(.text, @as(ast.NodeType, txt_node_2.*));
+//     try testing.expectEqualStrings("Second", txt_node_2.text.value);
+// }
+//
+// test "ordered list spread list" {
+//     const md =
+//         \\1. First
+//         \\
+//         \\2. Second
+//         \\
+//     ;
+//
+//     const root_node = try parseBlocks(md);
+//     defer root_node.deinit(testing.allocator);
+//
+//     try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
+//     try testing.expectEqual(1, root_node.root.children.len);
+//
+//     const list_node = root_node.root.children[0];
+//     try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
+//     try testing.expectEqual(true, list_node.list.ordered);
+//     try testing.expectEqual(false, list_node.list.spread);
+//     try testing.expectEqual(2, list_node.list.children.len);
+//
+//     const list_item_node_1 = list_node.list.children[0];
+//     try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node_1.*));
+//     try testing.expectEqual(true, list_item_node_1.list_item.spread);
+//
+//     const p_node_1 = list_item_node_1.list_item.children[0];
+//     try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node_1.*));
+//     try testing.expectEqual(1, p_node_1.paragraph.children.len);
+//     const txt_node_1 = p_node_1.paragraph.children[0];
+//     try testing.expectEqual(.text, @as(ast.NodeType, txt_node_1.*));
+//     try testing.expectEqualStrings("First", txt_node_1.text.value);
+//
+//     const list_item_node_2 = list_node.list.children[1];
+//     try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node_2.*));
+//     try testing.expectEqual(true, list_item_node_2.list_item.spread);
+//
+//     const p_node_2 = list_item_node_2.list_item.children[0];
+//     try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node_2.*));
+//     try testing.expectEqual(1, p_node_2.paragraph.children.len);
+//     const txt_node_2 = p_node_2.paragraph.children[0];
+//     try testing.expectEqual(.text, @as(ast.NodeType, txt_node_2.*));
+//     try testing.expectEqualStrings("Second", txt_node_2.text.value);
+// }
+//
+// // This list should be tight. The trailing blank lines are after the list.
+// test "ordered list trailing blank lines" {
+//     const md =
+//         \\1. First
+//         \\2. Second
+//         \\
+//         \\This is a paragraph.
+//         \\
+//     ;
+//
+//     const root_node = try parseBlocks(md);
+//     defer root_node.deinit(testing.allocator);
+//
+//     try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
+//     try testing.expectEqual(2, root_node.root.children.len);
+//
+//     const list_node = root_node.root.children[0];
+//     try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
+//     try testing.expectEqual(false, list_node.list.spread);
+//     try testing.expectEqual(2, list_node.list.children.len);
+//
+//     {
+//         const child = list_node.list.children[0];
+//         try testing.expectEqual(.list_item, @as(ast.NodeType, child.*));
+//         try testing.expectEqual(false, child.list_item.spread);
+//         try testing.expectEqual(1, child.list_item.children.len);
+//
+//         const txt_node = child.list_item.children[0];
+//         try testing.expectEqual(.text, @as(ast.NodeType, txt_node.*));
+//     }
+//
+//     {
+//         const child = list_node.list.children[1];
+//         try testing.expectEqual(.list_item, @as(ast.NodeType, child.*));
+//         try testing.expectEqual(true, child.list_item.spread);
+//         try testing.expectEqual(1, child.list_item.children.len);
+//
+//         const txt_node = child.list_item.children[0];
+//         try testing.expectEqual(.text, @as(ast.NodeType, txt_node.*));
+//     }
+// }
+//
+// /// Bullet list container.
+// ///
+// /// As of version 0.0.5 of the MyST spec, if a list is loose according to the
+// /// CommonMark definition of "loose", then all list items must have `spread =
+// /// true` while the containing list always has `spread = false`.
+// const BulletList = struct {
+//     children: ArrayList(*ast.Node),
+//     marker_token: BlockToken,
+//
+//     const OpenResult = struct {
+//         marker_token: BlockToken,
+//     };
+//
+//     fn init(marker_token: BlockToken) BulletList {
+//         // TODO: Use enum subset?
+//         std.debug.assert(marker_token.token_type == .star or
+//             marker_token.token_type == .hyphen or
+//             marker_token.token_type == .plus);
+//
+//         return .{
+//             .children = .empty,
+//             .marker_token = marker_token,
+//         };
+//     }
+//
+//     /// Returns the marker token if the next sequence of tokens can open a
+//     /// bullet list. Returns null otherwise.
+//     fn canOpen(
+//         scratch: Allocator,
+//         it: *TokenIterator(BlockTokenType),
+//     ) !?OpenResult {
+//         const checkpoint_index = it.checkpoint();
+//         defer it.backtrack(checkpoint_index);
+//
+//         _ = try consumeWhitespaceUpTo(scratch, it, 3);
+//         const marker_token = try it.consume(
+//             scratch,
+//             &.{ .hyphen, .star, .plus },
+//         ) orelse
+//             return null;
+//         _ = try it.consume(scratch, &.{.whitespace}) orelse return null;
+//
+//         return .{
+//             .marker_token = marker_token,
+//         };
+//     }
+//
+//     fn next(
+//         self: *BulletList,
+//         scratch: Allocator,
+//         it: *TokenIterator(BlockTokenType),
+//         interruptible: bool,
+//     ) !NextResult {
+//         // If the leaf parser is parsing something that cannot be interrupted,
+//         // then we should be in a list item or different kind of container.
+//         std.debug.assert(interruptible == true);
+//
+//         const eof: NextResult = .{
+//             .token = null,
+//             .line_state = .start,
+//         };
+//
+//         if (try BulletListItem.canOpen(
+//             scratch,
+//             it,
+//             self.marker_token.token_type,
+//         )) |_| {
+//             // Open new bullet list item
+//             return .{
+//                 .token = null,
+//                 .line_state = .start,
+//                 .container = .{
+//                     .bullet_list_item = BulletListItem.init(
+//                         self.marker_token,
+//                     ),
+//                 },
+//             };
+//         }
+//
+//         const token = try it.peek(scratch) orelse return eof;
+//         switch (token.token_type) {
+//             .star, .hyphen, .plus => {
+//                 // It's the start of a new list, so close the container
+//                 return .{
+//                     .token = null,
+//                     .line_state = .start,
+//                 };
+//             },
+//             else => {
+//                 // end of list
+//                 _ = try it.consume(scratch, &.{token.token_type});
+//                 return .{
+//                     .token = token,
+//                     .send_close = true,
+//                     .line_state = .trailing,
+//                 };
+//             },
+//         }
+//     }
+//
+//     fn toNode(self: BulletList, alloc: Allocator) !*ast.Node {
+//         handleListTightness(alloc, self.children.items);
+//
+//         const children = try alloc.dupe(*ast.Node, self.children.items);
+//         errdefer alloc.free(children);
+//
+//         const node = try alloc.create(ast.Node);
+//         node.* = .{
+//             .list = .{
+//                 .children = children,
+//                 .ordered = false,
+//                 .spread = false,
+//             },
+//         };
+//         return node;
+//     }
+// };
+//
+// /// Bullet list item container.
+// const BulletListItem = struct {
+//     children: ArrayList(*ast.Node),
+//     marker_token: BlockToken,
+//     indent: usize,
+//     saw_blank_line: bool,
+//
+//     const OpenResult = struct {};
+//
+//     fn init(marker_token: BlockToken) BulletListItem {
+//         return .{
+//             .children = .empty,
+//             .marker_token = marker_token,
+//             .indent = 0,
+//             .saw_blank_line = false,
+//         };
+//     }
+//
+//     /// Returns an empty open result if the next tokens can open a list item,
+//     /// otherwise null.
+//     fn canOpen(
+//         scratch: Allocator,
+//         it: *TokenIterator(BlockTokenType),
+//         marker_token_type: BlockTokenType,
+//     ) !?OpenResult {
+//         const checkpoint_index = it.checkpoint();
+//         defer it.backtrack(checkpoint_index);
+//
+//         _ = try consumeWhitespaceUpTo(scratch, it, 3);
+//         _ = try it.consume(scratch, &.{marker_token_type}) orelse
+//             return null;
+//         _ = try it.consume(scratch, &.{.whitespace}) orelse return null;
+//         return .{};
+//     }
+//
+//     fn next(
+//         self: *BulletListItem,
+//         scratch: Allocator,
+//         it: *TokenIterator(BlockTokenType),
+//         interruptible: bool,
+//     ) !NextResult {
+//         const end: NextResult = .{
+//             .token = null,
+//             .line_state = .start,
+//         };
+//
+//         if (self.indent == 0) {
+//             // Handle first line
+//             const leading_ws_len = try consumeWhitespaceUpTo(scratch, it, 3);
+//             _ = try it.consume(
+//                 scratch,
+//                 &.{self.marker_token.token_type},
+//             ) orelse
+//                 @panic("bullet list item created with wrong marker token");
+//             const following_ws_len = try consumeWhitespaceUpTo(scratch, it, 4);
+//             self.indent = leading_ws_len + 1 + following_ws_len;
+//         } else {
+//             const start_token = try it.peek(scratch) orelse return end;
+//             switch (start_token.token_type) {
+//                 .whitespace => {
+//                     if (start_token.lexeme.len < self.indent) {
+//                         // Not indented enough; end list item
+//                         return end;
+//                     }
+//
+//                     _ = try it.consume(scratch, &.{.whitespace});
+//                 },
+//                 .newline => {
+//                     // Blank line; allowed in list item
+//                     _ = try it.consume(scratch, &.{.newline});
+//                     self.saw_blank_line = true;
+//                     return .{
+//                         .token = start_token,
+//                         .line_state = .start,
+//                     };
+//                 },
+//                 else => {
+//                     // End list item
+//                     return end;
+//                 },
+//             }
+//         }
+//
+//         const token = try it.peek(scratch) orelse return end;
+//         switch (token.token_type) {
+//             .star, .hyphen, .plus => {
+//                 if (!interruptible) {
+//                     // Just pass on the token
+//                     return .{
+//                         .token = token,
+//                         .line_state = .trailing,
+//                     };
+//                 }
+//
+//                 // Can't yet nest lists
+//                 return end;
+//             },
+//             .newline => {
+//                 _ = try it.consume(scratch, &.{.newline});
+//                 self.saw_blank_line = true;
+//                 return .{
+//                     .token = token,
+//                     .line_state = .start,
+//                 };
+//             },
+//             else => {
+//                 _ = try it.consume(scratch, &.{token.token_type});
+//                 return .{
+//                     .token = token,
+//                     .line_state = .trailing,
+//                 };
+//             },
+//         }
+//     }
+//
+//     fn toNode(self: BulletListItem, alloc: Allocator) !*ast.Node {
+//         const children = try alloc.dupe(*ast.Node, self.children.items);
+//         errdefer alloc.free(children);
+//
+//         const node = try alloc.create(ast.Node);
+//         node.* = .{
+//             .list_item = .{
+//                 .children = children,
+//                 .spread = self.saw_blank_line,
+//             },
+//         };
+//         return node;
+//     }
+// };
+//
+// /// Container for a numbered list.
+// ///
+// /// As of version 0.0.5 of the MyST spec, if a list is loose according to the
+// /// CommonMark definition of "loose", then all list items must have `spread =
+// /// true` while the containing list always has `spread = false`.
+// const OrderedList = struct {
+//     children: ArrayList(*ast.Node),
+//     marker_token: BlockToken,
+//     start: u32,
+//
+//     const OpenResult = struct {
+//         marker_token: BlockToken,
+//         start: u32,
+//     };
+//
+//     fn init(marker_token: BlockToken, start: u32) OrderedList {
+//         std.debug.assert(marker_token.token_type == .period or
+//             marker_token.token_type == .r_paren);
+//
+//         return .{
+//             .children = .empty,
+//             .marker_token = marker_token,
+//             .start = start,
+//         };
+//     }
+//
+//     // Returns the ordered list container that would result if the next
+//     // sequence of tokens opens an ordered list.
+//     //
+//     // Returns null otherwise.
+//     fn canOpen(
+//         scratch: Allocator,
+//         it: *TokenIterator(BlockTokenType),
+//     ) !?OpenResult {
+//         const checkpoint_index = it.checkpoint();
+//         defer it.backtrack(checkpoint_index);
+//
+//         _ = try consumeWhitespaceUpTo(scratch, it, 3);
+//         const numeral_token = try it.consume(scratch, &.{.text}) orelse
+//             return null;
+//         const marker_token = try it.consume(
+//             scratch,
+//             &.{ .period, .r_paren },
+//         ) orelse return null;
+//         _ = try it.consume(scratch, &.{.whitespace}) orelse return null;
+//
+//         const start = parseOrderedListNumber(
+//             numeral_token.lexeme,
+//         ) catch return null;
+//
+//         return .{
+//             .marker_token = marker_token,
+//             .start = start,
+//         };
+//     }
+//
+//     fn next(
+//         self: *OrderedList,
+//         scratch: Allocator,
+//         it: *TokenIterator(BlockTokenType),
+//         interruptible: bool,
+//     ) !NextResult {
+//         _ = self;
+//
+//         // If the leaf parser is parsing something that cannot be interrupted,
+//         // then we should be in a list item or different kind of container.
+//         std.debug.assert(interruptible == true);
+//
+//         const eof: NextResult = .{
+//             .token = null,
+//             .line_state = .start,
+//         };
+//
+//         if (try OrderedListItem.canOpen(scratch, it)) |_| {
+//             // Open new ordered list item
+//             return .{
+//                 .token = null,
+//                 .line_state = .start,
+//                 .container = .{
+//                     .ordered_list_item = OrderedListItem.init(),
+//                 },
+//             };
+//         }
+//
+//         const token = try it.peek(scratch) orelse return eof;
+//         switch (token.token_type) {
+//             .star, .hyphen, .plus => {
+//                 // It's the start of a new bullet list, so close the container
+//                 return .{
+//                     .token = null,
+//                     .line_state = .start,
+//                 };
+//             },
+//             else => {
+//                 // end of list
+//                 _ = try it.consume(scratch, &.{token.token_type});
+//                 return .{
+//                     .token = token,
+//                     .send_close = true,
+//                     .line_state = .trailing,
+//                 };
+//             },
+//         }
+//     }
+//
+//     fn toNode(self: OrderedList, alloc: Allocator) !*ast.Node {
+//         handleListTightness(alloc, self.children.items);
+//
+//         const children = try alloc.dupe(*ast.Node, self.children.items);
+//         errdefer alloc.free(children);
+//
+//         const node = try alloc.create(ast.Node);
+//         node.* = .{
+//             .list = .{
+//                 .children = children,
+//                 .ordered = true,
+//                 .spread = false,
+//                 .start = self.start,
+//             },
+//         };
+//         return node;
+//     }
+// };
+//
+// const OrderedListItem = struct {
+//     children: ArrayList(*ast.Node),
+//     indent: usize,
+//     saw_blank_line: bool,
+//
+//     const OpenResult = struct {};
+//
+//     fn init() OrderedListItem {
+//         return .{
+//             .children = .empty,
+//             .indent = 0,
+//             .saw_blank_line = false,
+//         };
+//     }
+//
+//     fn canOpen(
+//         scratch: Allocator,
+//         it: *TokenIterator(BlockTokenType),
+//     ) !?OpenResult {
+//         const checkpoint_index = it.checkpoint();
+//         defer it.backtrack(checkpoint_index);
+//
+//         _ = try consumeWhitespaceUpTo(scratch, it, 3);
+//         const numeral_token = try it.consume(scratch, &.{.text}) orelse
+//             return null;
+//         _ = try it.consume(
+//             scratch,
+//             &.{ .period, .r_paren },
+//         ) orelse return null;
+//         _ = try it.consume(scratch, &.{.whitespace}) orelse return null;
+//
+//         _ = parseOrderedListNumber(numeral_token.lexeme) catch return null;
+//         return .{};
+//     }
+//
+//     fn next(
+//         self: *OrderedListItem,
+//         scratch: Allocator,
+//         it: *TokenIterator(BlockTokenType),
+//         interruptible: bool,
+//     ) !NextResult {
+//         const eof: NextResult = .{
+//             .token = null,
+//             .line_state = .start,
+//         };
+//
+//         if (self.indent == 0) {
+//             // Handle first line
+//             const leading_ws_len = try consumeWhitespaceUpTo(scratch, it, 3);
+//             const text_token = try it.consume(scratch, &.{.text}) orelse
+//                 unreachable;
+//             _ = try it.consume(scratch, &.{ .period, .r_paren }) orelse
+//                 unreachable;
+//             const following_ws_len = try consumeWhitespaceUpTo(scratch, it, 4);
+//             self.indent = leading_ws_len + text_token.lexeme.len + 1 +
+//                 following_ws_len;
+//         } else {
+//             const start_token = try it.peek(scratch) orelse return eof;
+//             switch (start_token.token_type) {
+//                 .whitespace => {
+//                     if (start_token.lexeme.len < self.indent) {
+//                         // Not indented enough; end list item
+//                         return .{
+//                             .token = null,
+//                             .line_state = .start,
+//                         };
+//                     }
+//
+//                     _ = try it.consume(scratch, &.{.whitespace});
+//                 },
+//                 .newline => {
+//                     // Blank line; allowed in list item
+//                     _ = try it.consume(scratch, &.{.newline});
+//                     self.saw_blank_line = true;
+//                     return .{
+//                         .token = start_token,
+//                         .line_state = .start,
+//                     };
+//                 },
+//                 else => {
+//                     // End list item
+//                     return .{
+//                         .token = null,
+//                         .line_state = .start,
+//                     };
+//                 },
+//             }
+//         }
+//
+//         const token = try it.peek(scratch) orelse return eof;
+//         switch (token.token_type) {
+//             .star, .hyphen, .plus => {
+//                 if (!interruptible) {
+//                     // Just pass on the token
+//                     return .{
+//                         .token = token,
+//                         .line_state = .trailing,
+//                     };
+//                 }
+//
+//                 // Can't yet nest lists
+//                 return .{
+//                     .token = null,
+//                     .line_state = .start,
+//                 };
+//             },
+//             .newline => {
+//                 // Blank line; allowed in list item
+//                 _ = try it.consume(scratch, &.{.newline});
+//                 self.saw_blank_line = true;
+//                 return .{
+//                     .token = token,
+//                     .line_state = .start,
+//                 };
+//             },
+//             else => {
+//                 _ = try it.consume(scratch, &.{token.token_type});
+//                 return .{
+//                     .token = token,
+//                     .line_state = .trailing,
+//                 };
+//             },
+//         }
+//     }
+//
+//     fn toNode(self: OrderedListItem, alloc: Allocator) !*ast.Node {
+//         const children = try alloc.dupe(*ast.Node, self.children.items);
+//         errdefer alloc.free(children);
+//
+//         const node = try alloc.create(ast.Node);
+//         node.* = .{
+//             .list_item = .{
+//                 .children = children,
+//                 .spread = self.saw_blank_line,
+//             },
+//         };
+//         return node;
+//     }
+// };
+//
