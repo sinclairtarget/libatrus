@@ -20,6 +20,7 @@ const ArrayList = std.ArrayList;
 
 const BlockToken = @import("tokens.zig").BlockToken;
 const BlockTokenType = @import("tokens.zig").BlockTokenType;
+const whitespaceLen = @import("tokens.zig").whitespaceLen;
 const LineReader = @import("LineReader.zig");
 const TokenIterator = @import("iterator.zig").TokenIterator;
 const util = @import("../util/util.zig");
@@ -34,11 +35,13 @@ pub const Error = error{
 const TokenizeResult = struct {
     token: BlockToken,
     next_i: usize,
+    next_col: u32,
 };
 
 reader: LineReader,
 line: []const u8,
 i: usize, // current index into line
+col: u32, // current col in line (tabs count for up to 4 cols)
 
 const Self = @This();
 
@@ -47,6 +50,7 @@ pub fn init(reader: LineReader) Self {
         .reader = reader,
         .line = "",
         .i = 0,
+        .col = 0,
     };
 }
 
@@ -59,6 +63,7 @@ pub fn next(self: *Self, scratch: Allocator) Error!?BlockToken {
     if (self.i >= self.line.len) {
         self.line = try self.reader.next() orelse return null;
         self.i = 0;
+        self.col = 0;
     }
 
     return try self.tokenize(scratch);
@@ -103,6 +108,7 @@ fn tokenize(self: *Self, scratch: Allocator) !BlockToken {
     };
 
     self.i = result.next_i;
+    self.col = result.next_col;
     return result.token;
 }
 
@@ -135,11 +141,17 @@ fn matchSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
     const token = BlockToken{
         .token_type = token_type,
         .lexeme = lexeme,
-        .col = @intCast(self.i),
+        .col = self.col,
+    };
+
+    const next_col = self.col + switch (token.token_type) {
+        .space, .tab => whitespaceLen(&.{token}),
+        else => 1,
     };
     return .{
         .token = token,
         .next_i = self.i + 1,
+        .next_col = next_col,
     };
 }
 
@@ -173,11 +185,12 @@ fn matchPound(self: Self, scratch: Allocator) !?TokenizeResult {
     const token = BlockToken{
         .token_type = .pound,
         .lexeme = lexeme,
-        .col = @intCast(self.i),
+        .col = self.col,
     };
     return .{
         .token = token,
         .next_i = lookahead_i,
+        .next_col = self.col + @as(u32, @intCast(lookahead_i - self.i)),
     };
 }
 
@@ -190,11 +203,12 @@ fn matchNewline(self: Self, scratch: Allocator) !?TokenizeResult {
     const token = BlockToken{
         .token_type = .newline,
         .lexeme = lexeme,
-        .col = @intCast(self.i),
+        .col = self.col,
     };
     return .{
         .token = token,
         .next_i = self.i + 1,
+        .next_col = self.col + 1,
     };
 }
 
@@ -294,11 +308,12 @@ fn matchRule(self: Self, scratch: Allocator) !?TokenizeResult {
     const token = BlockToken{
         .token_type = token_type,
         .lexeme = lexeme,
-        .col = @intCast(self.i),
+        .col = self.col,
     };
     return .{
         .token = token,
         .next_i = lookahead_i,
+        .next_col = self.col + @as(u32, @intCast(lookahead_i - self.i)),
     };
 }
 
@@ -375,11 +390,12 @@ fn matchFence(self: Self, scratch: Allocator) !?TokenizeResult {
     const token = BlockToken{
         .token_type = token_type,
         .lexeme = lexeme,
-        .col = @intCast(self.i),
+        .col = self.col,
     };
     return .{
         .token = token,
         .next_i = lookahead_i,
+        .next_col = self.col + @as(u32, @intCast(lookahead_i - self.i)),
     };
 }
 
@@ -447,11 +463,12 @@ fn matchText(self: Self, scratch: Allocator) !TokenizeResult {
     const token = BlockToken{
         .token_type = .text,
         .lexeme = lexeme,
-        .col = @intCast(self.i),
+        .col = self.col,
     };
     return .{
         .token = token,
         .next_i = lookahead_i,
+        .next_col = self.col + @as(u32, @intCast(lookahead_i - self.i)),
     };
 }
 
@@ -486,8 +503,10 @@ fn evaluateLexeme(
 // ----------------------------------------------------------------------------
 // Unit Tests
 // ----------------------------------------------------------------------------
+const testing = std.testing;
+
 fn expectEqualTokens(expected: []const BlockTokenType, md: []const u8) !void {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const scratch = arena.allocator();
 
@@ -498,10 +517,10 @@ fn expectEqualTokens(expected: []const BlockTokenType, md: []const u8) !void {
 
     for (expected) |exp| {
         const token = try tokenizer.next(scratch);
-        try std.testing.expectEqual(exp, token.?.token_type);
+        try testing.expectEqual(exp, token.?.token_type);
     }
 
-    try std.testing.expect(try tokenizer.next(scratch) == null);
+    try testing.expect(try tokenizer.next(scratch) == null);
 }
 
 test "pound paragraph" {
@@ -702,4 +721,49 @@ test "period tokenization" {
         .period,
         .newline,
     }, md);
+}
+
+test "token column" {
+    const md = "\t hi\tfriend\n";
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const scratch = arena.allocator();
+
+    var reader: Io.Reader = .fixed(md);
+    var buf: [512]u8 = undefined;
+    const line_reader: LineReader = .{ .in = &reader, .buf = &buf };
+    var tokenizer = Self.init(line_reader);
+
+    // tab
+    var token = try tokenizer.next(scratch);
+    try testing.expectEqual(.tab, token.?.token_type);
+    try testing.expectEqual(0, token.?.col);
+
+    // space
+    token = try tokenizer.next(scratch);
+    try testing.expectEqual(.space, token.?.token_type);
+    try testing.expectEqual(4, token.?.col);
+
+    // hi
+    token = try tokenizer.next(scratch);
+    try testing.expectEqual(.text, token.?.token_type);
+    try testing.expectEqual(5, token.?.col);
+
+    // tab
+    token = try tokenizer.next(scratch);
+    try testing.expectEqual(.tab, token.?.token_type);
+    try testing.expectEqual(7, token.?.col);
+
+    // friend
+    token = try tokenizer.next(scratch);
+    try testing.expectEqual(.text, token.?.token_type);
+    try testing.expectEqual(8, token.?.col);
+
+    // newline
+    token = try tokenizer.next(scratch);
+    try testing.expectEqual(.newline, token.?.token_type);
+    try testing.expectEqual(14, token.?.col);
+
+    try testing.expect(try tokenizer.next(scratch) == null);
 }

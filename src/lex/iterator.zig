@@ -4,6 +4,7 @@ const ArrayList = std.ArrayList;
 
 const Token = @import("tokens.zig").Token;
 const BlockTokenType = @import("tokens.zig").BlockTokenType;
+const whitespaceLen = @import("tokens.zig").whitespaceLen;
 
 pub const Error = error{
     LineTooLong,
@@ -79,6 +80,83 @@ pub fn TokenIterator(comptime TokenType: type) type {
             return null;
         }
 
+        /// Consumes consecutive spaces and tabs.
+        ///
+        /// Returns the length of whitespace consumed (in spaces).
+        ///
+        /// Tabs count for between 0 and 4 spaces depending on their position
+        /// relative to the next tab stop.
+        pub fn consumeWhitespace(
+            self: *TokenIterator(BlockTokenType),
+            scratch: Allocator,
+        ) ![]Token(BlockTokenType) {
+            return try self.consumeWhitespaceUpTo(
+                scratch,
+                std.math.maxInt(usize),
+            );
+        }
+
+        /// Consumes spaces or tabs up to the given length in spaces.
+        ///
+        /// Returns the length of whitespace consumed (in spaces).
+        ///
+        /// Tabs count for between 0 and 4 spaces depending on their position
+        /// relative to the next tab stop. If a tab counts for more spaces than
+        /// we can consume within the given length, then the tab is replaced by
+        /// spaces in the token stream and only the spaces that fit within the
+        /// length are consumed (the tab gets split).
+        pub fn consumeWhitespaceUpTo(
+            self: *TokenIterator(BlockTokenType),
+            scratch: Allocator,
+            len: usize,
+        ) ![]Token(BlockTokenType) {
+            var ws_tokens: ArrayList(Token(BlockTokenType)) = .empty;
+
+            var len_consumed: usize = 0;
+            while (len_consumed < len) {
+                const token = try self.peek(scratch) orelse break;
+                switch (token.token_type) {
+                    .space => {
+                        _ = try self.consume(scratch, &.{.space});
+                        try ws_tokens.append(scratch, token);
+                        len_consumed += 1;
+                    },
+                    .tab => {
+                        _ = try self.consume(scratch, &.{.tab});
+
+                        const tab_len = whitespaceLen(&.{token});
+                        const tab_len_consumed = @min(
+                            tab_len,
+                            len - len_consumed,
+                        );
+
+                        if (tab_len_consumed == 4) {
+                            try ws_tokens.append(scratch, token);
+                        } else {
+                            // split tab into spaces
+                            for (0..tab_len_consumed) |_| {
+                                try ws_tokens.append(scratch, .{
+                                    .token_type = .space,
+                                    .lexeme = " ",
+                                });
+                            }
+                            for (0..(tab_len - tab_len_consumed)) |_| {
+                                try self.tokens.append(scratch, .{
+                                    .token_type = .space,
+                                    .lexeme = " ",
+                                });
+                            }
+                        }
+
+                        len_consumed += tab_len_consumed;
+                    },
+                    else => break,
+                }
+            }
+
+            return ws_tokens.toOwnedSlice(scratch);
+        }
+
         pub fn clearConsumed(self: *Self) void {
             if (self.token_index == 0) {
                 return; // no tokens to clear
@@ -101,10 +179,40 @@ pub fn TokenIterator(comptime TokenType: type) type {
 
         pub fn backtrack(self: *Self, checkpoint_index: usize) void {
             std.debug.assert(checkpoint_index <= self.token_index);
-            self.token_index = checkpoint_index;
+            while (self.token_index > checkpoint_index) {
+                self.token_index -= 1;
+
+                const token = self.tokens.items[self.token_index];
+                if (token.token_type == .tab) {
+                    // Remove all spaces after tab
+                    var sorted_indexes: [4]usize = undefined;
+                    var sorted_indexes_i: usize = 0;
+                    const end = @min(
+                        self.token_index + 5,
+                        self.tokens.items.len,
+                    );
+                    for (self.token_index + 1..end) |i| {
+                        if (self.tokens.items[i].token_type != .space) {
+                            break;
+                        }
+
+                        sorted_indexes[sorted_indexes_i] = i;
+                        sorted_indexes_i += 1;
+                    }
+
+                    self.tokens.orderedRemoveMany(
+                        sorted_indexes[0..sorted_indexes_i],
+                    );
+                }
+            }
         }
     };
 }
+
+// ----------------------------------------------------------------------------
+// Unit Tests
+// ----------------------------------------------------------------------------
+const testing = std.testing;
 
 /// An iterable slice of tokens.
 pub fn TokenSliceStream(comptime TokenType: type) type {
@@ -138,54 +246,101 @@ pub fn TokenSliceStream(comptime TokenType: type) type {
     };
 }
 
-/// Consumes consecutive spaces and tabs.
-///
-/// Returns the length of whitespace consumed (in spaces).
-///
-/// Tabs count for between 0 and 4 spaces depending on their position relative
-/// to the next tab stop.
-pub fn consumeWhitespace(
-    scratch: Allocator,
-    it: *TokenIterator(BlockTokenType),
-) !usize {
-    return try consumeWhitespaceUpTo(
-        scratch,
-        it,
-        std.math.maxInt(usize),
-    );
+fn expectEqualTokens(
+    expected: []const BlockTokenType,
+    tokens: []Token(BlockTokenType),
+) !void {
+    try testing.expectEqual(expected.len, tokens.len);
+
+    for (expected, tokens) |exp, token| {
+        try testing.expectEqual(exp, token.token_type);
+    }
 }
 
-/// Consumes spaces or tabs up to the given length in spaces.
-///
-/// Returns the length of whitespace consumed (in spaces).
-///
-/// Tabs count for between 0 and 4 spaces depending on their position relative
-/// to the next tab stop.
-pub fn consumeWhitespaceUpTo(
-    scratch: Allocator,
-    it: *TokenIterator(BlockTokenType),
-    len: usize,
-) !usize {
-    var len_consumed: usize = 0;
-    while (len_consumed < len) {
-        const token = try it.peek(scratch) orelse break;
-        switch (token.token_type) {
-            .space => {
-                _ = try it.consume(scratch, &.{.space});
-                len_consumed += 1;
-            },
-            .tab => {
-                const tab_len = 4 - token.col % 4;
-                if (len_consumed + tab_len > len) {
-                    break;
-                }
+test "consume tab" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const scratch = arena.allocator();
 
-                _ = try it.consume(scratch, &.{.tab});
-                len_consumed += tab_len;
-            },
-            else => break,
-        }
-    }
+    var stream = TokenSliceStream(BlockTokenType).init(&.{
+        .{
+            .token_type = .tab,
+            .lexeme = "\t",
+        },
+    });
+    var it = stream.iterator();
 
-    return len_consumed;
+    const tokens = try it.consumeWhitespaceUpTo(scratch, 4);
+    try expectEqualTokens(&.{.tab}, tokens);
+}
+
+test "consume spaces and split tab" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const scratch = arena.allocator();
+
+    var stream = TokenSliceStream(BlockTokenType).init(&.{
+        .{
+            .token_type = .space,
+            .lexeme = " ",
+        },
+        .{
+            .token_type = .space,
+            .lexeme = " ",
+        },
+        .{
+            .token_type = .tab,
+            .lexeme = "\t",
+        },
+    });
+    var it = stream.iterator();
+
+    const tokens = try it.consumeWhitespaceUpTo(scratch, 4);
+    try expectEqualTokens(&.{ .space, .space, .space, .space }, tokens);
+
+    const trailing_tokens = try it.consumeWhitespaceUpTo(scratch, 2);
+    try expectEqualTokens(&.{ .space, .space }, trailing_tokens);
+}
+
+test "backtrack over split tab" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const scratch = arena.allocator();
+
+    var stream = TokenSliceStream(BlockTokenType).init(&.{
+        .{
+            .token_type = .space,
+            .lexeme = " ",
+        },
+        .{
+            .token_type = .tab,
+            .lexeme = "\t",
+        },
+    });
+    var it = stream.iterator();
+
+    // consumes space and one "space" from the tab
+    const tokens = try it.consumeWhitespaceUpTo(scratch, 2);
+    try expectEqualTokens(&.{ .space, .space }, tokens);
+
+    const checkpoint_index = it.checkpoint();
+
+    // consumes the remaining "spaces" from the tab
+    var trailing_tokens = try it.consumeWhitespaceUpTo(scratch, 3);
+    try expectEqualTokens(&.{ .space, .space, .space }, trailing_tokens);
+
+    // now the stream should be empty
+    trailing_tokens = try it.consumeWhitespaceUpTo(scratch, 1);
+    try testing.expectEqual(0, trailing_tokens.len);
+
+    // backtrack to the checkpoint, we should still have the last three spaces
+    // of the split tab in the stream
+    it.backtrack(checkpoint_index);
+    trailing_tokens = try it.consumeWhitespaceUpTo(scratch, 3);
+    try expectEqualTokens(&.{ .space, .space, .space }, trailing_tokens);
+
+    // backtrack to beginning, original tab is no longer split
+    it.backtrack(0);
+    trailing_tokens = try it.consumeWhitespaceUpTo(scratch, 6);
+    try expectEqualTokens(&.{ .space, .tab }, trailing_tokens);
 }

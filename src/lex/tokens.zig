@@ -136,3 +136,26 @@ pub fn Token(comptime TokenType: type) type {
         }
     };
 }
+
+/// Returns the length of one or more whitespace tokens in spaces.
+///
+/// A space token counts for one space.
+///
+/// A tab token counts for between 0 and 4 spaces depending on its position
+/// relative to the next tab stop.
+pub fn whitespaceLen(tokens: []const Token(BlockTokenType)) u32 {
+    var total: u32 = 0;
+
+    for (tokens) |token| {
+        switch (token.token_type) {
+            .space => total += 1,
+            .tab => {
+                const tab_len = 4 - token.col % 4;
+                total += tab_len;
+            },
+            else => @panic("can't get whitespace len of non-whitespace token"),
+        }
+    }
+
+    return total;
+}

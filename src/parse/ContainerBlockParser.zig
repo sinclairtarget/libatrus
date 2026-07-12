@@ -33,9 +33,6 @@ const BlockTokenType = @import("../lex/tokens.zig").BlockTokenType;
 const LeafBlockParser = @import("LeafBlockParser.zig");
 const LinkDefMap = @import("link_defs.zig").LinkDefMap;
 const TokenIterator = @import("../lex/iterator.zig").TokenIterator;
-const consumeWhitespaceUpTo = @import(
-    "../lex/iterator.zig",
-).consumeWhitespaceUpTo;
 const util = @import("../util/util.zig");
 
 const Error = error{
@@ -346,11 +343,10 @@ fn parseBlockquote(
     };
 
     // Up to 3 leading spaces allowed before '>'
-    _ = try consumeWhitespaceUpTo(scratch, it, 3);
+    _ = try it.consumeWhitespaceUpTo(scratch, 3);
     _ = try it.consume(scratch, &.{.r_angle_bracket}) orelse return null;
 
-    // TODO: Tabs??
-    _ = try it.consume(scratch, &.{.space});
+    _ = try it.consumeWhitespaceUpTo(scratch, 1);
 
     did_parse = true;
     return .{
@@ -628,6 +624,46 @@ test "whitespace blockquote" {
         ,
             bq_txt.text.value,
         );
+    }
+}
+
+test "blockquote with tab indent" {
+    //>foo
+    //
+    //>\tfoo
+    //
+    //>\t foo
+    //
+    //>\t    foo
+    //
+    //>\t\tfoo
+    const md = ">foo\n\n>\tfoo\n\n>\t foo\n\n>\t    foo\n\n>\t\tfoo\n";
+
+    const root = try parseBlocks(md);
+    defer root.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root.*));
+    try testing.expectEqual(5, root.root.children.len);
+
+    // First three should parse as paragraphs
+    for (0..3) |i| {
+        const bq_node = root.root.children[i];
+        try testing.expectEqual(.blockquote, @as(ast.NodeType, bq_node.*));
+        try testing.expectEqual(1, bq_node.blockquote.children.len);
+
+        const p_node = bq_node.blockquote.children[0];
+        try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node.*));
+    }
+
+    // Last two should parse as indented code
+    for (3..5) |i| {
+        const bq_node = root.root.children[i];
+        try testing.expectEqual(.blockquote, @as(ast.NodeType, bq_node.*));
+        try testing.expectEqual(1, bq_node.blockquote.children.len);
+
+        const code_node = bq_node.blockquote.children[0];
+        try testing.expectEqual(.code, @as(ast.NodeType, code_node.*));
+        try testing.expectEqualStrings("  foo", code_node.code.value);
     }
 }
 
@@ -1244,7 +1280,7 @@ test "angle brackets in fenced code block" {
 //         const checkpoint_index = it.checkpoint();
 //         defer it.backtrack(checkpoint_index);
 //
-//         _ = try consumeWhitespaceUpTo(scratch, it, 3);
+//         _ = try it.consumeWhitespaceUpTo(scratch, 3);
 //         const marker_token = try it.consume(
 //             scratch,
 //             &.{ .hyphen, .star, .plus },
@@ -1356,7 +1392,7 @@ test "angle brackets in fenced code block" {
 //         const checkpoint_index = it.checkpoint();
 //         defer it.backtrack(checkpoint_index);
 //
-//         _ = try consumeWhitespaceUpTo(scratch, it, 3);
+//         _ = try it.consumeWhitespaceUpTo(scratch, 3);
 //         _ = try it.consume(scratch, &.{marker_token_type}) orelse
 //             return null;
 //         _ = try it.consume(scratch, &.{.whitespace}) orelse return null;
@@ -1376,7 +1412,7 @@ test "angle brackets in fenced code block" {
 //
 //         if (self.indent == 0) {
 //             // Handle first line
-//             const leading_ws_len = try consumeWhitespaceUpTo(scratch, it, 3);
+//             const leading_ws_len = try it.consumeWhitespaceUpTo(scratch, 3);
 //             _ = try it.consume(
 //                 scratch,
 //                 &.{self.marker_token.token_type},
@@ -1495,7 +1531,7 @@ test "angle brackets in fenced code block" {
 //         const checkpoint_index = it.checkpoint();
 //         defer it.backtrack(checkpoint_index);
 //
-//         _ = try consumeWhitespaceUpTo(scratch, it, 3);
+//         _ = try it.consumeWhitespaceUpTo(scratch, 3);
 //         const numeral_token = try it.consume(scratch, &.{.text}) orelse
 //             return null;
 //         const marker_token = try it.consume(
@@ -1604,7 +1640,7 @@ test "angle brackets in fenced code block" {
 //         const checkpoint_index = it.checkpoint();
 //         defer it.backtrack(checkpoint_index);
 //
-//         _ = try consumeWhitespaceUpTo(scratch, it, 3);
+//         _ = try it.consumeWhitespaceUpTo(scratch, 3);
 //         const numeral_token = try it.consume(scratch, &.{.text}) orelse
 //             return null;
 //         _ = try it.consume(
@@ -1630,7 +1666,7 @@ test "angle brackets in fenced code block" {
 //
 //         if (self.indent == 0) {
 //             // Handle first line
-//             const leading_ws_len = try consumeWhitespaceUpTo(scratch, it, 3);
+//             const leading_ws_len = try it.consumeWhitespaceUpTo(scratch, 3);
 //             const text_token = try it.consume(scratch, &.{.text}) orelse
 //                 unreachable;
 //             _ = try it.consume(scratch, &.{ .period, .r_paren }) orelse
