@@ -40,6 +40,10 @@ const link_label_max_chars = @import("link_defs.zig").label_max_chars;
 const NodeList = @import("NodeList.zig");
 const myst = @import("../myst/myst.zig");
 const TokenIterator = @import("../lex/iterator.zig").TokenIterator;
+const consumeWhitespace = @import("../lex/iterator.zig").consumeWhitespace;
+const consumeWhitespaceUpTo = @import(
+    "../lex/iterator.zig",
+).consumeWhitespaceUpTo;
 const util = @import("../util/util.zig");
 
 const Error = error{
@@ -204,7 +208,7 @@ fn parseATXHeading(
     }
 
     // Handle allowed leading whitespace
-    _ = try self.consumeOptionalLeadingWhitespace(scratch);
+    _ = try consumeWhitespaceUpTo(scratch, self.it, 3);
 
     // Just peek, don't consume until we know the depth is valid
     const start_token = try self.it.peek(scratch) orelse return null;
@@ -231,7 +235,7 @@ fn parseATXHeading(
                 // sequence of # and we've reached the end of the line.
                 // Otherwise, parse the pound token as inner text.
                 const lookahead_checkpoint_index = self.it.checkpoint();
-                while (try self.it.consume(scratch, &.{.whitespace})) |_| {}
+                _ = try consumeWhitespace(scratch, self.it);
                 if (try self.it.peek(scratch)) |last| {
                     if (last.token_type != .newline) {
                         // Was not trailing pound, write it
@@ -413,63 +417,51 @@ fn parseIndentedCode(
     scratch: Allocator,
 ) !EndingParseResult {
     var did_parse = false;
+    const checkpoint_index = self.it.checkpoint();
+    defer if (!did_parse) {
+        self.it.backtrack(checkpoint_index);
+    };
 
     const fail: EndingParseResult = .{ .maybe_node = null };
 
-    // Block has to start with an indent.
-    // Consume token later; this is just a check for an easy bail condition.
-    const block_start = try self.it.peek(scratch) orelse return fail;
-    if (block_start.token_type != .whitespace or
-        util.strings.whitespaceIndentLen(block_start.lexeme) < 4)
-    {
-        return fail;
-    }
-
     // Parse one or more indented lines
     var lines: ArrayList([]const u8) = .empty;
-    block_loop: for (0..util.safety.loop_bound) |_| {
+    block_loop: for (0..util.safety.loop_bound) |line_num| {
         var line = Io.Writer.Allocating.init(scratch);
 
-        const line_start = try self.it.peek(scratch) orelse break :block_loop;
-        switch (line_start.token_type) {
-            .whitespace => {
-                if (util.strings.whitespaceIndentLen(line_start.lexeme) >= 4) {
-                    // Parse a single indented line
-                    const wspc = try self.it.consume(scratch, &.{.whitespace});
-                    try line.writer.print("{s}", .{
-                        util.strings.trimWhitespaceStart(wspc.?.lexeme, 4),
-                    });
-                    line_loop: while (try self.it.peek(scratch)) |next| {
-                        if (next.token_type == .newline) {
-                            break :line_loop;
-                        }
-
-                        _ = try self.it.consume(scratch, &.{next.token_type});
-                        try line.writer.print("{s}", .{next.lexeme});
-                    }
-
-                    _ = try self.it.consume(scratch, &.{.newline});
-                } else {
-                    // Try to accept a blank line
-                    const lookahead_checkpoint_index = self.it.checkpoint();
-                    _ = try self.it.consume(scratch, &.{.whitespace});
-                    if (try self.it.peek(scratch)) |token| {
-                        if (token.token_type == .newline) {
-                            _ = try self.it.consume(scratch, &.{.newline});
-                            try line.writer.print("", .{});
-                        } else {
-                            // Unindented, non-blank line does end block
-                            self.it.backtrack(lookahead_checkpoint_index);
-                            break :block_loop;
-                        }
-                    }
+        const indent = try consumeWhitespace(scratch, self.it);
+        if (indent >= 4) {
+            // Parse a single indented line
+            for (0..(indent - 4)) |_| {
+                _ = try line.writer.write(" ");
+            }
+            line_loop: while (try self.it.peek(scratch)) |next| {
+                if (next.token_type == .newline) {
+                    break :line_loop;
                 }
-            },
-            .newline => { // newline doesn't end indented block
-                _ = try self.it.consume(scratch, &.{.newline});
-                try line.writer.print("", .{});
-            },
-            else => break :block_loop,
+
+                _ = try self.it.consume(scratch, &.{next.token_type});
+                try line.writer.print("{s}", .{next.lexeme});
+            }
+
+            _ = try self.it.consume(scratch, &.{.newline});
+        } else if (line_num > 0 and indent > 0) {
+            // Try to accept a blank line
+            const lookahead_checkpoint_index = self.it.checkpoint();
+            _ = try consumeWhitespace(scratch, self.it);
+            _ = try self.it.consume(scratch, &.{.newline}) orelse {
+                // Unindented, non-blank line does end block
+                self.it.backtrack(lookahead_checkpoint_index);
+                break :block_loop;
+            };
+        } else if (line_num > 0) {
+            // Only valid thing is a newline
+            _ = try self.it.consume(scratch, &.{.newline}) orelse {
+                break :block_loop;
+            };
+        } else {
+            // Invalid first line
+            return fail;
         }
 
         try lines.append(scratch, line.written());
@@ -487,14 +479,14 @@ fn parseIndentedCode(
     } else lines.items.len;
     const end_index = blk: {
         var i = lines.items.len;
-        while (i > 0) {
+        while (i > start_index) {
             i -= 1;
             const line = lines.items[i];
             if (line.len > 0 and !util.strings.containsOnly(line, "\n")) {
                 break :blk i + 1;
             }
         }
-        break :blk 0;
+        break :blk start_index;
     };
 
     const buf = try std.mem.join(
@@ -537,13 +529,7 @@ fn parseFencedCode(
     var saw_close_token = false;
 
     // Opening code fence line
-    const maybe_whitespace = try self.consumeOptionalLeadingWhitespace(scratch);
-    const indentation: usize =
-        if (maybe_whitespace) |whitespace|
-            util.strings.whitespaceIndentLen(whitespace.lexeme)
-        else
-            0;
-
+    const indentation = try consumeWhitespaceUpTo(scratch, self.it, 3);
     const open_fence = try self.it.consume(
         scratch,
         &.{ .backtick_fence, .tilde_fence },
@@ -551,7 +537,7 @@ fn parseFencedCode(
 
     const info_lang = blk: {
         // Whitespace allowed between fence and info string
-        _ = try self.it.consume(scratch, &.{.whitespace});
+        _ = try consumeWhitespace(scratch, self.it);
 
         // First text token is treated as language
         const text = try self.it.consume(
@@ -607,18 +593,13 @@ fn parseFencedCode(
                 _ = try self.it.consume(scratch, &.{t});
                 _ = try content.writer.write(line_start_token.lexeme);
             },
-            .whitespace => {
+            .space, .tab => {
                 if (try self.peekClosingFence(scratch, open_fence)) {
                     // found closing fence
                     break :loop;
                 }
 
-                _ = try self.it.consume(scratch, &.{.whitespace});
-                const value = util.strings.trimWhitespaceStart(
-                    line_start_token.lexeme,
-                    indentation,
-                );
-                _ = try content.writer.write(value);
+                _ = try consumeWhitespaceUpTo(scratch, self.it, indentation);
             },
             .newline => {
                 // TODO: all tokens should have lexemes
@@ -657,9 +638,9 @@ fn parseFencedCode(
     if (!saw_close_token) {
         // Closing code fence line
         // Not needed if file ends
-        _ = try self.consumeOptionalLeadingWhitespace(scratch);
+        _ = try consumeWhitespaceUpTo(scratch, self.it, 3);
         if (try self.it.consume(scratch, &.{open_fence.token_type})) |_| {
-            _ = try self.it.consume(scratch, &.{.whitespace});
+            _ = try consumeWhitespace(scratch, self.it);
             _ = try self.it.consume(scratch, &.{.newline}) orelse return fail;
         }
     }
@@ -698,7 +679,7 @@ fn peekClosingFence(
     const checkpoint_index = self.it.checkpoint();
     defer self.it.backtrack(checkpoint_index);
 
-    _ = try self.consumeOptionalLeadingWhitespace(scratch);
+    _ = try consumeWhitespaceUpTo(scratch, self.it, 3);
 
     const close_fence = try self.it.consume(
         scratch,
@@ -708,7 +689,7 @@ fn peekClosingFence(
         return false;
     }
 
-    _ = try self.it.consume(scratch, &.{.whitespace});
+    _ = try consumeWhitespace(scratch, self.it);
     _ = try self.it.consume(scratch, &.{.newline}) orelse return false;
 
     return true;
@@ -729,7 +710,7 @@ fn parseLinkReferenceDefinition(
     }
 
     // consume allowed leading whitespace
-    _ = try self.consumeOptionalLeadingWhitespace(scratch);
+    _ = try consumeWhitespaceUpTo(scratch, self.it, 3);
 
     const scanned_label = try self.scanLinkDefLabel(scratch) orelse
         return null;
@@ -739,7 +720,8 @@ fn parseLinkReferenceDefinition(
     var seen_newline = false;
     while (try self.it.consume(scratch, &.{
         .newline,
-        .whitespace,
+        .space,
+        .tab,
     })) |token| {
         if (token.token_type == .newline) {
             if (seen_newline) {
@@ -760,7 +742,7 @@ fn parseLinkReferenceDefinition(
     seen_newline = false;
     while (try self.it.peek(scratch)) |token| {
         switch (token.token_type) {
-            .whitespace => |t| {
+            .space, .tab => |t| {
                 seen_any_separating_whitespace = true;
                 _ = try self.it.consume(scratch, &.{t});
             },
@@ -790,7 +772,7 @@ fn parseLinkReferenceDefinition(
         // "no further character can occur" says the spec, but then there's an
         // example of spaces following the title, so we optionally consume
         // whitespace here.
-        _ = try self.it.consume(scratch, &.{.whitespace});
+        _ = try consumeWhitespace(scratch, self.it);
 
         if (seen_newline) {
             _ = try self.it.consume(scratch, &.{.newline}) orelse {
@@ -850,8 +832,8 @@ fn scanLinkDefLabel(self: *Self, scratch: Allocator) !?[]const u8 {
     var saw_non_blank = false;
     while (try self.it.peek(scratch)) |token| {
         switch (token.token_type) {
-            .whitespace => {
-                _ = try self.it.consume(scratch, &.{.whitespace});
+            .space, .tab => |t| {
+                _ = try self.it.consume(scratch, &.{t});
                 _ = try running_text.writer.write(token.lexeme);
             },
             .newline => {
@@ -915,7 +897,8 @@ fn scanLinkDefDestination(self: *Self, scratch: Allocator) !?[]const u8 {
                 => return null,
                 .text,
                 .pound,
-                .whitespace,
+                .space,
+                .tab,
                 .colon,
                 .l_square_bracket,
                 .r_square_bracket,
@@ -964,7 +947,7 @@ fn scanLinkDefDestination(self: *Self, scratch: Allocator) !?[]const u8 {
                     _ = try self.it.consume(scratch, &.{.r_paren});
                     _ = try running_text.writer.write(token.lexeme);
                 },
-                .newline, .whitespace => break,
+                .newline, .space, .tab => break,
                 .rule_star,
                 .rule_underline,
                 .rule_dash_with_whitespace,
@@ -1049,8 +1032,8 @@ fn scanLinkDefTitle(self: *Self, scratch: Allocator) !?[]const u8 {
 
                 blank_line_so_far = true;
             },
-            .whitespace => {
-                _ = try self.it.consume(scratch, &.{.whitespace});
+            .space, .tab => |t| {
+                _ = try self.it.consume(scratch, &.{t});
                 _ = try running_text.writer.write(token.lexeme);
             },
             else => |t| {
@@ -1155,8 +1138,10 @@ fn parseHTMLLiteralContent(
     var content = Io.Writer.Allocating.init(scratch);
 
     // Handle allowed leading whitespace
-    if (try self.consumeOptionalLeadingWhitespace(scratch)) |token| {
-        _ = try content.writer.write(token.lexeme);
+    const ws_len = try consumeWhitespaceUpTo(scratch, self.it, 3);
+    for (0..ws_len) |_| {
+        // TODO: Handle tabs
+        _ = try content.writer.write(" ");
     }
 
     // start condition
@@ -1168,7 +1153,7 @@ fn parseHTMLLiteralContent(
     }
     const following_token = try self.it.consume(
         scratch,
-        &.{ .whitespace, .r_angle_bracket, .newline },
+        &.{ .space, .tab, .r_angle_bracket, .newline },
     ) orelse return fail;
     if (following_token.token_type == .newline) { // TODO: newline lexeme?
         _ = try content.writer.print("<{s}\n", .{open_tag_token.lexeme});
@@ -1299,8 +1284,10 @@ fn parseHTMLComment(
     var content = Io.Writer.Allocating.init(scratch);
 
     // Handle allowed leading whitespace
-    if (try self.consumeOptionalLeadingWhitespace(scratch)) |token| {
-        _ = try content.writer.write(token.lexeme);
+    const ws_len = try consumeWhitespaceUpTo(scratch, self.it, 3);
+    for (0..ws_len) |_| {
+        // TODO: Handle tabs
+        _ = try content.writer.write(" ");
     }
 
     // start condition
@@ -1413,8 +1400,10 @@ fn parseHTMLProcessingInstruction(
     var content = Io.Writer.Allocating.init(scratch);
 
     // Handle allowed leading whitespace
-    if (try self.consumeOptionalLeadingWhitespace(scratch)) |token| {
-        _ = try content.writer.write(token.lexeme);
+    const ws_len = try consumeWhitespaceUpTo(scratch, self.it, 3);
+    for (0..ws_len) |_| {
+        // TODO: Handle tabs
+        _ = try content.writer.write(" ");
     }
 
     // start condition
@@ -1517,8 +1506,10 @@ fn parseHTMLDeclaration(
     var content = Io.Writer.Allocating.init(scratch);
 
     // Handle allowed leading whitespace
-    if (try self.consumeOptionalLeadingWhitespace(scratch)) |token| {
-        _ = try content.writer.write(token.lexeme);
+    const ws_len = try consumeWhitespaceUpTo(scratch, self.it, 3);
+    for (0..ws_len) |_| {
+        // TODO: Handle tabs
+        _ = try content.writer.write(" ");
     }
 
     // start condition
@@ -1610,8 +1601,10 @@ fn parseHTMLCDATA(
     var content = Io.Writer.Allocating.init(scratch);
 
     // Handle allowed leading whitespace
-    if (try self.consumeOptionalLeadingWhitespace(scratch)) |token| {
-        _ = try content.writer.write(token.lexeme);
+    const ws_len = try consumeWhitespaceUpTo(scratch, self.it, 3);
+    for (0..ws_len) |_| {
+        // TODO: Handle tabs
+        _ = try content.writer.write(" ");
     }
 
     // start condition
@@ -1802,8 +1795,10 @@ fn parseHTMLKnownTag(
     var content = Io.Writer.Allocating.init(scratch);
 
     // Handle allowed leading whitespace
-    if (try self.consumeOptionalLeadingWhitespace(scratch)) |token| {
-        _ = try content.writer.write(token.lexeme);
+    const ws_len = try consumeWhitespaceUpTo(scratch, self.it, 3);
+    for (0..ws_len) |_| {
+        // TODO: Handle tabs
+        _ = try content.writer.write(" ");
     }
 
     // start condition
@@ -1822,7 +1817,7 @@ fn parseHTMLKnownTag(
 
     const following_token = try self.it.consume(
         scratch,
-        &.{ .whitespace, .r_angle_bracket, .newline, .slash },
+        &.{ .space, .tab, .r_angle_bracket, .newline, .slash },
     ) orelse return fail;
     if (following_token.token_type == .newline) { // TODO: newline lexeme?
         _ = try content.writer.write("\n");
@@ -1901,8 +1896,10 @@ fn parseHTMLUnknownTag(
     var content = Io.Writer.Allocating.init(scratch);
 
     // Handle allowed leading whitespace
-    if (try self.consumeOptionalLeadingWhitespace(scratch)) |token| {
-        _ = try content.writer.write(token.lexeme);
+    var ws_len = try consumeWhitespaceUpTo(scratch, self.it, 3);
+    for (0..ws_len) |_| {
+        // TODO: Handle tabs
+        _ = try content.writer.write(" ");
     }
 
     // start condition
@@ -1925,8 +1922,10 @@ fn parseHTMLUnknownTag(
     _ = try self.it.consume(scratch, &.{.r_angle_bracket}) orelse return fail;
     _ = try content.writer.write(">");
 
-    if (try self.it.consume(scratch, &.{.whitespace})) |ws| {
-        _ = try content.writer.write(ws.lexeme);
+    ws_len = try consumeWhitespace(scratch, self.it);
+    for (0..ws_len) |_| {
+        // TODO: Handle tabs
+        _ = try content.writer.write(" ");
     }
     if (try self.it.peek(scratch)) |next_token| {
         if (next_token.token_type != .newline) {
@@ -2002,13 +2001,7 @@ fn parseMySTDirective(
     var saw_close_token = false;
 
     // Opening code fence line
-    const maybe_whitespace = try self.consumeOptionalLeadingWhitespace(scratch);
-    const indentation: usize =
-        if (maybe_whitespace) |whitespace|
-            util.strings.whitespaceIndentLen(whitespace.lexeme)
-        else
-            0;
-
+    const indentation = try consumeWhitespaceUpTo(scratch, self.it, 3);
     const open_fence = try self.it.consume(
         scratch,
         &.{ .backtick_fence, .colon_fence },
@@ -2020,7 +2013,7 @@ fn parseMySTDirective(
     var running_text = Io.Writer.Allocating.init(scratch);
     while (try self.it.peek(scratch)) |token| {
         switch (token.token_type) {
-            .text, .whitespace => {
+            .text, .space, .tab => {
                 _ = try self.it.consume(scratch, &.{token.token_type});
                 const v = try resolveText(scratch, token);
                 _ = try running_text.writer.write(v);
@@ -2032,7 +2025,7 @@ fn parseMySTDirective(
     const name = std.mem.trim(u8, try running_text.toOwnedSlice(), " \t");
 
     _ = try self.it.consume(scratch, &.{.r_brace}) orelse return fail;
-    _ = try self.it.consume(scratch, &.{.whitespace});
+    _ = try consumeWhitespace(scratch, self.it);
 
     // Parse args
     while (try self.it.peek(scratch)) |token| {
@@ -2090,17 +2083,12 @@ fn parseMySTDirective(
                 _ = try self.it.consume(scratch, &.{t});
                 _ = try content.writer.write(line_start_token.lexeme);
             },
-            .whitespace => {
+            .space, .tab => {
                 if (try self.peekClosingFence(scratch, open_fence)) {
                     break :loop;
                 }
 
-                _ = try self.it.consume(scratch, &.{.whitespace});
-                const value = util.strings.trimWhitespaceStart(
-                    line_start_token.lexeme,
-                    indentation,
-                );
-                _ = try content.writer.write(value);
+                _ = try consumeWhitespaceUpTo(scratch, self.it, indentation);
             },
             .newline => {
                 _ = try self.it.consume(scratch, &.{.newline});
@@ -2140,9 +2128,9 @@ fn parseMySTDirective(
     if (!saw_close_token) {
         // Closing fence line
         // Not needed if file ends
-        _ = try self.consumeOptionalLeadingWhitespace(scratch);
+        _ = try consumeWhitespaceUpTo(scratch, self.it, 3);
         if (try self.it.consume(scratch, &.{open_fence.token_type})) |_| {
-            _ = try self.it.consume(scratch, &.{.whitespace});
+            _ = try consumeWhitespace(scratch, self.it);
             _ = try self.it.consume(scratch, &.{.newline}) orelse return fail;
         }
     }
@@ -2216,7 +2204,7 @@ fn parseMySTDirectiveOption(
         return null;
     _ = try self.it.consume(scratch, &.{.colon}) orelse return null;
 
-    _ = try self.it.consume(scratch, &.{.whitespace});
+    _ = try consumeWhitespace(scratch, self.it);
 
     var running_text = Io.Writer.Allocating.init(scratch);
     while (try self.it.peek(scratch)) |token| {
@@ -2365,23 +2353,6 @@ fn scanTextFallback(self: *Self, scratch: Allocator) ![]const u8 {
     const token = try self.it.peek(scratch) orelse return "";
     _ = try self.it.consume(scratch, &.{token.token_type});
     return token.lexeme;
-}
-
-/// Consumes leading whitespace if it isn't significant.
-fn consumeOptionalLeadingWhitespace(
-    self: *Self,
-    scratch: Allocator,
-) !?BlockToken {
-    const token = try self.it.peek(scratch) orelse return null;
-    if (token.token_type != .whitespace) {
-        return null;
-    }
-
-    if (util.strings.whitespaceIndentLen(token.lexeme) >= 4) {
-        return null;
-    }
-
-    return try self.it.consume(scratch, &.{.whitespace});
 }
 
 /// Creates a paragraph node containing a single text node.

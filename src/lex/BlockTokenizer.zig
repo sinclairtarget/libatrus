@@ -99,10 +99,6 @@ fn tokenize(self: *Self, scratch: Allocator) !BlockToken {
             break :blk result;
         }
 
-        if (try self.matchWhitespace(scratch)) |result| {
-            break :blk result;
-        }
-
         break :blk try self.matchText(scratch);
     };
 
@@ -130,6 +126,8 @@ fn matchSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
         '?' => .question_mark,
         '/' => .slash,
         '.' => .period,
+        ' ' => .space,
+        '\t' => .tab,
         else => return null,
     };
 
@@ -137,6 +135,7 @@ fn matchSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
     const token = BlockToken{
         .token_type = token_type,
         .lexeme = lexeme,
+        .col = @intCast(self.i),
     };
     return .{
         .token = token,
@@ -174,6 +173,7 @@ fn matchPound(self: Self, scratch: Allocator) !?TokenizeResult {
     const token = BlockToken{
         .token_type = .pound,
         .lexeme = lexeme,
+        .col = @intCast(self.i),
     };
     return .{
         .token = token,
@@ -190,6 +190,7 @@ fn matchNewline(self: Self, scratch: Allocator) !?TokenizeResult {
     const token = BlockToken{
         .token_type = .newline,
         .lexeme = lexeme,
+        .col = @intCast(self.i),
     };
     return .{
         .token = token,
@@ -293,6 +294,7 @@ fn matchRule(self: Self, scratch: Allocator) !?TokenizeResult {
     const token = BlockToken{
         .token_type = token_type,
         .lexeme = lexeme,
+        .col = @intCast(self.i),
     };
     return .{
         .token = token,
@@ -373,32 +375,7 @@ fn matchFence(self: Self, scratch: Allocator) !?TokenizeResult {
     const token = BlockToken{
         .token_type = token_type,
         .lexeme = lexeme,
-    };
-    return .{
-        .token = token,
-        .next_i = lookahead_i,
-    };
-}
-
-fn matchWhitespace(self: Self, scratch: Allocator) !?TokenizeResult {
-    var lookahead_i = self.i;
-    while (lookahead_i < self.line.len) {
-        switch (self.line[lookahead_i]) {
-            ' ', '\t' => {
-                lookahead_i += 1;
-            },
-            else => break,
-        }
-    }
-
-    if (lookahead_i == self.i) {
-        return null;
-    }
-
-    const lexeme = try evaluateLexeme(self, scratch, .whitespace, lookahead_i);
-    const token = BlockToken{
-        .token_type = .whitespace,
-        .lexeme = lexeme,
+        .col = @intCast(self.i),
     };
     return .{
         .token = token,
@@ -470,6 +447,7 @@ fn matchText(self: Self, scratch: Allocator) !TokenizeResult {
     const token = BlockToken{
         .token_type = .text,
         .lexeme = lexeme,
+        .col = @intCast(self.i),
     };
     return .{
         .token = token,
@@ -539,38 +517,38 @@ test "pound paragraph" {
     ;
 
     try expectEqualTokens(&.{
-        // #                                Header
-        .pound,           .whitespace,       .text,             .newline,
-        // ##                               Subheader
-        .pound,           .whitespace,       .text,             .newline,
-        // This                             is
-        .text,            .whitespace,       .text,             .whitespace,
-        // a                                paragraph          .
-        .text,            .whitespace,       .text,             .period,
+        // #                                 Header
+        .pound,           .space,            .text,             .newline,
+        // ##                                Subheader
+        .pound,           .space,            .text,             .newline,
+        // This                              is
+        .text,            .space,            .text,             .space,
+        // a                                 paragraph          .
+        .text,            .space,            .text,             .period,
         //                  It                                 has
-        .newline,         .text,             .whitespace,       .text,
+        .newline,         .text,             .space,            .text,
         //                 multiple                            lines
-        .whitespace,      .text,             .whitespace,       .text,
+        .space,           .text,             .space,            .text,
         // .                                                    This
         .period,          .newline,          .newline,          .text,
         //                 is                                   a
-        .whitespace,      .text,             .whitespace,       .text,
+        .space,           .text,             .space,            .text,
         //                 new                                  paragraph
-        .whitespace,      .text,             .whitespace,       .text,
+        .space,           .text,             .space,            .text,
         // .                                 It
-        .period,          .newline,          .text,             .whitespace,
+        .period,          .newline,          .text,             .space,
         // has                               "                  symbols
-        .text,            .whitespace,       .double_quote,     .text,
+        .text,            .space,            .double_quote,     .text,
         // "                                 like
-        .double_quote,    .whitespace,       .text,             .whitespace,
+        .double_quote,    .space,            .text,             .space,
         // (              [                  ]                  <
         .l_paren,         .l_square_bracket, .r_square_bracket, .l_angle_bracket,
         // >              )                                     that
-        .r_angle_bracket, .r_paren,          .whitespace,       .text,
+        .r_angle_bracket, .r_paren,          .space,            .text,
         //                still                                 count
-        .whitespace,      .text,             .whitespace,       .text,
+        .space,           .text,             .space,            .text,
         //                as                                    text
-        .whitespace,      .text,             .whitespace,       .text,
+        .space,           .text,             .space,            .text,
         .period,          .newline,
     }, md);
 }
@@ -610,10 +588,9 @@ test "indent" {
     // In Zig, can't use \t in multiline string literal :(
     const md = "    a simple\n      space-indented block\n\n\ttab indent\n";
     try expectEqualTokens(&.{
-        .whitespace, .text,       .whitespace, .text,       .newline,
-        .whitespace, .text,       .whitespace, .text,       .newline,
-        .newline,    .whitespace, .text,       .whitespace, .text,
-        .newline,
+        .space, .space,   .space,   .space, .text,  .space, .text, .newline,
+        .space, .space,   .space,   .space, .space, .space, .text, .space,
+        .text,  .newline, .newline, .tab,   .text,  .space, .text, .newline,
     }, md);
 }
 
@@ -624,10 +601,10 @@ test "link reference definition" {
         .text,
         .r_square_bracket,
         .colon,
-        .whitespace,
+        .space,
         .slash,
         .text,
-        .whitespace,
+        .space,
         .double_quote,
         .text,
         .double_quote,
@@ -639,13 +616,13 @@ test "escaping" {
     const md = "Just a \\- paragraph \\[\\].\n";
     try expectEqualTokens(&.{
         .text,
-        .whitespace,
+        .space,
         .text,
-        .whitespace,
+        .space,
         .text,
-        .whitespace,
+        .space,
         .text,
-        .whitespace,
+        .space,
         .text,
         .period,
         .newline,
@@ -655,17 +632,20 @@ test "escaping" {
 test "backtick code fence" {
     const md = "  ``` \nfoo\nbar\n  ```  \n";
     try expectEqualTokens(&.{
-        .whitespace,
+        .space,
+        .space,
         .backtick_fence,
-        .whitespace,
+        .space,
         .newline,
         .text,
         .newline,
         .text,
         .newline,
-        .whitespace,
+        .space,
+        .space,
         .backtick_fence,
-        .whitespace,
+        .space,
+        .space,
         .newline,
     }, md);
 }
@@ -688,9 +668,9 @@ test "colon code fence" {
     const md = "::: : :foo:\n";
     try expectEqualTokens(&.{
         .colon_fence,
-        .whitespace,
+        .space,
         .colon,
-        .whitespace,
+        .space,
         .colon,
         .text,
         .colon,

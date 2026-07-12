@@ -33,6 +33,9 @@ const BlockTokenType = @import("../lex/tokens.zig").BlockTokenType;
 const LeafBlockParser = @import("LeafBlockParser.zig");
 const LinkDefMap = @import("link_defs.zig").LinkDefMap;
 const TokenIterator = @import("../lex/iterator.zig").TokenIterator;
+const consumeWhitespaceUpTo = @import(
+    "../lex/iterator.zig",
+).consumeWhitespaceUpTo;
 const util = @import("../util/util.zig");
 
 const Error = error{
@@ -293,23 +296,6 @@ fn next(self: *Self, scratch: Allocator) Error!?BlockToken {
     if (self.can_open_containers and self.leaf_parser.?.interruptible) {
         const maybe_container: ?Container = blk: {
             if (try parseBlockquote(scratch, self.it)) |container| {
-                // If whitespace follows the '>', consume one space.
-                // This is a little awkward! We have to split the token.
-                const next_token = try self.it.peek(scratch);
-                if (next_token) |token| {
-                    if (token.token_type == .whitespace and
-                        std.mem.startsWith(u8, token.lexeme, " ")) {
-                        _ = try self.it.consume(scratch, &.{.whitespace});
-                        self.maybe_staged_token = .{
-                            .token_type = .whitespace,
-                            .lexeme = try scratch.dupe(
-                                u8,
-                                token.lexeme[1..],
-                            ),
-                        };
-                    }
-                }
-
                 break :blk container;
             }
 
@@ -363,33 +349,15 @@ fn parseBlockquote(
     _ = try consumeWhitespaceUpTo(scratch, it, 3);
     _ = try it.consume(scratch, &.{.r_angle_bracket}) orelse return null;
 
+    // TODO: Tabs??
+    _ = try it.consume(scratch, &.{.space});
+
     did_parse = true;
     return .{
         .container_type = .{
             .blockquote = .{},
         },
     };
-}
-
-/// Consumes a whitespace token, but only if it's no longer than the given len
-/// (in spaces). Returns the length of the consumed token (or zero).
-fn consumeWhitespaceUpTo(
-    scratch: Allocator,
-    it: *TokenIterator(BlockTokenType),
-    len: usize,
-) !usize {
-    const token = try it.peek(scratch) orelse return 0;
-    if (token.token_type != .whitespace) {
-        return 0;
-    }
-
-    if (util.strings.whitespaceIndentLen(token.lexeme) > len) {
-        return 0;
-    }
-
-    const ws_token = try it.consume(scratch, &.{.whitespace}) orelse
-        unreachable;
-    return ws_token.lexeme.len;
 }
 
 fn handleListTightness(alloc: Allocator, list_items: []*ast.Node) void {

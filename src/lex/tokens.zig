@@ -21,14 +21,15 @@ pub const BlockTokenType = enum {
     star,
     plus,
     period,
+    space, // ascii space
+    tab,
     exclamation_mark, // used only for HTML parsing
     question_mark, // used only for HTML parsing
     slash, // used only for HTML parsing
     close, // special token inserted by container block parser
-    // --- multi-charcter tokens ---
+    // --- multi-character tokens ---
     text,
     pound, // one or more consecutive '#' symbols
-    whitespace,
     backtick_fence, // three or more consecutive '`' symbols
     tilde_fence, // three or more consecutive '~' symbols
     colon_fence, // three or more consecutive ':' symbols
@@ -115,6 +116,7 @@ pub fn Token(comptime TokenType: type) type {
     return struct {
         token_type: TokenType,
         lexeme: []const u8 = "",
+        col: u32 = 0,
         context: Context = .{ .empty = {} },
 
         const Self = @This();

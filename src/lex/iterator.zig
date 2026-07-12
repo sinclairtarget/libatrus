@@ -3,6 +3,7 @@ const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 
 const Token = @import("tokens.zig").Token;
+const BlockTokenType = @import("tokens.zig").BlockTokenType;
 
 pub const Error = error{
     LineTooLong,
@@ -135,4 +136,56 @@ pub fn TokenSliceStream(comptime TokenType: type) type {
             return self.slice[self.token_index];
         }
     };
+}
+
+/// Consumes consecutive spaces and tabs.
+///
+/// Returns the length of whitespace consumed (in spaces).
+///
+/// Tabs count for between 0 and 4 spaces depending on their position relative
+/// to the next tab stop.
+pub fn consumeWhitespace(
+    scratch: Allocator,
+    it: *TokenIterator(BlockTokenType),
+) !usize {
+    return try consumeWhitespaceUpTo(
+        scratch,
+        it,
+        std.math.maxInt(usize),
+    );
+}
+
+/// Consumes spaces or tabs up to the given length in spaces.
+///
+/// Returns the length of whitespace consumed (in spaces).
+///
+/// Tabs count for between 0 and 4 spaces depending on their position relative
+/// to the next tab stop.
+pub fn consumeWhitespaceUpTo(
+    scratch: Allocator,
+    it: *TokenIterator(BlockTokenType),
+    len: usize,
+) !usize {
+    var len_consumed: usize = 0;
+    while (len_consumed < len) {
+        const token = try it.peek(scratch) orelse break;
+        switch (token.token_type) {
+            .space => {
+                _ = try it.consume(scratch, &.{.space});
+                len_consumed += 1;
+            },
+            .tab => {
+                const tab_len = 4 - token.col % 4;
+                if (len_consumed + tab_len > len) {
+                    break;
+                }
+
+                _ = try it.consume(scratch, &.{.tab});
+                len_consumed += tab_len;
+            },
+            else => break,
+        }
+    }
+
+    return len_consumed;
 }
