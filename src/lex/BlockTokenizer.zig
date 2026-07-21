@@ -428,6 +428,8 @@ fn matchText(self: Self, scratch: Allocator) !TokenizeResult {
                 '>',
                 '[',
                 ']',
+                '(',
+                ')',
                 '{',
                 '}',
                 ':',
