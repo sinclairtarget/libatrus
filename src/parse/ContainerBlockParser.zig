@@ -43,403 +43,204 @@ const Error = error{
 } || Allocator.Error;
 
 /// Represents a container block that is open (can still have children added to
-/// it).
-const Container = struct {
+/// it) and hasn't yet been turned into an AST node.
+const ContainerBlock = struct {
     children: ArrayList(*ast.Node) = .empty,
-    closed: bool = false,
-    container_type: union(enum) {
-        root: Root,
-        blockquote: Blockquote,
-        bullet_list: BulletList,
-        bullet_list_item: BulletListItem,
-        ordered_list: OrderedList,
-        ordered_list_item: OrderedListItem,
+    variant: union(enum) {
+        root,
+        blockquote: struct {
+            closed: bool = false,
+        },
+        bullet_list: struct {
+            indent: u32,
+            marker_token_type: BlockTokenType,
+        },
+        bullet_list_item: struct {
+            indent: u32,
+            saw_blank_line: bool = false,
+            closed: bool = false,
+        },
+        ordered_list: struct {
+            indent: u32,
+            marker_token_type: BlockTokenType,
+            start: u32,
+        },
+        ordered_list_item: struct {
+            indent: u32,
+            saw_blank_line: bool = false,
+            closed: bool = false,
+        },
     },
 
-    fn canHaveLeafBlockChildren(self: Container) bool {
-        return switch (self.container_type) {
-            .bullet_list, .ordered_list => false,
-            .root, .blockquote, .bullet_list_item, .ordered_list_item => true,
+    fn name(self: ContainerBlock) []const u8 {
+        return @tagName(self.variant);
+    }
+
+    fn isList(self: ContainerBlock) bool {
+        return switch (self.variant) {
+            .bullet_list, .ordered_list => true,
+            .root, .blockquote, .bullet_list_item, .ordered_list_item => false,
         };
     }
 
     fn addChild(
-        self: *Container,
+        self: *ContainerBlock,
         scratch: Allocator,
         child: *ast.Node,
     ) !void {
+        // Make sure we only ever add list items to a list.
+        if (self.isList()) {
+            const node_type = @as(ast.NodeType, child.*);
+            std.debug.assert(node_type == .list_item);
+        }
+
         try self.children.append(scratch, child);
     }
 
     fn establish(
-        self: *Container,
+        self: *ContainerBlock,
         scratch: Allocator,
         it: *TokenIterator(BlockTokenType),
     ) !bool {
-        switch (self.container_type) {
-            inline else => |*payload| {
-                return try payload.establish(scratch, it);
+        const checkpoint_index = it.checkpoint();
+        var did_establish = false;
+        defer if (!did_establish) {
+            it.backtrack(checkpoint_index);
+        };
+
+        did_establish = switch (self.variant) {
+            .root => true,
+            .blockquote => blk: {
+                if (try parseBlockquoteOpen(scratch, it)) |_| {
+                    break :blk true;
+                }
+
+                break :blk false;
             },
-        }
+            inline .bullet_list_item, .ordered_list_item => |*payload| blk: {
+                const ws_tokens = try it.consumeWhitespaceUpTo(
+                    scratch,
+                    payload.indent,
+                );
+                if (whitespaceLen(ws_tokens) >= payload.indent) {
+                    break :blk true;
+                }
+
+                if (try it.peek(scratch)) |next_token| {
+                    if (next_token.token_type == .newline) {
+                        payload.saw_blank_line = true;
+                        break :blk true;
+                    }
+                }
+
+                break :blk false;
+            },
+            inline .bullet_list, .ordered_list => |payload| blk: {
+                const ws_tokens = try it.consumeWhitespaceUpTo(
+                    scratch,
+                    payload.indent,
+                );
+                if (whitespaceLen(ws_tokens) >= payload.indent) {
+                    break :blk true;
+                }
+
+                if (try it.peek(scratch)) |next_token| {
+                    if (next_token.token_type == .newline) {
+                        break :blk true;
+                    }
+                }
+
+                break :blk false;
+            },
+        };
+
+        return did_establish;
     }
 
     fn openChildContainer(
-        self: Container,
+        self: ContainerBlock,
         scratch: Allocator,
         it: *TokenIterator(BlockTokenType),
-    ) !?Container {
-        switch (self.container_type) {
-            inline else => |payload| {
-                return try payload.openChildContainer(scratch, it);
+    ) !?ContainerBlock {
+        switch (self.variant) {
+            .root, .blockquote, .bullet_list_item, .ordered_list_item => {
+                return try parseAnyContainerOpen(scratch, it);
+            },
+            .bullet_list => |payload| {
+                if (try parseBulletListItemOpen(
+                    scratch,
+                    it,
+                    payload.marker_token_type,
+                )) |container| {
+                    return container;
+                }
+            },
+            .ordered_list => |payload| {
+                if (try parseOrderedListItemOpen(
+                    scratch,
+                    it,
+                    payload.marker_token_type,
+                )) |container| {
+                    return container;
+                }
             },
         }
+
+        return null;
     }
 
     /// Close this container block, turning it into an AST node.
-    fn toNode(self: Container, alloc: Allocator) !*ast.Node {
-        switch (self.container_type) {
-            inline else => |payload| {
-                return payload.toNode(alloc, self.children.items);
-            },
-        }
-    }
-};
-
-/// Root container.
-const Root = struct {
-    fn establish(
-        self: *Root,
-        scratch: Allocator,
-        it: *TokenIterator(BlockTokenType),
-    ) !bool {
-        _ = self;
-        _ = scratch;
-        _ = it;
-
-        // Root container is by definition always established.
-        return true;
-    }
-
-    fn openChildContainer(
-        self: Root,
-        scratch: Allocator,
-        it: *TokenIterator(BlockTokenType),
-    ) !?Container {
-        _ = self;
-        return try parseAnyContainerOpen(scratch, it);
-    }
-
-    fn toNode(
-        self: Root,
-        alloc: Allocator,
-        children: []*ast.Node,
-    ) !*ast.Node {
-        _ = self;
-
-        const owned_children = try alloc.dupe(*ast.Node, children);
+    fn toNode(self: ContainerBlock, alloc: Allocator) !*ast.Node {
+        const owned_children = try alloc.dupe(*ast.Node, self.children.items);
         errdefer alloc.free(owned_children);
 
         const node = try alloc.create(ast.Node);
-        node.* = .{
-            .root = .{
-                .children = owned_children,
+        switch (self.variant) {
+            .root => {
+                node.* = .{
+                    .root = .{
+                        .children = owned_children,
+                    },
+                };
             },
-        };
-        return node;
-    }
-};
-
-/// Blockquote container.
-const Blockquote = struct {
-    fn establish(
-        self: *Blockquote,
-        scratch: Allocator,
-        it: *TokenIterator(BlockTokenType),
-    ) !bool {
-        _ = self;
-
-        if (try parseBlockquoteOpen(scratch, it)) |_| {
-            return true;
-        }
-
-        return false;
-    }
-
-    fn openChildContainer(
-        self: Blockquote,
-        scratch: Allocator,
-        it: *TokenIterator(BlockTokenType),
-    ) !?Container {
-        _ = self;
-        return try parseAnyContainerOpen(scratch, it);
-    }
-
-    fn toNode(
-        self: Blockquote,
-        alloc: Allocator,
-        children: []*ast.Node,
-    ) !*ast.Node {
-        _ = self;
-
-        const owned_children = try alloc.dupe(*ast.Node, children);
-        errdefer alloc.free(owned_children);
-
-        const node = try alloc.create(ast.Node);
-        node.* = .{
-            .blockquote = .{
-                .children = owned_children,
+            .blockquote => {
+                node.* = .{
+                    .blockquote = .{
+                        .children = owned_children,
+                    },
+                };
             },
-        };
-        return node;
-    }
-};
-
-const BulletList = struct {
-    marker_token_type: BlockTokenType,
-    indent: u32,
-
-    fn establish(
-        self: *BulletList,
-        scratch: Allocator,
-        it: *TokenIterator(BlockTokenType),
-    ) !bool {
-        const checkpoint_index = it.checkpoint();
-        var did_establish = false;
-        defer if (!did_establish) {
-            it.backtrack(checkpoint_index);
-        };
-
-        const ws_tokens = try it.consumeWhitespaceUpTo(scratch, self.indent);
-        if (whitespaceLen(ws_tokens) >= self.indent) {
-            did_establish = true;
-        }
-
-        const next_token = try it.peek(scratch) orelse return did_establish;
-        if (next_token.token_type == .newline) {
-            did_establish = true;
-        }
-
-        return did_establish;
-    }
-
-    fn openChildContainer(
-        self: BulletList,
-        scratch: Allocator,
-        it: *TokenIterator(BlockTokenType),
-    ) !?Container {
-        if (try parseBulletListItemOpen(
-            scratch,
-            it,
-            self.marker_token_type,
-        )) |container| {
-            return container;
-        }
-
-        return null;
-    }
-
-    fn toNode(
-        self: BulletList,
-        alloc: Allocator,
-        children: []*ast.Node,
-    ) !*ast.Node {
-        _ = self;
-
-        const owned_children = try alloc.dupe(*ast.Node, children);
-        errdefer alloc.free(owned_children);
-
-        _ = tightenListChildren(alloc, owned_children);
-
-        const node = try alloc.create(ast.Node);
-        node.* = .{
-            .list = .{
-                .children = owned_children,
-                .ordered = false,
-                .spread = false, // Always false for MyST 0.0.5 tests
+            inline .bullet_list_item, .ordered_list_item => |payload| {
+                node.* = .{
+                    .list_item = .{
+                        .children = owned_children,
+                        .spread = payload.saw_blank_line,
+                    },
+                };
             },
-        };
-        return node;
-    }
-};
-
-const BulletListItem = struct {
-    indent: u32,
-    saw_blank_line: bool = false,
-
-    fn establish(
-        self: *BulletListItem,
-        scratch: Allocator,
-        it: *TokenIterator(BlockTokenType),
-    ) !bool {
-        const checkpoint_index = it.checkpoint();
-        var did_establish = false;
-        defer if (!did_establish) {
-            it.backtrack(checkpoint_index);
-        };
-
-        const ws_tokens = try it.consumeWhitespaceUpTo(scratch, self.indent);
-        if (whitespaceLen(ws_tokens) >= self.indent) {
-            did_establish = true;
-        }
-
-        const next_token = try it.peek(scratch) orelse return did_establish;
-        if (next_token.token_type == .newline) {
-            self.saw_blank_line = true;
-            did_establish = true;
-        }
-
-        return did_establish;
-    }
-
-    fn openChildContainer(
-        self: BulletListItem,
-        scratch: Allocator,
-        it: *TokenIterator(BlockTokenType),
-    ) !?Container {
-        _ = self;
-        return try parseAnyContainerOpen(scratch, it);
-    }
-
-    fn toNode(
-        self: BulletListItem,
-        alloc: Allocator,
-        children: []*ast.Node,
-    ) !*ast.Node {
-        const owned_children = try alloc.dupe(*ast.Node, children);
-        errdefer alloc.free(owned_children);
-
-        const node = try alloc.create(ast.Node);
-        node.* = .{
-            .list_item = .{
-                .children = owned_children,
-                .spread = self.saw_blank_line,
+            .bullet_list => {
+                _ = tightenListChildren(alloc, owned_children);
+                node.* = .{
+                    .list = .{
+                        .children = owned_children,
+                        .ordered = false,
+                        .spread = false, // Always false for MyST 0.0.5 tests
+                    },
+                };
             },
-        };
-        return node;
-    }
-};
-
-const OrderedList = struct {
-    marker_token_type: BlockTokenType,
-    indent: usize,
-    start: u32,
-
-    fn establish(
-        self: *OrderedList,
-        scratch: Allocator,
-        it: *TokenIterator(BlockTokenType),
-    ) !bool {
-        const checkpoint_index = it.checkpoint();
-        var did_establish = false;
-        defer if (!did_establish) {
-            it.backtrack(checkpoint_index);
-        };
-
-        const ws_tokens = try it.consumeWhitespaceUpTo(scratch, self.indent);
-        if (whitespaceLen(ws_tokens) >= self.indent) {
-            did_establish = true;
-        }
-
-        const next_token = try it.peek(scratch) orelse return did_establish;
-        if (next_token.token_type == .newline) {
-            did_establish = true;
-        }
-
-        return did_establish;
-    }
-
-    fn openChildContainer(
-        self: OrderedList,
-        scratch: Allocator,
-        it: *TokenIterator(BlockTokenType),
-    ) !?Container {
-        if (try parseOrderedListItemOpen(
-            scratch,
-            it,
-            self.marker_token_type,
-        )) |container| {
-            return container;
-        }
-
-        return null;
-    }
-
-    fn toNode(
-        self: OrderedList,
-        alloc: Allocator,
-        children: []*ast.Node,
-    ) !*ast.Node {
-        const owned_children = try alloc.dupe(*ast.Node, children);
-        errdefer alloc.free(owned_children);
-
-        _ = tightenListChildren(alloc, owned_children);
-
-        const node = try alloc.create(ast.Node);
-        node.* = .{
-            .list = .{
-                .children = owned_children,
-                .ordered = true,
-                .spread = false, // Always false for MyST 0.0.5 tests
-                .start = self.start,
+            .ordered_list => |payload| {
+                _ = tightenListChildren(alloc, owned_children);
+                node.* = .{
+                    .list = .{
+                        .children = owned_children,
+                        .ordered = true,
+                        .spread = false, // Always false for MyST 0.0.5 tests
+                        .start = payload.start,
+                    },
+                };
             },
-        };
-        return node;
-    }
-};
-
-const OrderedListItem = struct {
-    indent: usize,
-    saw_blank_line: bool = false,
-
-    fn establish(
-        self: *OrderedListItem,
-        scratch: Allocator,
-        it: *TokenIterator(BlockTokenType),
-    ) !bool {
-        const checkpoint_index = it.checkpoint();
-        var did_establish = false;
-        defer if (!did_establish) {
-            it.backtrack(checkpoint_index);
-        };
-
-        const ws_tokens = try it.consumeWhitespaceUpTo(scratch, self.indent);
-        if (whitespaceLen(ws_tokens) >= self.indent) {
-            did_establish = true;
         }
 
-        const next_token = try it.peek(scratch) orelse return did_establish;
-        if (next_token.token_type == .newline) {
-            self.saw_blank_line = true;
-            did_establish = true;
-        }
-
-        return did_establish;
-    }
-
-    fn openChildContainer(
-        self: OrderedListItem,
-        scratch: Allocator,
-        it: *TokenIterator(BlockTokenType),
-    ) !?Container {
-        _ = self;
-        return try parseAnyContainerOpen(scratch, it);
-    }
-
-    fn toNode(
-        self: OrderedListItem,
-        alloc: Allocator,
-        children: []*ast.Node,
-    ) !*ast.Node {
-        const owned_children = try alloc.dupe(*ast.Node, children);
-        errdefer alloc.free(owned_children);
-
-        const node = try alloc.create(ast.Node);
-        node.* = .{
-            .list_item = .{
-                .children = owned_children,
-                .spread = self.saw_blank_line,
-            },
-        };
         return node;
     }
 };
@@ -450,7 +251,7 @@ const debug_stream = false;
 // Iterator that the container block parser consumes
 it: *TokenIterator(BlockTokenType),
 leaf_parser: ?LeafBlockParser,
-container_stack: ArrayList(Container),
+container_stack: ArrayList(ContainerBlock),
 unestablished_container_i: usize,
 can_open_containers: bool,
 
@@ -478,13 +279,36 @@ pub fn parse(
     link_defs: *LinkDefMap,
 ) Error!*ast.Node {
     try self.container_stack.append(scratch, .{
-        .container_type = .{ .root = .{} },
+        .variant = .{ .root = {} },
     });
     self.unestablished_container_i = 0;
     self.can_open_containers = true;
 
     var leaf_it = self.iterator();
     for (0..util.safety.loop_bound) |_| {
+        if (debug_stream) {
+            for (self.container_stack.items) |container| {
+                std.debug.print("[{s}] ", .{container.name()});
+            }
+            std.debug.print("\n", .{});
+        }
+
+        if (self.top().isList()) {
+            const top_container = self.top();
+            if (self.can_open_containers) {
+                if (try top_container.openChildContainer(
+                    scratch,
+                    self.it,
+                )) |container| {
+                    try self.push(scratch, container);
+                    continue;
+                }
+            }
+
+            try self.pop(alloc, scratch);
+            continue;
+        }
+
         if (leaf_it.is_exhausted) {
             leaf_it = self.iterator(); // reset iterator
         }
@@ -505,7 +329,6 @@ pub fn parse(
             loop_start_stack_len - 1
         ];
         for (nodes) |node| {
-            std.debug.assert(original_top.canHaveLeafBlockChildren());
             try original_top.addChild(scratch, node);
         }
 
@@ -515,17 +338,11 @@ pub fn parse(
             continue;
         }
 
-        // Pop top container, unless we're at root
-        if (self.container_stack.items.len > 1) {
-            const popped = self.container_stack.pop() orelse unreachable;
-            std.debug.assert(popped.closed);
-
-            const node = try popped.toNode(alloc);
-            errdefer node.deinit(alloc);
-            try self.top().addChild(scratch, node);
-        } else {
-            break;
+        if (self.container_stack.items.len <= 1) {
+            break; // reached root
         }
+
+        try self.pop(alloc, scratch);
     } else @panic(util.safety.loop_bound_panic_msg);
 
     return try self.top().toNode(alloc);
@@ -562,18 +379,29 @@ fn next(self: *Self, scratch: Allocator) Error!?BlockToken {
                 break;
             }
 
-            std.debug.assert(!container.closed);
+            switch (container.variant) {
+                .root, .bullet_list, .ordered_list => {},
+                inline else => |*payload| {
+                    payload.closed = false;
+                },
+            }
             self.unestablished_container_i += 1;
         }
     }
 
     if (self.unestablished_container_i < self.container_stack.items.len) {
-        // We have some containers that could not be established. They need to
-        // be closed.
+        // Top container has not been established. It needs to be closed.
         const top_container = self.top();
-        if (!top_container.closed) {
-            top_container.closed = true;
-            return .{ .token_type = .close };
+        switch (top_container.variant) {
+            .root, .bullet_list, .ordered_list => {
+                return null;
+            },
+            inline else => |*payload| {
+                if (!payload.closed) {
+                    payload.closed = true;
+                    return .{ .token_type = .close };
+                }
+            },
         }
     }
 
@@ -588,24 +416,19 @@ fn next(self: *Self, scratch: Allocator) Error!?BlockToken {
         );
 
         if (maybe_container) |container| {
-            if (top_container.closed) {
-                // Time to hard-close this container. We can't be adding new
-                // child containers to already-closed containers.
-                return null;
+            switch (top_container.variant) {
+                .root, .bullet_list, .ordered_list => {},
+                inline else => |payload| {
+                    if (payload.closed) {
+                        // Time to hard-close this container. We can't be
+                        // adding new child containers to already-closed
+                        // containers.
+                        return null;
+                    }
+                },
             }
 
-            try self.container_stack.append(scratch, container);
-            self.unestablished_container_i += 1;
-            return null;
-        }
-    }
-
-    // Some containers (lists) can't stay open unless thay have a child
-    // container.
-    if (!self.top().canHaveLeafBlockChildren()) {
-        const top_container = self.top();
-        if (!top_container.closed) {
-            top_container.closed = true;
+            try self.push(scratch, container);
             return null;
         }
     }
@@ -633,17 +456,29 @@ fn next(self: *Self, scratch: Allocator) Error!?BlockToken {
 ///
 /// TODO: Maybe the ArrayList should hold pointers to the containers and not
 /// the containers themselves.
-fn top(self: *Self) *Container {
+fn top(self: *Self) *ContainerBlock {
     std.debug.assert(self.container_stack.items.len > 0);
     return &self.container_stack.items[
         self.container_stack.items.len - 1
     ];
 }
 
+fn push(self: *Self, scratch: Allocator, container: ContainerBlock) !void {
+    try self.container_stack.append(scratch, container);
+    self.unestablished_container_i += 1;
+}
+
+fn pop(self: *Self, alloc: Allocator, scratch: Allocator) !void {
+    const popped = self.container_stack.pop() orelse unreachable;
+    const node = try popped.toNode(alloc);
+    errdefer node.deinit(alloc);
+    try self.top().addChild(scratch, node);
+}
+
 fn parseBlockquoteOpen(
     scratch: Allocator,
     it: *TokenIterator(BlockTokenType),
-) !?Container {
+) !?ContainerBlock {
     const checkpoint_index = it.checkpoint();
     var did_parse = false;
     defer if (!did_parse) {
@@ -658,7 +493,7 @@ fn parseBlockquoteOpen(
 
     did_parse = true;
     return .{
-        .container_type = .{
+        .variant = .{
             .blockquote = .{},
         },
     };
@@ -667,7 +502,7 @@ fn parseBlockquoteOpen(
 fn parseBulletListOpen(
     scratch: Allocator,
     it: *TokenIterator(BlockTokenType),
-) !?Container {
+) !?ContainerBlock {
     const checkpoint_index = it.checkpoint();
     var did_parse = false;
     defer if (!did_parse) {
@@ -692,7 +527,7 @@ fn parseBulletListOpen(
 
     did_parse = true;
     return .{
-        .container_type = .{
+        .variant = .{
             .bullet_list = .{
                 .marker_token_type = marker_token.token_type,
                 .indent = whitespaceLen(leading_ws_tokens),
@@ -705,7 +540,7 @@ fn parseBulletListItemOpen(
     scratch: Allocator,
     it: *TokenIterator(BlockTokenType),
     marker_token_type: BlockTokenType,
-) !?Container {
+) !?ContainerBlock {
     std.debug.assert(marker_token_type == .star or
         marker_token_type == .hyphen or
         marker_token_type == .plus);
@@ -726,7 +561,7 @@ fn parseBulletListItemOpen(
 
     did_parse = true;
     return .{
-        .container_type = .{
+        .variant = .{
             .bullet_list_item = .{
                 .indent = 1 + whitespaceLen(ws_tokens),
             },
@@ -737,7 +572,7 @@ fn parseBulletListItemOpen(
 fn parseOrderedListOpen(
     scratch: Allocator,
     it: *TokenIterator(BlockTokenType),
-) !?Container {
+) !?ContainerBlock {
     const checkpoint_index = it.checkpoint();
     var did_parse = false;
     defer if (!did_parse) {
@@ -771,7 +606,7 @@ fn parseOrderedListOpen(
 
     did_parse = true;
     return .{
-        .container_type = .{
+        .variant = .{
             .ordered_list = .{
                 .marker_token_type = marker_token.token_type,
                 .indent = whitespaceLen(leading_ws_tokens),
@@ -785,7 +620,7 @@ fn parseOrderedListItemOpen(
     scratch: Allocator,
     it: *TokenIterator(BlockTokenType),
     marker_token_type: BlockTokenType,
-) !?Container {
+) !?ContainerBlock {
     std.debug.assert(marker_token_type == .period or
         marker_token_type == .r_paren);
 
@@ -810,7 +645,7 @@ fn parseOrderedListItemOpen(
 
     did_parse = true;
     return .{
-        .container_type = .{
+        .variant = .{
             .ordered_list_item = .{
                 .indent = 1 + whitespaceLen(ws_tokens),
             },
@@ -821,7 +656,7 @@ fn parseOrderedListItemOpen(
 fn parseAnyContainerOpen(
     scratch: Allocator,
     it: *TokenIterator(BlockTokenType),
-) !?Container {
+) !?ContainerBlock {
     if (try parseBlockquoteOpen(scratch, it)) |container| {
         return container;
     }
