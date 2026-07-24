@@ -49,7 +49,7 @@ const ContainerBlock = struct {
     variant: union(enum) {
         root,
         blockquote: struct {
-            closed: bool = false,
+            soft_closed: bool = false,
         },
         bullet_list: struct {
             indent: u32,
@@ -58,7 +58,7 @@ const ContainerBlock = struct {
         bullet_list_item: struct {
             indent: u32,
             saw_blank_line: bool = false,
-            closed: bool = false,
+            soft_closed: bool = false,
         },
         ordered_list: struct {
             indent: u32,
@@ -68,7 +68,7 @@ const ContainerBlock = struct {
         ordered_list_item: struct {
             indent: u32,
             saw_blank_line: bool = false,
-            closed: bool = false,
+            soft_closed: bool = false,
         },
     },
 
@@ -293,18 +293,13 @@ pub fn parse(
             std.debug.print("\n", .{});
         }
 
-        if (self.top().isList()) {
-            const top_container = self.top();
-            if (self.can_open_containers) {
-                if (try top_container.openChildContainer(
-                    scratch,
-                    self.it,
-                )) |container| {
-                    try self.push(scratch, container);
-                    continue;
-                }
-            }
-
+        // Some kind of handling of list containers has to go here. There could
+        // be tokens still in the buffer within leaf_it. If we call
+        // LeafBlockParser.parse() on this leaf_it, it will consume the token
+        // before any of the logic in the iterator func below can run and we'd
+        // end up adding leaf block children to a list container, which is
+        // invalid.
+        if (!self.can_open_containers and self.top().isList()) {
             try self.pop(alloc, scratch);
             continue;
         }
@@ -370,80 +365,95 @@ fn nextIterator(ctx: *anyopaque, scratch: Allocator) Error!?BlockToken {
 }
 
 fn next(self: *Self, scratch: Allocator) Error!?BlockToken {
-    // We're at the beginning of the line. We need to establish any stacked
-    // containers.
-    if (self.unestablished_container_i == 0) {
-        for (0..self.container_stack.items.len) |i| {
-            const container = &self.container_stack.items[i];
-            if (!try container.establish(scratch, self.it)) {
-                break;
-            }
-
-            switch (container.variant) {
-                .root, .bullet_list, .ordered_list => {},
-                inline else => |*payload| {
-                    payload.closed = false;
-                },
-            }
-            self.unestablished_container_i += 1;
-        }
-    }
-
-    if (self.unestablished_container_i < self.container_stack.items.len) {
-        // Top container has not been established. It needs to be closed.
-        const top_container = self.top();
-        switch (top_container.variant) {
-            .root, .bullet_list, .ordered_list => {
-                return null;
-            },
-            inline else => |*payload| {
-                if (!payload.closed) {
-                    payload.closed = true;
-                    return .{ .token_type = .close };
+    if (self.can_open_containers) {
+        // We're at the beginning of the line. We need to establish any stacked
+        // containers.
+        if (self.unestablished_container_i == 0) {
+            for (0..self.container_stack.items.len) |i| {
+                const container = &self.container_stack.items[i];
+                if (!try container.establish(scratch, self.it)) {
+                    break;
                 }
-            },
+
+                self.unestablished_container_i += 1;
+            }
         }
-    }
 
-    // We now look for tokens that could open new containers.
-    // Pushing a new container should coincide with ending the token stream for
-    // the current container.
-    if (self.can_open_containers and self.leaf_parser.?.interruptible) {
-        const top_container = self.top();
-        const maybe_container = try top_container.openChildContainer(
-            scratch,
-            self.it,
-        );
-
-        if (maybe_container) |container| {
+        if (self.unestablished_container_i < self.container_stack.items.len) {
+            // Top container has not been established. It needs to be closed.
+            const top_container = self.top();
             switch (top_container.variant) {
-                .root, .bullet_list, .ordered_list => {},
-                inline else => |payload| {
-                    if (payload.closed) {
-                        // Time to hard-close this container. We can't be
-                        // adding new child containers to already-closed
-                        // containers.
-                        return null;
+                .root, .bullet_list, .ordered_list => {
+                    return null;
+                },
+                inline else => |*payload| {
+                    // Soft close.
+                    if (!payload.soft_closed) {
+                        payload.soft_closed = true;
+                        return .{ .token_type = .close };
                     }
                 },
             }
+        }
 
-            try self.push(scratch, container);
-            return null;
+        // We now look for tokens that could open new containers. Pushing a new
+        // container should coincide with ending the token stream for the
+        // current container.
+        if (self.leaf_parser.?.interruptible) {
+            const top_container = self.top();
+            const maybe_container = try top_container.openChildContainer(
+                scratch,
+                self.it,
+            );
+
+            if (maybe_container) |container| {
+                switch (top_container.variant) {
+                    .root, .bullet_list, .ordered_list => {},
+                    inline else => |payload| {
+                        if (payload.soft_closed) {
+                            // Time to hard-close this container. We can't be
+                            // adding new child containers to already-closed
+                            // containers.
+                            return null;
+                        }
+                    },
+                }
+
+                try self.push(scratch, container);
+                return null;
+            }
         }
     }
-
-    // We've established all our containers and handled whether to open any new
-    // ones. We're now looking at tokens that should get passed to the leaf
-    // block parser.
-    self.can_open_containers = false;
 
     const next_token = try self.it.peek(scratch) orelse return null;
     if (next_token.token_type == .newline) {
         // End of the current line! Reset everything.
         self.unestablished_container_i = 0;
         self.can_open_containers = true;
+
+        for (0..self.container_stack.items.len) |i| {
+            const container = &self.container_stack.items[i];
+            switch (container.variant) {
+                .root, .bullet_list, .ordered_list => {},
+                inline else => |*payload| {
+                    payload.soft_closed = false;
+                },
+            }
+        }
+
+        _ = try self.it.consume(scratch, &.{.newline});
+        return next_token;
     }
+
+    if (self.top().isList()) {
+        // A list can't stay open as the top container.
+        return null;
+    }
+
+    // We've established all our containers and handled whether to open any new
+    // ones. We're now looking at tokens that should get passed to the leaf
+    // block parser.
+    self.can_open_containers = false;
 
     _ = try self.it.consume(scratch, &.{next_token.token_type});
     return next_token;
@@ -854,13 +864,21 @@ test "blockquote lazy continuation" {
         \\>foo
         \\# bar
         \\
+        \\> foo
+        \\bar
+        \\> bam
+        \\
+        \\> foo
+        \\bar
+        \\> # bam
+        \\
     ;
 
     const root = try parseBlocks(md);
     defer root.deinit(testing.allocator);
 
     try testing.expectEqual(.root, @as(ast.NodeType, root.*));
-    try testing.expectEqual(3, root.root.children.len);
+    try testing.expectEqual(5, root.root.children.len);
 
     const bq1 = root.root.children[0];
     try testing.expectEqual(.blockquote, @as(ast.NodeType, bq1.*));
@@ -883,6 +901,41 @@ test "blockquote lazy continuation" {
 
     const h = root.root.children[2];
     try testing.expectEqual(.heading, @as(ast.NodeType, h.*));
+
+    const bq3 = root.root.children[3];
+    try testing.expectEqual(.blockquote, @as(ast.NodeType, bq3.*));
+    try testing.expectEqual(1, bq3.blockquote.children.len);
+    {
+        const p = bq3.blockquote.children[0];
+        try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
+        try testing.expectEqual(1, p.paragraph.children.len);
+
+        const txt = p.paragraph.children[0];
+        try testing.expectEqual(.text, @as(ast.NodeType, txt.*));
+        try testing.expectEqualStrings(
+            "foo\nbar\nbam",
+            txt.text.value,
+        );
+    }
+
+    const bq4 = root.root.children[4];
+    try testing.expectEqual(.blockquote, @as(ast.NodeType, bq4.*));
+    try testing.expectEqual(2, bq4.blockquote.children.len);
+    {
+        const p = bq4.blockquote.children[0];
+        try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
+        try testing.expectEqual(1, p.paragraph.children.len);
+
+        const txt = p.paragraph.children[0];
+        try testing.expectEqual(.text, @as(ast.NodeType, txt.*));
+        try testing.expectEqualStrings(
+            "foo\nbar",
+            txt.text.value,
+        );
+
+        const bq4_h = bq4.blockquote.children[1];
+        try testing.expectEqual(.heading, @as(ast.NodeType, bq4_h.*));
+    }
 }
 
 test "blockquote after paragraph" {

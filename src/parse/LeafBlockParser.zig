@@ -6,22 +6,18 @@
 //! an array list. The array list is cleared of consumed tokens as each block
 //! is successfully parsed.
 //!
-//! Ideally, this parser wouldn't have to be aware of container blocks in any
-//! way. But until we find a better factorization we include some functionality
-//! here required only by the container block parser.
-//!
 //! In addition to the regular block tokens, this parser can also handle
 //! special "CLOSE" tokens. A CLOSE token indicates that the parser should not
 //! parse any more blocks. This is similar to but different from the actual end
 //! of the token stream: whereas the end of the stream obviously means that the
 //! parser can't parse anything more, the CLOSE token allows the parser to keep
 //! parsing an open paragraph but nothing else. (CLOSE tokens are used to
-//! implement lazy continuation lines for blockquotes.)
+//! implement lazy continuation lines.)
 //!
-//! This parser also sets a flag when it is parsing something that cannot be
-//! interrupted by the start of a new container. This flag lets the container
-//! block parser know that ">" tokens, for example, cannot begin a blockquote
-//! in the current context.
+//! This parser also sets a flag when it is parsing something (like a code
+//! block) that cannot be interrupted by the start of a new container. This
+//! flag lets the container block parser know that ">" tokens, for example,
+//! cannot begin a blockquote in the current context.
 
 const std = @import("std");
 const fmt = std.fmt;
@@ -166,13 +162,9 @@ pub fn parse(
 
         // Parse paragraph text
         const result = try self.scanParagraphText(scratch);
-        if (result.maybe_text_value) |val| {
+        if (result) |val| {
             try children.appendText(val);
-            if (result.should_end) {
-                break; // End parsing after lazy continuation lines
-            } else {
-                continue;
-            }
+            continue;
         }
 
         // Parse paragraph text (last resort)
@@ -2223,26 +2215,18 @@ fn parseMySTDirectiveOption(
     };
 }
 
-// Scanned text that could end parsing.
-const EndingScanResult = struct {
-    maybe_text_value: ?[]const u8 = null,
-    should_end: bool = false,
-};
-
-/// Scan text for a paragraph.
+/// Scan text for a paragraph. Returns the scanned text.
 ///
 /// Paragraph can start with almost anything. If the token could have been
 /// parsed as something else, it would have been parsed already.
 ///
-/// Returns the scanned text and also an indicator of whether parsing should
-/// end. We need to return this indicator because we consume the CLOSE token
-/// when it appears. (In a lazy continuation line, we need to consume the CLOSE
-/// token to parse everything after it in the line.)
-fn scanParagraphText(self: *Self, scratch: Allocator) !EndingScanResult {
+/// Consumes all CLOSE tokens that appear in the paragraph except a trailing
+/// CLOSE token.
+fn scanParagraphText(self: *Self, scratch: Allocator) !?[]const u8 {
     var running_text = Io.Writer.Allocating.init(scratch);
-    var saw_close_token = false;
+    var close_token_checkpoint_index: ?usize = null;
 
-    const start_token = try self.it.peek(scratch) orelse return .{};
+    const start_token = try self.it.peek(scratch) orelse return null;
     _ = try self.it.consume(scratch, &.{start_token.token_type});
     _ = try running_text.writer.write(start_token.lexeme);
 
@@ -2257,8 +2241,8 @@ fn scanParagraphText(self: *Self, scratch: Allocator) !EndingScanResult {
                     continue :fsm .maybe_end;
                 },
                 .close => {
+                    close_token_checkpoint_index = self.it.checkpoint();
                     _ = try self.it.consume(scratch, &.{.close});
-                    saw_close_token = true;
                     continue :fsm .maybe_end;
                 },
                 else => |t| {
@@ -2311,7 +2295,6 @@ fn scanParagraphText(self: *Self, scratch: Allocator) !EndingScanResult {
                         if (!isLiteralContentHTMLTagName(tag_token.lexeme) and
                             !isKnownHTMLTagName(tag_token.lexeme))
                         {
-                            saw_close_token = false;
                             continue :fsm .continuing;
                         }
                     }
@@ -2319,8 +2302,8 @@ fn scanParagraphText(self: *Self, scratch: Allocator) !EndingScanResult {
                     break :fsm;
                 },
                 .close => {
+                    close_token_checkpoint_index = self.it.checkpoint();
                     _ = try self.it.consume(scratch, &.{.close});
-                    saw_close_token = true;
                     continue :fsm .maybe_end;
                 },
                 else => {
@@ -2330,11 +2313,15 @@ fn scanParagraphText(self: *Self, scratch: Allocator) !EndingScanResult {
         },
     }
 
+    if (close_token_checkpoint_index) |checkpoint_index| {
+        if (self.it.token_index - checkpoint_index == 1) {
+            // last token was close token, backtrack
+            self.it.backtrack(checkpoint_index);
+        }
+    }
+
     const text_value = try running_text.toOwnedSlice();
-    return .{
-        .maybe_text_value = text_value,
-        .should_end = saw_close_token,
-    };
+    return text_value;
 }
 
 fn scanTextFallback(self: *Self, scratch: Allocator) ![]const u8 {
