@@ -706,12 +706,11 @@ fn tightenListChildren(alloc: Allocator, list_items: []*ast.Node) bool {
             // Only spread item is the last item in the list.
             // We are a tight list if the last item has no more than one
             // child (the spread would have come from trailing blank
-            // lines).
-            // Otherwise we are loose.
+            // lines). Otherwise we are loose.
             const last_item = list_items[last_spread_i];
             break :blk last_item.list_item.children.len <= 1;
         } else {
-            // No spread children, so we must be a tight list
+            // No spread children, so we must be a tight list.
             break :blk true;
         }
     };
@@ -721,7 +720,15 @@ fn tightenListChildren(alloc: Allocator, list_items: []*ast.Node) bool {
         for (list_items) |child| {
             unwrapTightListItem(alloc, child);
         }
-    } else {
+    }
+
+    // If we have a loose list, or a tight list with just one list item, we
+    // need to mark all list items as "spread" according to the MyST 0.0.5
+    // tests.
+    //
+    // This is quite confusing! Unclear why the list item should be marked
+    // "spread" in the single-list-item case.
+    if (!is_tight_list or list_items.len == 1) {
         // Make sure all list items are marked spread
         for (list_items) |child| {
             child.list_item.spread = true;
