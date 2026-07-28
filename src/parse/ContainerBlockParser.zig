@@ -52,7 +52,6 @@ const ContainerBlock = struct {
             soft_closed: bool = false,
         },
         bullet_list: struct {
-            indent: u32,
             marker_token_type: BlockTokenType,
         },
         bullet_list_item: struct {
@@ -61,7 +60,6 @@ const ContainerBlock = struct {
             soft_closed: bool = false,
         },
         ordered_list: struct {
-            indent: u32,
             marker_token_type: BlockTokenType,
             start: u32,
         },
@@ -109,7 +107,7 @@ const ContainerBlock = struct {
         };
 
         did_establish = switch (self.variant) {
-            .root => true,
+            .root, .bullet_list, .ordered_list => true, // always established
             .blockquote => blk: {
                 if (try parseBlockquoteOpen(scratch, it)) |_| {
                     break :blk true;
@@ -129,23 +127,6 @@ const ContainerBlock = struct {
                 if (try it.peek(scratch)) |next_token| {
                     if (next_token.token_type == .newline) {
                         payload.saw_blank_line = true;
-                        break :blk true;
-                    }
-                }
-
-                break :blk false;
-            },
-            inline .bullet_list, .ordered_list => |payload| blk: {
-                const ws_tokens = try it.consumeWhitespaceUpTo(
-                    scratch,
-                    payload.indent,
-                );
-                if (whitespaceLen(ws_tokens) >= payload.indent) {
-                    break :blk true;
-                }
-
-                if (try it.peek(scratch)) |next_token| {
-                    if (next_token.token_type == .newline) {
                         break :blk true;
                     }
                 }
@@ -446,7 +427,8 @@ fn next(self: *Self, scratch: Allocator) Error!?BlockToken {
     }
 
     if (self.top().isList()) {
-        // A list can't stay open as the top container.
+        // If we get to this point, we have a list container at the top of our
+        // stack but no list items to add to it. Pop it off.
         return null;
     }
 
@@ -514,33 +496,24 @@ fn parseBulletListOpen(
     it: *TokenIterator(BlockTokenType),
 ) !?ContainerBlock {
     const checkpoint_index = it.checkpoint();
-    var did_parse = false;
-    defer if (!did_parse) {
-        it.backtrack(checkpoint_index);
-    };
+    defer it.backtrack(checkpoint_index); // always backtrack
 
     // Up to 3 leading spaces allowed before marker token
-    const leading_ws_tokens = try it.consumeWhitespaceUpTo(scratch, 3);
+    _ = try it.consumeWhitespaceUpTo(scratch, 3);
 
-    const marker_token = try it.peek(scratch) orelse return null;
-    switch (marker_token.token_type) {
-        .star, .hyphen, .plus => {},
-        else => return null,
-    }
+    const marker_token = try it.consume(scratch, &.{
+        .star,
+        .hyphen,
+        .plus,
+    }) orelse return null;
 
     // Must be followed by at least one space
-    const following_ws = try it.peekAhead(scratch, 2) orelse return null;
-    switch (following_ws.token_type) {
-        .tab, .space => {},
-        else => return null,
-    }
+    _ = try it.consume(scratch, &.{ .tab, .space }) orelse return null;
 
-    did_parse = true;
     return .{
         .variant = .{
             .bullet_list = .{
                 .marker_token_type = marker_token.token_type,
-                .indent = whitespaceLen(leading_ws_tokens),
             },
         },
     };
@@ -561,19 +534,24 @@ fn parseBulletListItemOpen(
         it.backtrack(checkpoint_index);
     };
 
+    // Up to 3 leading spaces allowed before marker token
+    const leading_ws_tokens = try it.consumeWhitespaceUpTo(scratch, 3);
+
     _ = try it.consume(scratch, &.{marker_token_type}) orelse return null;
-    const ws_tokens = try it.consumeWhitespaceUpTo(scratch, 4);
+    const following_ws_tokens = try it.consumeWhitespaceUpTo(scratch, 4);
 
     // Must be followed by at least one space
-    if (whitespaceLen(ws_tokens) < 1) {
+    if (whitespaceLen(following_ws_tokens) < 1) {
         return null;
     }
 
     did_parse = true;
+    const indent = whitespaceLen(leading_ws_tokens) + 1 +
+        whitespaceLen(following_ws_tokens);
     return .{
         .variant = .{
             .bullet_list_item = .{
-                .indent = 1 + whitespaceLen(ws_tokens),
+                .indent = indent,
             },
         },
     };
@@ -584,42 +562,28 @@ fn parseOrderedListOpen(
     it: *TokenIterator(BlockTokenType),
 ) !?ContainerBlock {
     const checkpoint_index = it.checkpoint();
-    var did_parse = false;
-    defer if (!did_parse) {
-        it.backtrack(checkpoint_index);
-    };
+    defer it.backtrack(checkpoint_index); // always backtrack
 
     // Up to 3 leading spaces allowed before marker token
-    const leading_ws_tokens = try it.consumeWhitespaceUpTo(scratch, 3);
+    _ = try it.consumeWhitespaceUpTo(scratch, 3);
 
-    // Remaining tokens we just peek, so they can be consumed by a list item
-    const numeral_token = try it.peek(scratch) orelse return null;
-    if (numeral_token.token_type != .text) {
+    const numeral_token = try it.consume(scratch, &.{.text}) orelse
         return null;
-    }
-
-    const marker_token = try it.peekAhead(scratch, 2) orelse return null;
-    switch (marker_token.token_type) {
-        .period, .r_paren => {},
-        else => return null,
-    }
+    const marker_token = try it.consume(scratch, &.{
+        .period,
+        .r_paren,
+    }) orelse return null;
 
     // Must be followed by at least one space
-    const following_ws = try it.peekAhead(scratch, 3) orelse return null;
-    switch (following_ws.token_type) {
-        .tab, .space => {},
-        else => return null,
-    }
+    _ = try it.consume(scratch, &.{ .tab, .space }) orelse return null;
 
     const start = parseOrderedListNumber(numeral_token.lexeme) catch
         return null;
 
-    did_parse = true;
     return .{
         .variant = .{
             .ordered_list = .{
                 .marker_token_type = marker_token.token_type,
-                .indent = whitespaceLen(leading_ws_tokens),
                 .start = start,
             },
         },
@@ -640,14 +604,17 @@ fn parseOrderedListItemOpen(
         it.backtrack(checkpoint_index);
     };
 
+    // Up to 3 leading spaces allowed before numeral token
+    const leading_ws_tokens = try it.consumeWhitespaceUpTo(scratch, 3);
+
     const numeral_token = try it.consume(scratch, &.{.text}) orelse
         return null;
     _ = try it.consume(scratch, &.{marker_token_type}) orelse return null;
 
-    const ws_tokens = try it.consumeWhitespaceUpTo(scratch, 4);
+    const following_ws_tokens = try it.consumeWhitespaceUpTo(scratch, 4);
 
     // Must be followed by at least one space
-    if (whitespaceLen(ws_tokens) < 1) {
+    if (whitespaceLen(following_ws_tokens) < 1) {
         return null;
     }
 
@@ -656,10 +623,12 @@ fn parseOrderedListItemOpen(
     did_parse = true;
 
     const numeral_len: u32 = @intCast(numeral_token.lexeme.len);
+    const indent = whitespaceLen(leading_ws_tokens) + numeral_len + 1 +
+        whitespaceLen(following_ws_tokens);
     return .{
         .variant = .{
             .ordered_list_item = .{
-                .indent = numeral_len + 1 + whitespaceLen(ws_tokens),
+                .indent = indent,
             },
         },
     };
@@ -1430,6 +1399,34 @@ test "bullet list match indent" {
 
     const p_node = root_node.root.children[1];
     try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node.*));
+}
+
+test "indented bullet list items" {
+    const md =
+        \\   * foo
+        \\  * foo
+        \\* foo
+        \\
+    ;
+
+    const root_node = try parseBlocks(md);
+    defer root_node.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
+
+    const list_node = root_node.root.children[0];
+    try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
+    try testing.expectEqual(3, list_node.list.children.len);
+
+    for (0..3) |i| {
+        const item_node = list_node.list.children[i];
+        try testing.expectEqual(.list_item, @as(ast.NodeType, item_node.*));
+        try testing.expectEqual(1, item_node.list_item.children.len);
+
+        const txt_node = item_node.list_item.children[0];
+        try testing.expectEqual(.text, @as(ast.NodeType, txt_node.*));
+        try testing.expectEqualStrings("foo", txt_node.text.value);
+    }
 }
 
 test "interleave blockquote and bullet list" {
