@@ -654,10 +654,12 @@ fn parseOrderedListItemOpen(
     _ = parseOrderedListNumber(numeral_token.lexeme) catch return null;
 
     did_parse = true;
+
+    const numeral_len: u32 = @intCast(numeral_token.lexeme.len);
     return .{
         .variant = .{
             .ordered_list_item = .{
-                .indent = 1 + whitespaceLen(ws_tokens),
+                .indent = numeral_len + 1 + whitespaceLen(ws_tokens),
             },
         },
     };
