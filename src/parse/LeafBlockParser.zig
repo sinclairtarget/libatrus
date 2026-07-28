@@ -68,7 +68,12 @@ pub fn parse(
     scratch: Allocator,
     link_defs: *LinkDefMap,
 ) Error![]*ast.Node {
-    var children = NodeList.init(alloc, scratch, createParagraphNode);
+    var children = NodeList.init(
+        alloc,
+        scratch,
+        createParagraphNode,
+        .{ .values_to_strip = " \n" },
+    );
     errdefer {
         for (children.items()) |child| {
             child.deinit(alloc);
@@ -2321,6 +2326,10 @@ fn scanParagraphText(self: *Self, scratch: Allocator) !?[]const u8 {
     }
 
     const text_value = try running_text.toOwnedSlice();
+    if (text_value.len == 0) {
+        return null;
+    }
+
     return text_value;
 }
 
@@ -2332,10 +2341,9 @@ fn scanTextFallback(self: *Self, scratch: Allocator) ![]const u8 {
 
 /// Creates a paragraph node containing a single text node.
 fn createParagraphNode(alloc: Allocator, text_content: []const u8) !*ast.Node {
-    // Trim trailing newlines
-    const trimmed = std.mem.trimEnd(u8, text_content, "\n");
+    std.debug.assert(text_content.len > 0);
 
-    const text_node = try util.nodes.createTextNode(alloc, trimmed);
+    const text_node = try util.nodes.createTextNode(alloc, text_content);
     errdefer text_node.deinit(alloc);
 
     const children = try alloc.dupe(*ast.Node, &.{text_node});
@@ -2384,6 +2392,33 @@ fn parseBlocksMd(md: []const u8, link_defs: *LinkDefMap) ![]*ast.Node {
 
     const nodes = try parser.parse(testing.allocator, scratch, link_defs);
     return nodes;
+}
+
+test "blank lines" {
+    const md = "  \nfoo\n  \n";
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksMd(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(1, nodes.len);
+
+    const p_node = nodes[0];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node.*));
+
+    const text_node = p_node.paragraph.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
+    try testing.expectEqualStrings(
+        "foo",
+        text_node.text.value,
+    );
 }
 
 test "ATX heading and paragraphs" {

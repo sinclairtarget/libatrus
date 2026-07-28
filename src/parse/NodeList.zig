@@ -18,17 +18,20 @@ allocator: Allocator,
 list: ArrayList(*ast.Node),
 running_text: Io.Writer.Allocating,
 create_text_node: CreateTextNodeFunc,
+values_to_strip: []const u8,
 
 pub fn init(
     perm: Allocator,
     scratch: Allocator,
     create_text_node: CreateTextNodeFunc,
+    opts: struct { values_to_strip: []const u8 = "" },
 ) Self {
     return .{
         .allocator = perm,
         .list = .empty,
         .running_text = Io.Writer.Allocating.init(scratch),
         .create_text_node = create_text_node,
+        .values_to_strip = opts.values_to_strip,
     };
 }
 
@@ -82,10 +85,12 @@ fn checkAppendCollected(self: *Self) !void {
         return;
     }
 
-    const text = try self.create_text_node(
-        self.allocator,
-        self.running_text.written(),
-    );
-    try self.list.append(self.allocator, text);
+    const written = self.running_text.written();
+    const trimmed = std.mem.trim(u8, written, self.values_to_strip);
+    if (trimmed.len > 0) {
+        const text = try self.create_text_node(self.allocator, trimmed);
+        try self.list.append(self.allocator, text);
+    }
+
     self.running_text.clearRetainingCapacity();
 }

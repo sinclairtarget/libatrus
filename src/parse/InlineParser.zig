@@ -83,7 +83,7 @@ pub fn parse(
     alloc: Allocator,
     scratch: Allocator,
 ) Error![]*ast.Node {
-    var nodes = NodeList.init(alloc, scratch, util.nodes.createTextNode);
+    var nodes = NodeList.init(alloc, scratch, util.nodes.createTextNode, .{});
     errdefer {
         for (nodes.items()) |node| {
             node.deinit(alloc);
@@ -179,7 +179,7 @@ fn parseStarStrong(
     },
 ) Error!?*ast.Node {
     var did_parse = false;
-    var children = NodeList.init(alloc, scratch, util.nodes.createTextNode);
+    var children = NodeList.init(alloc, scratch, util.nodes.createTextNode, .{});
     const checkpoint_index = self.checkpoint();
 
     // Track bracket depth so we know if we need to exit early because a parent
@@ -414,7 +414,7 @@ fn parseStarEmphasis(
     },
 ) Error!?*ast.Node {
     var did_parse = false;
-    var children = NodeList.init(alloc, scratch, util.nodes.createTextNode);
+    var children = NodeList.init(alloc, scratch, util.nodes.createTextNode, .{});
     const checkpoint_index = self.checkpoint();
 
     // Track bracket depth so we know if we need to exit early because a parent
@@ -683,7 +683,7 @@ fn parseUnderscoreStrong(
     },
 ) Error!?*ast.Node {
     var did_parse = false;
-    var children = NodeList.init(alloc, scratch, util.nodes.createTextNode);
+    var children = NodeList.init(alloc, scratch, util.nodes.createTextNode, .{});
     const checkpoint_index = self.checkpoint();
 
     // Track bracket depth so we know if we need to exit early because a parent
@@ -932,7 +932,7 @@ fn parseUnderscoreEmphasis(
     },
 ) Error!?*ast.Node {
     var did_parse = false;
-    var children = NodeList.init(alloc, scratch, util.nodes.createTextNode);
+    var children = NodeList.init(alloc, scratch, util.nodes.createTextNode, .{});
     const checkpoint_index = self.checkpoint();
 
     // Track bracket depth so we know if we need to exit early because a parent
@@ -1504,7 +1504,7 @@ fn parseLinkText(
     alloc: Allocator,
     scratch: Allocator,
 ) Error!?[]*ast.Node {
-    var nodes = NodeList.init(alloc, scratch, util.nodes.createTextNode);
+    var nodes = NodeList.init(alloc, scratch, util.nodes.createTextNode, .{});
     var did_parse = false;
     const checkpoint_index = self.checkpoint();
     defer if (!did_parse) {
@@ -2041,7 +2041,7 @@ fn parseLinkLabel(
     alloc: Allocator,
     scratch: Allocator,
 ) Error!?[]*ast.Node {
-    var nodes = NodeList.init(alloc, scratch, util.nodes.createTextNode);
+    var nodes = NodeList.init(alloc, scratch, util.nodes.createTextNode, .{});
     var did_parse = false;
     const checkpoint_index = self.checkpoint();
     defer if (!did_parse) {
@@ -2192,7 +2192,7 @@ fn parseImageDescription(
     scratch: Allocator,
 ) Error!?[]*ast.Node {
     var did_parse = false;
-    var nodes = NodeList.init(alloc, scratch, util.nodes.createTextNode);
+    var nodes = NodeList.init(alloc, scratch, util.nodes.createTextNode, .{});
     const checkpoint_index = self.checkpoint();
     defer if (!did_parse) {
         self.backtrack(checkpoint_index);
