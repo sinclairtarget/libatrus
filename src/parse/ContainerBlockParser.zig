@@ -538,15 +538,27 @@ fn parseBulletListItemOpen(
     const leading_ws_tokens = try it.consumeWhitespaceUpTo(scratch, 3);
 
     _ = try it.consume(scratch, &.{marker_token_type}) orelse return null;
-    const following_ws_tokens = try it.consumeWhitespaceUpTo(scratch, 4);
 
-    // Must be followed by at least one space
-    if (whitespaceLen(following_ws_tokens) < 1) {
+    // Handle whitespace following marker token.
+    //
+    // We must have one following whitespace. After that, if we have up to 3
+    // spaces, those should be consumed and counted toward the indent for this
+    // list item. If we have more than 3, then the spaces should NOT be
+    // consumed as they mark an indented code block.
+    const space_tokens = try it.consumeWhitespaceUpTo(scratch, 1);
+    if (whitespaceLen(space_tokens) < 1) {
         return null;
     }
 
+    const following_ws_checkpoint_index = it.checkpoint();
+    var following_ws_tokens = try it.consumeWhitespace(scratch);
+    if (whitespaceLen(following_ws_tokens) > 3) {
+        it.backtrack(following_ws_checkpoint_index);
+        following_ws_tokens = &.{};
+    }
+
     did_parse = true;
-    const indent = whitespaceLen(leading_ws_tokens) + 1 +
+    const indent = whitespaceLen(leading_ws_tokens) + 2 +
         whitespaceLen(following_ws_tokens);
     return .{
         .variant = .{
@@ -611,11 +623,22 @@ fn parseOrderedListItemOpen(
         return null;
     _ = try it.consume(scratch, &.{marker_token_type}) orelse return null;
 
-    const following_ws_tokens = try it.consumeWhitespaceUpTo(scratch, 4);
-
-    // Must be followed by at least one space
-    if (whitespaceLen(following_ws_tokens) < 1) {
+    // Handle whitespace following marker token.
+    //
+    // We must have one following whitespace. After that, if we have up to 3
+    // spaces, those should be consumed and counted toward the indent for this
+    // list item. If we have more than 3, then the spaces should NOT be
+    // consumed as they mark an indented code block.
+    const space_tokens = try it.consumeWhitespaceUpTo(scratch, 1);
+    if (whitespaceLen(space_tokens) < 1) {
         return null;
+    }
+
+    const following_ws_checkpoint_index = it.checkpoint();
+    var following_ws_tokens = try it.consumeWhitespace(scratch);
+    if (whitespaceLen(following_ws_tokens) > 3) {
+        it.backtrack(following_ws_checkpoint_index);
+        following_ws_tokens = &.{};
     }
 
     _ = parseOrderedListNumber(numeral_token.lexeme) catch return null;
@@ -623,7 +646,7 @@ fn parseOrderedListItemOpen(
     did_parse = true;
 
     const numeral_len: u32 = @intCast(numeral_token.lexeme.len);
-    const indent = whitespaceLen(leading_ws_tokens) + numeral_len + 1 +
+    const indent = whitespaceLen(leading_ws_tokens) + numeral_len + 2 +
         whitespaceLen(following_ws_tokens);
     return .{
         .variant = .{
