@@ -35,6 +35,11 @@ pub fn build(b: *std.Build) void {
         .preferred_optimize_mode = .ReleaseSafe,
     });
 
+    const allow_log_scopes = b.option(
+        bool,
+        "log-scopes",
+        "Enables fine-grained log scopes",
+    );
     const test_case_filter = b.option(
         []const u8,
         "test-filter",
@@ -50,6 +55,11 @@ pub fn build(b: *std.Build) void {
     });
     const options = b.addOptions();
     options.addOption([]const u8, "version", pkg_zon.version);
+    options.addOption(
+        bool,
+        "allow_log_scopes",
+        allow_log_scopes orelse false,
+    );
     atrus_module.addOptions("config", options);
 
     // atrus cli

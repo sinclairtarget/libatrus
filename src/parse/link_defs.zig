@@ -7,7 +7,7 @@ const ArrayList = std.ArrayList;
 const StringHashMapUnmanaged = std.hash_map.StringHashMapUnmanaged;
 
 const ast = @import("../ast.zig");
-const logger = @import("../logging.zig").logger;
+const logger = @import("../logging.zig").logger(.link_defs);
 
 pub const label_max_chars = 999; // Unicode code points
 

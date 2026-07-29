@@ -7,17 +7,25 @@ const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const Io = std.Io;
 const ArgsError = cli.ArgsError;
-const log = std.log;
 
 const atrus = @import("atrus");
 const cli = @import("cli.zig");
 
-const logger = log.scoped(.main);
+const logger = std.log.scoped(.main);
 
 const max_line_len = 1024; // bytes
 
 pub const std_options: std.Options = .{
-    .log_level = if (builtin.mode == .Debug) .info else .warn,
+    .log_scope_levels = &.{
+        // Adjust these to see more log messages from libatrus.
+        // Note that unless the `log-scopes` build option is set, all log
+        // messages have the `.libatrus` scope.
+        .{ .scope = .libatrus, .level = .info },
+        .{ .scope = .root, .level = .warn },
+        .{ .scope = .link_defs, .level = .warn },
+        .{ .scope = .directives, .level = .warn },
+        .{ .scope = .container, .level = .warn },
+    },
 };
 
 pub fn main() !void {

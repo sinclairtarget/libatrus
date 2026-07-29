@@ -24,7 +24,7 @@ const json = @import("render/json.zig");
 const html = @import("render/html.zig");
 const typst = @import("render/typst.zig");
 
-const logger = @import("logging.zig").logger;
+const logger = @import("logging.zig").logger(.root);
 
 // Maximum allowed length for a single line in a Markdown document.
 // TODO: Do we need this?

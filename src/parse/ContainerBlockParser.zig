@@ -28,6 +28,7 @@ const Io = std.Io;
 const fmt = std.fmt;
 
 const ast = @import("../ast.zig");
+const logging = @import("../logging.zig");
 const BlockToken = @import("../lex/tokens.zig").BlockToken;
 const BlockTokenType = @import("../lex/tokens.zig").BlockTokenType;
 const whitespaceLen = @import("../lex/tokens.zig").whitespaceLen;
@@ -35,6 +36,8 @@ const LeafBlockParser = @import("LeafBlockParser.zig");
 const LinkDefMap = @import("link_defs.zig").LinkDefMap;
 const TokenIterator = @import("../lex/iterator.zig").TokenIterator;
 const util = @import("../util/util.zig");
+
+const logger = logging.logger(.container);
 
 const Error = error{
     LineTooLong,
@@ -237,9 +240,6 @@ const ContainerBlock = struct {
     }
 };
 
-// Set to true to print tokens sent to leaf block parser.
-const debug_stream = false;
-
 // Iterator that the container block parser consumes
 it: *TokenIterator(BlockTokenType),
 leaf_parser: ?LeafBlockParser,
@@ -278,11 +278,8 @@ pub fn parse(
 
     var leaf_it = self.iterator();
     for (0..util.safety.loop_bound) |_| {
-        if (debug_stream) {
-            for (self.container_stack.items) |container| {
-                std.debug.print("[{s}] ", .{container.name()});
-            }
-            std.debug.print("\n", .{});
+        for (self.container_stack.items) |container| {
+            logger.debug("[{s}]", .{container.name()});
         }
 
         // Some kind of handling of list containers has to go here. There could
@@ -345,12 +342,10 @@ fn nextIterator(ctx: *anyopaque, scratch: Allocator) Error!?BlockToken {
     const self: *Self = @ptrCast(@alignCast(ctx));
 
     const maybe_token = try self.next(scratch);
-    if (debug_stream) {
-        if (maybe_token) |token| {
-            std.debug.print("{f}\n", .{token});
-        } else {
-            std.debug.print("NULL\n", .{});
-        }
+    if (maybe_token) |token| {
+        logger.debug("{f}", .{token});
+    } else {
+        logger.debug("NULL", .{});
     }
 
     return maybe_token;

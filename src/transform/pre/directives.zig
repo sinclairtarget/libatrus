@@ -6,7 +6,7 @@ const Io = std.Io;
 const ast = @import("../../ast.zig");
 const atrus = @import("../../root.zig");
 const myst = @import("../../myst/myst.zig");
-const logger = @import("../../logging.zig").logger;
+const logger = @import("../../logging.zig").logger(.directives);
 const util = @import("../../util/util.zig");
 
 pub fn transform(
