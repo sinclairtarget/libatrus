@@ -56,6 +56,7 @@ const ContainerBlock = struct {
         },
         bullet_list_item: struct {
             indent: u32,
+            starts_with_blank_line: bool = false,
             saw_blank_line: bool = false,
             soft_closed: bool = false,
         },
@@ -65,6 +66,7 @@ const ContainerBlock = struct {
         },
         ordered_list_item: struct {
             indent: u32,
+            starts_with_blank_line: bool = false,
             saw_blank_line: bool = false,
             soft_closed: bool = false,
         },
@@ -126,6 +128,14 @@ const ContainerBlock = struct {
 
                 if (try it.peek(scratch)) |next_token| {
                     if (next_token.token_type == .newline) {
+                        if (payload.starts_with_blank_line and
+                            self.children.items.len == 0)
+                        {
+                            // List item cannot start with more than one blank
+                            // line.
+                            break :blk false;
+                        }
+
                         payload.saw_blank_line = true;
                         break :blk true;
                     }
@@ -195,7 +205,8 @@ const ContainerBlock = struct {
                 node.* = .{
                     .list_item = .{
                         .children = owned_children,
-                        .spread = payload.saw_blank_line,
+                        .spread = payload.saw_blank_line or
+                            payload.starts_with_blank_line,
                     },
                 };
             },
@@ -501,19 +512,33 @@ fn parseBulletListOpen(
     // Up to 3 leading spaces allowed before marker token
     _ = try it.consumeWhitespaceUpTo(scratch, 3);
 
-    const marker_token = try it.consume(scratch, &.{
-        .star,
-        .hyphen,
-        .plus,
-    }) orelse return null;
+    const marker_token_type = blk: {
+        const marker_token = try it.consume(scratch, &.{
+            .star,
+            .hyphen,
+            .plus,
+            .rule_dash,
+        }) orelse return null;
 
-    // Must be followed by at least one space
-    _ = try it.consume(scratch, &.{ .tab, .space }) orelse return null;
+        if (marker_token.token_type == .rule_dash) {
+            if (marker_token.lexeme.len == 1) {
+                break :blk .hyphen;
+            }
+
+            return null;
+        }
+
+        break :blk marker_token.token_type;
+    };
+
+    // Must be followed by at least one space or a newline
+    _ = try it.consume(scratch, &.{ .tab, .space, .newline }) orelse
+        return null;
 
     return .{
         .variant = .{
             .bullet_list = .{
-                .marker_token_type = marker_token.token_type,
+                .marker_token_type = marker_token_type,
             },
         },
     };
@@ -537,7 +562,17 @@ fn parseBulletListItemOpen(
     // Up to 3 leading spaces allowed before marker token
     const leading_ws_tokens = try it.consumeWhitespaceUpTo(scratch, 3);
 
-    _ = try it.consume(scratch, &.{marker_token_type}) orelse return null;
+    _ = try it.consume(scratch, &.{marker_token_type}) orelse {
+        if (marker_token_type != .hyphen) {
+            return null;
+        }
+
+        const rule = try it.consume(scratch, &.{.rule_dash}) orelse
+            return null;
+        if (rule.lexeme.len > 1) {
+            return null;
+        }
+    };
 
     // Handle whitespace following marker token.
     //
@@ -545,9 +580,15 @@ fn parseBulletListItemOpen(
     // spaces, those should be consumed and counted toward the indent for this
     // list item. If we have more than 3, then the spaces should NOT be
     // consumed as they mark an indented code block.
+    //
+    // If the marker token is followed by a blank line, that's okay
+    // too. We treat it as if we had just a single space.
     const space_tokens = try it.consumeWhitespaceUpTo(scratch, 1);
     if (whitespaceLen(space_tokens) < 1) {
-        return null;
+        const next_token = try it.peek(scratch) orelse return null;
+        if (next_token.token_type != .newline) {
+            return null;
+        }
     }
 
     const following_ws_checkpoint_index = it.checkpoint();
@@ -557,13 +598,24 @@ fn parseBulletListItemOpen(
         following_ws_tokens = &.{};
     }
 
+    var starts_with_blank_line = false;
+    const indent = blk: {
+        const next_token = try it.peek(scratch) orelse return null;
+        if (next_token.token_type == .newline) {
+            starts_with_blank_line = true;
+            break :blk whitespaceLen(leading_ws_tokens) + 2;
+        }
+
+        break :blk whitespaceLen(leading_ws_tokens) + 2 +
+            whitespaceLen(following_ws_tokens);
+    };
+
     did_parse = true;
-    const indent = whitespaceLen(leading_ws_tokens) + 2 +
-        whitespaceLen(following_ws_tokens);
     return .{
         .variant = .{
             .bullet_list_item = .{
                 .indent = indent,
+                .starts_with_blank_line = starts_with_blank_line,
             },
         },
     };
@@ -629,9 +681,15 @@ fn parseOrderedListItemOpen(
     // spaces, those should be consumed and counted toward the indent for this
     // list item. If we have more than 3, then the spaces should NOT be
     // consumed as they mark an indented code block.
+    //
+    // If the marker token is followed by a blank line, that's okay
+    // too. We treat it as if we had just a single space.
     const space_tokens = try it.consumeWhitespaceUpTo(scratch, 1);
     if (whitespaceLen(space_tokens) < 1) {
-        return null;
+        const next_token = try it.peek(scratch) orelse return null;
+        if (next_token.token_type != .newline) {
+            return null;
+        }
     }
 
     const following_ws_checkpoint_index = it.checkpoint();
@@ -643,15 +701,25 @@ fn parseOrderedListItemOpen(
 
     _ = parseOrderedListNumber(numeral_token.lexeme) catch return null;
 
-    did_parse = true;
-
+    var starts_with_blank_line = false;
     const numeral_len: u32 = @intCast(numeral_token.lexeme.len);
-    const indent = whitespaceLen(leading_ws_tokens) + numeral_len + 2 +
-        whitespaceLen(following_ws_tokens);
+    const indent = blk: {
+        const next_token = try it.peek(scratch) orelse return null;
+        if (next_token.token_type == .newline) {
+            starts_with_blank_line = true;
+            break :blk whitespaceLen(leading_ws_tokens) + numeral_len + 2;
+        }
+
+        break :blk whitespaceLen(leading_ws_tokens) + numeral_len + 2 +
+            whitespaceLen(following_ws_tokens);
+    };
+
+    did_parse = true;
     return .{
         .variant = .{
             .ordered_list_item = .{
                 .indent = indent,
+                .starts_with_blank_line = starts_with_blank_line,
             },
         },
     };

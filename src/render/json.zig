@@ -93,10 +93,7 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
             .list_item => |n| {
                 try stringify.objectField("spread");
                 try stringify.write(n.spread);
-
-                if (n.children.len > 0) {
-                    try renderChildren(stringify, n);
-                }
+                try renderChildren(stringify, n);
             },
             .myst_role => |n| {
                 try stringify.objectField("name");

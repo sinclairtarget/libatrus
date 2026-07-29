@@ -178,37 +178,41 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
             }
         },
         .list_item => |n| {
-            _ = try out.writeAll("<li>");
+            if (n.children.len > 0) {
+                _ = try out.writeAll("<li>");
 
-            // In the MyST 0.0.5 spec tests, "spread" is set inconsistently.
-            // We always render tight if spread is NOT set.
-            // If spread is set, then we usually render loose, except when the
-            // item has a single text node child.
-            const render_tight: bool = blk: {
-                if (!n.spread) {
-                    break :blk true;
-                }
+                // In the MyST 0.0.5 spec tests, "spread" is set
+                // inconsistently. We always render tight if spread is false.
+                // If spread is true, then we usually render loose, except when
+                // the item has a single text node child.
+                const render_tight: bool = blk: {
+                    if (!n.spread) {
+                        break :blk true;
+                    }
 
-                if (n.children.len == 1 and
-                    @as(ast.NodeType, n.children[0].*) == .text) {
-                    break :blk true;
-                }
+                    if (n.children.len == 1 and
+                        @as(ast.NodeType, n.children[0].*) == .text) {
+                        break :blk true;
+                    }
 
-                break :blk false;
-            };
+                    break :blk false;
+                };
 
-            if (render_tight) {
-                for (n.children) |child| {
-                    _ = try renderNode(child, out);
-                }
-            } else {
-                _ = try out.writeAll("\n");
-                for (n.children) |child| {
-                    _ = try renderNode(child, out);
+                if (render_tight) {
+                    for (n.children) |child| {
+                        _ = try renderNode(child, out);
+                    }
+                } else {
                     _ = try out.writeAll("\n");
+                    for (n.children) |child| {
+                        _ = try renderNode(child, out);
+                        _ = try out.writeAll("\n");
+                    }
                 }
+                _ = try out.writeAll("</li>");
+            } else {
+                _ = try out.writeAll("<li></li>");
             }
-            _ = try out.writeAll("</li>");
         },
         .myst_role => |n| {
             if (n.children.len == 0) {
