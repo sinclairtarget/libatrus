@@ -1218,6 +1218,7 @@ fn parseHTMLLiteralContent(
             },
             .newline => {
                 _ = try self.it.consume(scratch, &.{.newline});
+                // Only write newline if we haven't reached end of stream
                 _ = try content.writer.write("\n");
             },
             else => |t| {
@@ -1227,7 +1228,7 @@ fn parseHTMLLiteralContent(
         }
     }
 
-    // Handle content trailing comment block end
+    // Handle content trailing block end
     if (!saw_close_token) {
         while (try self.it.peek(scratch)) |token| {
             switch (token.token_type) {
@@ -1243,7 +1244,8 @@ fn parseHTMLLiteralContent(
         }
     }
 
-    const owned_value = try alloc.dupeZ(u8, content.written());
+    const trimmed = std.mem.trimRight(u8, content.written(), "\n");
+    const owned_value = try alloc.dupeZ(u8, trimmed);
     errdefer alloc.free(owned_value);
 
     const node = try alloc.create(ast.Node);
@@ -1839,10 +1841,8 @@ fn parseHTMLKnownTag(
                 if (try self.it.consume(scratch, &.{.newline})) |_| {
                     // end condition
                     break;
-                } else if (try self.it.peek(scratch)) |_| {
-                    // Only write newline if we haven't reached end of document
-                    _ = try content.writer.write("\n");
                 }
+                _ = try content.writer.write("\n");
             },
             else => |t| {
                 _ = try self.it.consume(scratch, &.{t});
@@ -1851,7 +1851,8 @@ fn parseHTMLKnownTag(
         }
     }
 
-    const owned_value = try alloc.dupeZ(u8, content.written());
+    const trimmed = std.mem.trimRight(u8, content.written(), "\n");
+    const owned_value = try alloc.dupeZ(u8, trimmed);
     errdefer alloc.free(owned_value);
 
     const node = try alloc.create(ast.Node);
@@ -1979,10 +1980,8 @@ fn parseHTMLUnknownTag(
                 if (try self.it.consume(scratch, &.{.newline})) |_| {
                     // end condition
                     break;
-                } else if (try self.it.peek(scratch)) |_| {
-                    // Only write newline if we haven't reached end of document
-                    _ = try content.writer.write("\n");
                 }
+                _ = try content.writer.write("\n");
             },
             else => |t| {
                 _ = try self.it.consume(scratch, &.{t});
@@ -1991,7 +1990,8 @@ fn parseHTMLUnknownTag(
         }
     }
 
-    const owned_value = try alloc.dupeZ(u8, content.written());
+    const trimmed = std.mem.trimRight(u8, content.written(), "\n");
+    const owned_value = try alloc.dupeZ(u8, trimmed);
     errdefer alloc.free(owned_value);
 
     const node = try alloc.create(ast.Node);
