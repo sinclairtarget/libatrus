@@ -423,6 +423,7 @@ fn parseIndentedCode(
     block_loop: for (0..util.safety.loop_bound) |line_num| {
         var line = Io.Writer.Allocating.init(scratch);
 
+        const loop_checkpoint_index = self.it.checkpoint();
         const indent_ws_tokens = try self.it.consumeWhitespaceUpTo(scratch, 4);
         const indent = whitespaceLen(indent_ws_tokens);
         if (indent >= 4) {
@@ -438,11 +439,10 @@ fn parseIndentedCode(
             _ = try self.it.consume(scratch, &.{.newline});
         } else if (line_num > 0 and indent > 0) {
             // Try to accept a blank line
-            const lookahead_checkpoint_index = self.it.checkpoint();
             _ = try self.it.consumeWhitespace(scratch);
             _ = try self.it.consume(scratch, &.{.newline}) orelse {
-                // Unindented, non-blank line does end block
-                self.it.backtrack(lookahead_checkpoint_index);
+                // Not sufficiently indented, non-blank line does end block
+                self.it.backtrack(loop_checkpoint_index);
                 break :block_loop;
             };
         } else if (line_num > 0) {
@@ -452,6 +452,7 @@ fn parseIndentedCode(
             };
         } else {
             // Invalid first line
+            self.it.backtrack(loop_checkpoint_index);
             return fail;
         }
 
