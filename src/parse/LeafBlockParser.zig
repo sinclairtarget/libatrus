@@ -1892,16 +1892,53 @@ fn parseHTMLUnknownTag(
     // start condition
     _ = try self.it.consume(scratch, &.{.l_angle_bracket}) orelse return fail;
     _ = try content.writer.write("<");
-    if (try self.it.consume(scratch, &.{.slash})) |_| {
-        _ = try content.writer.write("/");
-    }
 
-    const open_tag_token = try self.it.consume(scratch, &.{.text}) orelse
+    const is_opening_tag = blk: {
+        if (try self.it.consume(scratch, &.{.slash})) |_| {
+            _ = try content.writer.write("/");
+            break :blk false;
+        }
+
+        break :blk true;
+    };
+
+    const tag_token = try self.it.consume(scratch, &.{.text}) orelse
         return fail;
-    if (isLiteralContentHTMLTagName(open_tag_token.lexeme)) {
+    if (isLiteralContentHTMLTagName(tag_token.lexeme)) {
         return fail; // Can't be any of these tags
     }
-    _ = try content.writer.write(open_tag_token.lexeme);
+    _ = try content.writer.write(tag_token.lexeme);
+
+    // Handle attributes (only allowed for open tags)
+    var newline_count: u8 = 0;
+    if (is_opening_tag) {
+        for (0..util.safety.loop_bound) |_| {
+            ws_tokens = try self.it.consumeWhitespace(scratch);
+            if (whitespaceLen(ws_tokens) > 0) {
+                for (ws_tokens) |t| {
+                    _ = try content.writer.write(t.lexeme);
+                }
+            } else if (try self.it.consume(scratch, &.{.newline})) |_| {
+                _ = try content.writer.write("\n");
+                newline_count += 1;
+            } else {
+                // whitespace required before attributes
+                break;
+            }
+
+            if (try self.scanHTMLAttribute(scratch)) |attr| {
+                _ = try content.writer.write(attr);
+            } else {
+                // no more attributes, we are done
+                break;
+            }
+        } else @panic(util.safety.loop_bound_panic_msg);
+    }
+
+    if (newline_count > 1) {
+        // At most one line ending allowed
+        return fail;
+    }
 
     if (try self.it.consume(scratch, &.{.slash})) |_| {
         _ = try content.writer.write("/");
@@ -1965,6 +2002,199 @@ fn parseHTMLUnknownTag(
         .maybe_node = node,
         .should_end = saw_close_token,
     };
+}
+
+fn scanHTMLAttribute(self: *Self, scratch: Allocator) !?[]const u8 {
+    var did_parse = false;
+    const checkpoint_index = self.it.checkpoint();
+    defer if (!did_parse) {
+        self.it.backtrack(checkpoint_index);
+    };
+
+    var running_text = Io.Writer.Allocating.init(scratch);
+    var newline_count: u8 = 0;
+
+    const attr_name = try self.scanHTMLAttrName(scratch) orelse return null;
+    _ = try running_text.writer.write(attr_name);
+
+    const equals = blk: {
+        // We want to allow whitespace and a newline before the "=", but don't
+        // want to consume it unless it is indeed followed by a "=".
+        const lookahead_checkpoint = self.it.checkpoint();
+
+        for (try self.it.consumeWhitespace(scratch)) |ws| {
+            _ = try running_text.writer.write(ws.lexeme);
+        }
+        if (try self.it.consume(scratch, &.{.newline})) |_| {
+            _ = try running_text.writer.write("\n");
+            newline_count += 1;
+        }
+
+        if (try self.it.consume(scratch, &.{.equals})) |token| {
+            break :blk token;
+        } else {
+            self.it.backtrack(lookahead_checkpoint);
+            break :blk null;
+        }
+    };
+
+    if (equals == null) {
+        // attribute without value
+        did_parse = true;
+        return attr_name; // TODO: Slice into mem owned by this func?
+    }
+
+    _ = try running_text.writer.write("=");
+
+    for (try self.it.consumeWhitespace(scratch)) |ws| {
+        _ = try running_text.writer.write(ws.lexeme);
+    }
+    if (try self.it.consume(scratch, &.{.newline})) |_| {
+        _ = try running_text.writer.write("\n");
+        newline_count += 1;
+    }
+
+    const attr_val = blk: {
+        if (try self.scanHTMLAttrValQuoted(scratch)) |val| {
+            break :blk val;
+        }
+
+        if (try self.scanHTMLAttrValUnquoted(scratch)) |val| {
+            break :blk val;
+        }
+
+        break :blk null;
+    } orelse return null;
+
+    _ = try running_text.writer.write(attr_val);
+
+    if (newline_count > 1) {
+        // At most one newline
+        return null;
+    }
+
+    did_parse = true;
+    return try running_text.toOwnedSlice();
+}
+
+/// Parse HTML attribute name.
+///
+/// ASCII letter, _, or :, followed by zero or more ASCII letters, digits,
+/// _, ., :, or -.
+fn scanHTMLAttrName(self: *Self, scratch: Allocator) !?[]const u8 {
+    var did_parse = false;
+    const checkpoint_index = self.it.checkpoint();
+    defer if (!did_parse) {
+        self.it.backtrack(checkpoint_index);
+    };
+
+    var running_text = Io.Writer.Allocating.init(scratch);
+
+    while (try self.it.consume(scratch, &.{ .text, .hyphen, .period })) |token| {
+        const value = try resolveText(scratch, token);
+        _ = try running_text.writer.write(value);
+    }
+
+    const attr_name = try running_text.toOwnedSlice();
+    if (!cmark.html.isValidAttributeName(attr_name)) {
+        return null;
+    }
+
+    did_parse = true;
+    return attr_name;
+}
+
+fn scanHTMLAttrValQuoted(self: *Self, scratch: Allocator) !?[]const u8 {
+    var did_parse = false;
+    const checkpoint_index = self.it.checkpoint();
+    defer if (!did_parse) {
+        self.it.backtrack(checkpoint_index);
+    };
+
+    var running_text = Io.Writer.Allocating.init(scratch);
+
+    const open_quote = try self.it.consume(
+        scratch,
+        &.{ .single_quote, .double_quote },
+    ) orelse return null;
+    _ = try running_text.writer.write(try resolveText(scratch, open_quote));
+
+    while (try self.it.peek(scratch)) |token| {
+        switch (token.token_type) {
+            .newline => break,
+            .single_quote, .double_quote => |token_type| {
+                _ = try self.it.consume(scratch, &.{token_type});
+
+                const value = try resolveText(scratch, token);
+                _ = try running_text.writer.write(value);
+
+                if (token.token_type == open_quote.token_type) {
+                    break;
+                }
+            },
+            // TODO: Handle escaped quotes!
+            //.escaped_single_quote => {
+            //    _ = try self.it.consume(scratch, &.{.escaped_single_quote});
+
+            //    const value = try resolveText(scratch, token);
+            //    _ = try running_text.writer.write(value);
+
+            //    if (open_quote.token_type == .single_quote) {
+            //        break;
+            //    }
+            //},
+            //.escaped_double_quote => {
+            //    _ = try self.it.consume(scratch, &.{.escaped_double_quote});
+
+            //    const value = try resolveText(scratch, token);
+            //    _ = try running_text.writer.write(value);
+
+            //    if (open_quote.token_type == .double_quote) {
+            //        break;
+            //    }
+            //},
+            else => |token_type| {
+                _ = try self.it.consume(scratch, &.{token_type});
+                const value = try resolveText(scratch, token);
+                _ = try running_text.writer.write(value);
+            },
+        }
+    }
+
+    did_parse = true;
+    return try running_text.toOwnedSlice();
+}
+
+fn scanHTMLAttrValUnquoted(self: *Self, scratch: Allocator) !?[]const u8 {
+    var did_parse = false;
+    const checkpoint_index = self.it.checkpoint();
+    defer if (!did_parse) {
+        self.it.backtrack(checkpoint_index);
+    };
+
+    var running_text = Io.Writer.Allocating.init(scratch);
+
+    while (try self.it.consume(scratch, &.{
+        .text,
+        .hyphen,
+        .period,
+        .question_mark,
+        .l_square_bracket,
+        .r_square_bracket,
+        .l_paren,
+        .r_paren,
+        .exclamation_mark,
+    })) |token| {
+        const value = try resolveText(scratch, token);
+        _ = try running_text.writer.write(value);
+    }
+
+    if (running_text.written().len == 0) {
+        return null; // val cannot be empty
+    }
+
+    did_parse = true;
+    return try running_text.toOwnedSlice();
 }
 
 /// Parses a MyST directive.
@@ -4152,6 +4382,40 @@ test "HTML unknown tag" {
     try testing.expectEqual(.html, @as(ast.NodeType, html_node.*));
     try testing.expectEqualStrings(
         "<foobar>\n<p>Hello</p>\n</foobar>",
+        html_node.html.value,
+    );
+
+    const p_node = nodes[1];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node.*));
+}
+
+test "HTML unknown tag with attribute" {
+    const md =
+        \\<foobar bim="bam">
+        \\<p>Hello</p>
+        \\</foobar>
+        \\
+        \\Bim bam.
+        \\
+    ;
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksMd(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(2, nodes.len);
+
+    const html_node = nodes[0];
+    try testing.expectEqual(.html, @as(ast.NodeType, html_node.*));
+    try testing.expectEqualStrings(
+        "<foobar bim=\"bam\">\n<p>Hello</p>\n</foobar>",
         html_node.html.value,
     );
 
