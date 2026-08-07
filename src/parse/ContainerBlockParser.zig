@@ -779,13 +779,23 @@ fn tightenListChildren(alloc: Allocator, list_items: []*ast.Node) bool {
         }
     }
 
-    // If we have a loose list, or a tight list with just one list item, we
-    // need to mark all list items as "spread" according to the MyST 0.0.5
-    // tests.
+    // If we have a loose list, we need to mark all the list items as "spread."
     //
-    // This is quite confusing! Unclear why the list item should be marked
-    // "spread" in the single-list-item case.
-    if (!is_tight_list or list_items.len == 1) {
+    // According to the MyST 0.0.5 test cases, we also need to mark all the
+    // list items as "spread" in the following cases, even though it doesn't
+    // make much sense (at least to me) to do so:
+    //
+    // - When there is just a single list item
+    // - When any of the list items has an html block as a child
+    const has_any_html_nodes = outer: for (list_items) |item| {
+        for (item.list_item.children) |item_child| {
+            if (@as(ast.NodeType, item_child.*) == .html) {
+                break :outer true;
+            }
+        }
+    } else false;
+
+    if (!is_tight_list or list_items.len == 1 or has_any_html_nodes) {
         // Make sure all list items are marked spread
         for (list_items) |child| {
             child.list_item.spread = true;
