@@ -132,6 +132,7 @@ fn matchSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
         '?' => .question_mark,
         '/' => .slash,
         '.' => .period,
+        '=' => .equals,
         ' ' => .space,
         '\t' => .tab,
         else => return null,
@@ -439,6 +440,7 @@ fn matchText(self: Self, scratch: Allocator) !TokenizeResult {
                 ' ',
                 '\t',
                 '.',
+                '=',
                 => break :fsm,
                 '\\' => {
                     lookahead_i += 1;
@@ -768,4 +770,20 @@ test "token column" {
     try testing.expectEqual(14, token.?.col);
 
     try testing.expect(try tokenizer.next(scratch) == null);
+}
+
+test "HTML" {
+    const md = "<foo bar=\"bim\">\n";
+    try expectEqualTokens(&.{
+        .l_angle_bracket,
+        .text,
+        .space,
+        .text,
+        .equals,
+        .double_quote,
+        .text,
+        .double_quote,
+        .r_angle_bracket,
+        .newline,
+    }, md);
 }
