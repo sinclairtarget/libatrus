@@ -899,7 +899,9 @@ fn scanLinkDefDestination(self: *Self, scratch: Allocator) !?[]const u8 {
                 .l_brace,
                 .r_brace,
                 .double_quote,
+                .escaped_double_quote,
                 .single_quote,
+                .escaped_single_quote,
                 .hyphen,
                 .star,
                 .plus,
@@ -960,7 +962,9 @@ fn scanLinkDefDestination(self: *Self, scratch: Allocator) !?[]const u8 {
                 .l_brace,
                 .r_brace,
                 .double_quote,
+                .escaped_double_quote,
                 .single_quote,
+                .escaped_single_quote,
                 .hyphen,
                 .star,
                 .plus,
@@ -2132,27 +2136,22 @@ fn scanHTMLAttrValQuoted(self: *Self, scratch: Allocator) !?[]const u8 {
                     break;
                 }
             },
-            // TODO: Handle escaped quotes!
-            //.escaped_single_quote => {
-            //    _ = try self.it.consume(scratch, &.{.escaped_single_quote});
+            .escaped_single_quote => {
+                _ = try self.it.consume(scratch, &.{.escaped_single_quote});
+                _ = try running_text.writer.write("'");
 
-            //    const value = try resolveText(scratch, token);
-            //    _ = try running_text.writer.write(value);
+                if (open_quote.token_type == .single_quote) {
+                    break;
+                }
+            },
+            .escaped_double_quote => {
+                _ = try self.it.consume(scratch, &.{.escaped_double_quote});
+                _ = try running_text.writer.write("\"");
 
-            //    if (open_quote.token_type == .single_quote) {
-            //        break;
-            //    }
-            //},
-            //.escaped_double_quote => {
-            //    _ = try self.it.consume(scratch, &.{.escaped_double_quote});
-
-            //    const value = try resolveText(scratch, token);
-            //    _ = try running_text.writer.write(value);
-
-            //    if (open_quote.token_type == .double_quote) {
-            //        break;
-            //    }
-            //},
+                if (open_quote.token_type == .double_quote) {
+                    break;
+                }
+            },
             else => |token_type| {
                 _ = try self.it.consume(scratch, &.{token_type});
                 const value = try resolveText(scratch, token);
@@ -2597,6 +2596,8 @@ fn createParagraphNode(alloc: Allocator, text_content: []const u8) !*ast.Node {
 fn resolveText(scratch: Allocator, token: BlockToken) ![]const u8 {
     const value = switch (token.token_type) {
         .text => try escape.strip(scratch, token.lexeme),
+        .escaped_single_quote => "'",
+        .escaped_double_quote => "\"",
         else => token.lexeme,
     };
     return value;

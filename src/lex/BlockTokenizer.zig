@@ -96,6 +96,10 @@ fn tokenize(self: *Self, scratch: Allocator) !BlockToken {
             break :blk result;
         }
 
+        if (try self.matchEscapedTokens(scratch)) |result| {
+            break :blk result;
+        }
+
         if (try self.matchPound(scratch)) |result| {
             break :blk result;
         }
@@ -153,6 +157,38 @@ fn matchSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
         .token = token,
         .next_i = self.i + 1,
         .next_col = next_col,
+    };
+}
+
+fn matchEscapedTokens(self: Self, scratch: Allocator) !?TokenizeResult {
+    var lookahead_i = self.i;
+
+    if (self.line[lookahead_i] != '\\') {
+        return null;
+    }
+
+    lookahead_i += 1;
+    if (lookahead_i >= self.line.len) {
+        return null;
+    }
+
+    const token_type: BlockTokenType = switch (self.line[lookahead_i]) {
+        '\'' => .escaped_single_quote,
+        '"' => .escaped_double_quote,
+        else => return null,
+    };
+    lookahead_i += 1;
+
+    const lexeme = try evaluateLexeme(self, scratch, token_type, lookahead_i);
+    const token = BlockToken{
+        .token_type = token_type,
+        .lexeme = lexeme,
+        .col = self.col,
+    };
+    return .{
+        .token = token,
+        .next_i = lookahead_i,
+        .next_col = self.col + @as(u32, @intCast(lookahead_i - self.i)),
     };
 }
 
@@ -784,6 +820,20 @@ test "HTML" {
         .text,
         .double_quote,
         .r_angle_bracket,
+        .newline,
+    }, md);
+}
+
+test "escaped quote tokens" {
+    const md = "\\\"foo\" \\\'bar\'\n";
+    try expectEqualTokens(&.{
+        .escaped_double_quote,
+        .text,
+        .double_quote,
+        .space,
+        .escaped_single_quote,
+        .text,
+        .single_quote,
         .newline,
     }, md);
 }

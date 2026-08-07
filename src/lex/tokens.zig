@@ -40,6 +40,10 @@ pub const BlockTokenType = enum {
     rule_dash_with_whitespace,
     rule_dash,
     rule_equals,
+    // --- escaped tokens ---
+    // See comment below for inline escaped tokens.
+    escaped_single_quote,
+    escaped_double_quote,
 };
 
 /// Tokens recognized by the inline parser.
