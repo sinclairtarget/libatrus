@@ -134,17 +134,24 @@ pub fn TokenIterator(comptime TokenType: type) type {
                             try ws_tokens.append(scratch, token);
                         } else {
                             // split tab into spaces
-                            for (0..tab_len_consumed) |_| {
+                            for (0..tab_len_consumed) |i| {
                                 try ws_tokens.append(scratch, .{
                                     .token_type = .space,
                                     .lexeme = " ",
+                                    .col = token.col + @as(u32, @truncate(i)),
                                 });
                             }
-                            for (0..(tab_len - tab_len_consumed)) |_| {
-                                try self.tokens.append(scratch, .{
-                                    .token_type = .space,
-                                    .lexeme = " ",
-                                });
+                            for (0..(tab_len - tab_len_consumed)) |i| {
+                                // O(n)!
+                                try self.tokens.insert(
+                                    scratch,
+                                    self.token_index + i,
+                                    .{
+                                        .token_type = .space,
+                                        .lexeme = " ",
+                                        .col = 0, // These are "fake" tokens
+                                    },
+                                );
                             }
                         }
 
@@ -184,15 +191,18 @@ pub fn TokenIterator(comptime TokenType: type) type {
 
                 const token = self.tokens.items[self.token_index];
                 if (token.token_type == .tab) {
-                    // Remove all spaces after tab
+                    // Remove any added spaces after tab
                     var sorted_indexes: [4]usize = undefined;
                     var sorted_indexes_i: usize = 0;
                     const end = @min(
-                        self.token_index + 5,
+                        self.token_index + whitespaceLen(&.{token}),
                         self.tokens.items.len,
                     );
                     for (self.token_index + 1..end) |i| {
-                        if (self.tokens.items[i].token_type != .space) {
+                        // stop if we hit a token that isn't a "fake" space
+                        if (self.tokens.items[i].token_type != .space or
+                            self.tokens.items[i].col > 0)
+                        {
                             break;
                         }
 
@@ -266,6 +276,7 @@ test "consume tab" {
         .{
             .token_type = .tab,
             .lexeme = "\t",
+            .col = 0,
         },
     });
     var it = stream.iterator();
@@ -283,14 +294,17 @@ test "consume spaces and split tab" {
         .{
             .token_type = .space,
             .lexeme = " ",
+            .col = 0,
         },
         .{
             .token_type = .space,
             .lexeme = " ",
+            .col = 1,
         },
         .{
             .token_type = .tab,
             .lexeme = "\t",
+            .col = 2,
         },
     });
     var it = stream.iterator();
@@ -298,8 +312,9 @@ test "consume spaces and split tab" {
     const tokens = try it.consumeWhitespaceUpTo(scratch, 4);
     try expectEqualTokens(&.{ .space, .space, .space, .space }, tokens);
 
+    // Should be no more tokens; tab only had a len of 2
     const trailing_tokens = try it.consumeWhitespaceUpTo(scratch, 2);
-    try expectEqualTokens(&.{ .space, .space }, trailing_tokens);
+    try testing.expectEqual(0, trailing_tokens.len);
 }
 
 test "backtrack over split tab" {
@@ -311,36 +326,76 @@ test "backtrack over split tab" {
         .{
             .token_type = .space,
             .lexeme = " ",
+            .col = 0,
         },
         .{
             .token_type = .tab,
             .lexeme = "\t",
+            .col = 1,
         },
     });
     var it = stream.iterator();
 
-    // consumes space and one "space" from the tab
+    // consumes space and one "space" from the tab, which has len 3
     const tokens = try it.consumeWhitespaceUpTo(scratch, 2);
     try expectEqualTokens(&.{ .space, .space }, tokens);
 
     const checkpoint_index = it.checkpoint();
 
     // consumes the remaining "spaces" from the tab
-    var trailing_tokens = try it.consumeWhitespaceUpTo(scratch, 3);
-    try expectEqualTokens(&.{ .space, .space, .space }, trailing_tokens);
+    var trailing_tokens = try it.consumeWhitespaceUpTo(scratch, 2);
+    try expectEqualTokens(&.{ .space, .space }, trailing_tokens);
 
     // now the stream should be empty
     trailing_tokens = try it.consumeWhitespaceUpTo(scratch, 1);
     try testing.expectEqual(0, trailing_tokens.len);
 
-    // backtrack to the checkpoint, we should still have the last three spaces
+    // backtrack to the checkpoint, we should still have the last two spaces
     // of the split tab in the stream
     it.backtrack(checkpoint_index);
-    trailing_tokens = try it.consumeWhitespaceUpTo(scratch, 3);
-    try expectEqualTokens(&.{ .space, .space, .space }, trailing_tokens);
+    trailing_tokens = try it.consumeWhitespaceUpTo(scratch, 2);
+    try expectEqualTokens(&.{ .space, .space }, trailing_tokens);
 
     // backtrack to beginning, original tab is no longer split
     it.backtrack(0);
     trailing_tokens = try it.consumeWhitespaceUpTo(scratch, 6);
-    try expectEqualTokens(&.{ .space, .tab }, trailing_tokens);
+    try expectEqualTokens(&.{
+        .space,
+        .space,
+        .space,
+        .space,
+    }, trailing_tokens);
+}
+
+test "multiple tabs" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const scratch = arena.allocator();
+
+    var stream = TokenSliceStream(BlockTokenType).init(&.{
+        .{
+            .token_type = .hyphen,
+            .lexeme = "-",
+            .col = 0,
+        },
+        .{
+            .token_type = .tab,
+            .lexeme = "\t",
+            .col = 1,
+        },
+        .{
+            .token_type = .tab,
+            .lexeme = "\t",
+            .col = 4,
+        },
+    });
+    var it = stream.iterator();
+
+    _ = try it.consume(scratch, &.{.hyphen});
+
+    var tokens = try it.consumeWhitespaceUpTo(scratch, 3);
+    try expectEqualTokens(&.{ .space, .space, .space }, tokens);
+
+    tokens = try it.consumeWhitespaceUpTo(scratch, 4);
+    try expectEqualTokens(&.{.tab}, tokens);
 }
