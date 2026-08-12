@@ -25,6 +25,7 @@ pub const std_options: std.Options = .{
         .{ .scope = .link_defs, .level = .warn },
         .{ .scope = .directives, .level = .warn },
         .{ .scope = .container, .level = .warn },
+        .{ .scope = .character_refs, .level = .warn },
     },
 };
 

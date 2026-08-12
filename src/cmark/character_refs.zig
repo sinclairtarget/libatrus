@@ -6,10 +6,16 @@ const fmt = std.fmt;
 const mem = std.mem;
 const unicode = std.unicode;
 
+const logger = @import("../logging.zig").logger(.character_refs);
+
+const named_entities = @import("data").named_entities;
+
 pub const CharacterReferenceError = error{
     UnicodeError,
 } || Allocator.Error;
 
+/// Handles numeric character references like `&#42;` (decimal) or `&xaf;`
+/// (hexadecimal).
 pub fn resolveNumericCharacter(
     alloc: Allocator,
     digits: []const u8,
@@ -27,33 +33,14 @@ pub fn resolveNumericCharacter(
     }
 }
 
+/// Handles named entity references like `&amp;` and `&quot;`.
 pub fn resolveCharacterEntity(name: []const u8) ?[]const u8 {
-    // TODO: Support all named entities
-    if (mem.eql(u8, name, "amp")) {
-        return "&";
-    } else if (mem.eql(u8, name, "quot")) {
-        return "\"";
-    } else if (mem.eql(u8, name, "nbsp")) {
-        return " ";
-    } else if (mem.eql(u8, name, "copy")) {
-        return "©";
-    } else if (mem.eql(u8, name, "AElig")) {
-        return "Æ";
-    } else if (mem.eql(u8, name, "Dcaron")) {
-        return "Ď";
-    } else if (mem.eql(u8, name, "frac34")) {
-        return "¾";
-    } else if (mem.eql(u8, name, "HilbertSpace")) {
-        return "ℋ";
-    } else if (mem.eql(u8, name, "DifferentialD")) {
-        return "ⅆ";
-    } else if (mem.eql(u8, name, "ClockwiseContourIntegral")) {
-        return "∲";
-    } else if (mem.eql(u8, name, "ngE")) {
-        return "≧̸";
-    } else if (mem.eql(u8, name, "auml")) {
-        return "ä";
-    } else {
-        return null;
+    for (named_entities) |entry| {
+        if (mem.eql(u8, name, entry.name)) {
+            return entry.characters;
+        }
     }
+
+    logger.warn("No named entity found for name \"{s}\".", .{ name });
+    return null;
 }

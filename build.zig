@@ -3,6 +3,7 @@ const pkg_zon = @import("build.zig.zon");
 
 const Step = std.Build.Step;
 
+/// What we can install when building as a library.
 const LibraryArtifacts = struct {
     static_lib: *Step.InstallArtifact,
     shared_lib: *Step.InstallArtifact,
@@ -46,12 +47,21 @@ pub fn build(b: *std.Build) void {
         "Filter for test cases",
     );
 
+    // data module
+    const data_module = b.createModule(.{
+        .root_source_file = b.path("data/root.zig"),
+        .target = target,
+    });
+
     // atrus module
     // Using "addModule()" here adds the package to the package module set,
     // making it available to anyone consuming libatrus as a Zig package.
     const atrus_module = b.addModule("atrus", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
+        .imports = &.{
+            .{ .name = "data", .module = data_module },
+        },
     });
     const options = b.addOptions();
     options.addOption([]const u8, "version", pkg_zon.version);

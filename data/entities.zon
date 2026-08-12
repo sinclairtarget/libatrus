@@ -1,0 +1,50 @@
+.{
+    .{
+        .name = "amp",
+        .characters = "&",
+    },
+    .{
+        .name = "quot",
+        .characters = "\"",
+    },
+    .{
+        .name = "nbsp",
+        .characters = " ",
+    },
+    .{
+        .name = "copy",
+        .characters = "©",
+    },
+    .{
+        .name = "AElig",
+        .characters = "Æ",
+    },
+    .{
+        .name = "Dcaron",
+        .characters = "Ď",
+    },
+    .{
+        .name = "frac34",
+        .characters = "¾",
+    },
+    .{
+        .name = "HilbertSpace",
+        .characters = "ℋ",
+    },
+    .{
+        .name = "DifferentialD",
+        .characters = "ⅆ",
+    },
+    .{
+        .name = "ClockwiseContourIntegral",
+        .characters = "∲",
+    },
+    .{
+        .name = "ngE",
+        .characters = "≧̸",
+    },
+    .{
+        .name = "auml",
+        .characters = "ä",
+    },
+}
