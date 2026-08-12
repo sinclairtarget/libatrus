@@ -46,7 +46,8 @@ pub fn transform(
             if (new_children.ptr == n.children.ptr) {
                 return original_node; // nothing was changed
             }
-            defer original_node.deinit(alloc);
+            defer alloc.free(n.children);
+            defer alloc.destroy(original_node);
 
             const node = try alloc.create(ast.Node);
             node.* = .{
@@ -76,7 +77,8 @@ pub fn transform(
             if (new_children.ptr == n.children.ptr) {
                 return original_node; // nothing was changed
             }
-            defer original_node.deinit(alloc);
+            defer alloc.free(n.children);
+            defer alloc.destroy(original_node);
 
             const node = try alloc.create(ast.Node);
             node.* = .{
@@ -105,7 +107,8 @@ pub fn transform(
             if (new_children.ptr == n.children.ptr) {
                 return original_node; // nothing was changed
             }
-            defer original_node.deinit(alloc);
+            defer alloc.free(n.children);
+            defer alloc.destroy(original_node);
 
             const node = try alloc.create(ast.Node);
             node.* = .{
@@ -149,6 +152,7 @@ fn parseInline(
                     alloc,
                     scratch_arena.allocator(),
                 );
+                defer node.deinit(alloc);
                 errdefer alloc.free(replacement_nodes);
 
                 for (replacement_nodes) |replacement| {

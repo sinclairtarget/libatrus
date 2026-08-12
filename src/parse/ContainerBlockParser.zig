@@ -214,7 +214,7 @@ const ContainerBlock = struct {
                 };
             },
             .bullet_list => {
-                _ = tightenListChildren(alloc, owned_children);
+                _ = try tightenListChildren(alloc, owned_children);
                 node.* = .{
                     .list = .{
                         .children = owned_children,
@@ -224,7 +224,7 @@ const ContainerBlock = struct {
                 };
             },
             .ordered_list => |payload| {
-                _ = tightenListChildren(alloc, owned_children);
+                _ = try tightenListChildren(alloc, owned_children);
                 node.* = .{
                     .list = .{
                         .children = owned_children,
@@ -744,7 +744,7 @@ fn parseAnyContainerOpen(
 /// Marks list children sparse or not based on the tightness of the overall
 /// list. Also handles removing redundant paragraph descendants for tight
 /// lists.
-fn tightenListChildren(alloc: Allocator, list_items: []*ast.Node) bool {
+fn tightenListChildren(alloc: Allocator, list_items: []*ast.Node) !bool {
     // find index of last spread child
     var maybe_last_spread_i: ?usize = null;
     for (list_items, 0..) |child, i| {
@@ -775,7 +775,7 @@ fn tightenListChildren(alloc: Allocator, list_items: []*ast.Node) bool {
     if (is_tight_list) {
         // Eliminate redundant paragraph nodes in tight list
         for (list_items) |child| {
-            unwrapTightListItem(alloc, child);
+            try unwrapParagraphs(alloc, child);
         }
     }
 
@@ -805,16 +805,37 @@ fn tightenListChildren(alloc: Allocator, list_items: []*ast.Node) bool {
     return is_tight_list;
 }
 
-/// For tight lists, we want list items to have a single text node child rather
-/// than a single paragraph node child containing a text node.
-fn unwrapTightListItem(alloc: Allocator, item: *ast.Node) void {
-    const children = item.list_item.children;
-    if (children.len == 1 and @as(ast.NodeType, children[0].*) == .paragraph) {
-        const p_node = children[0];
-        defer alloc.destroy(p_node);
-        defer alloc.free(children);
+/// For tight lists, we want to make sure paragraphs are unwrapped.
+fn unwrapParagraphs(alloc: Allocator, item: *ast.Node) !void {
+    var i = item.list_item.children.len;
+    while (i > 0) {
+        i -= 1;
 
-        item.list_item.children = p_node.paragraph.children;
+        const child = item.list_item.children[i];
+        if (@as(ast.NodeType, child.*) == .paragraph) {
+            // Here we replace the existing list item's children with a new
+            // slice made up of the item's other children and the paragraph's
+            // children.
+            defer alloc.destroy(child);
+            defer alloc.free(child.paragraph.children);
+
+            var new_children = try alloc.alloc(
+                *ast.Node,
+                item.list_item.children.len - 1 + child.paragraph.children.len,
+            );
+            @memcpy(new_children[0..i], item.list_item.children[0..i]);
+            @memcpy(
+                new_children[i .. i + child.paragraph.children.len],
+                child.paragraph.children,
+            );
+            @memcpy(
+                new_children[i + child.paragraph.children.len ..],
+                item.list_item.children[i + 1 ..],
+            );
+
+            alloc.free(item.list_item.children);
+            item.list_item.children = new_children;
+        }
     }
 }
 
