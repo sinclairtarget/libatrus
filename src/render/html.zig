@@ -203,7 +203,12 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
                         _ = try renderNode(child, out);
                     }
                 } else {
-                    _ = try out.writeAll("\n");
+                    if (@as(ast.NodeType, n.children[0].*) != .text) {
+                        // If the first child involves an opening tag, put it
+                        // on the next line.
+                        _ = try out.writeAll("\n");
+                    }
+
                     for (n.children) |child| {
                         _ = try renderNode(child, out);
                         _ = try out.writeAll("\n");
