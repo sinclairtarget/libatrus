@@ -1,4 +1,5 @@
-//! Handle character entity and numeric character references.
+//! Handle named character references (AKA HTML entities) and numeric character
+//! references.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -41,6 +42,9 @@ pub fn resolveCharacterEntity(name: []const u8) ?[]const u8 {
         }
     }
 
-    logger.warn("No named entity found for name \"{s}\".", .{ name });
+    logger.warn(
+        "No named character reference found for name \"{s}\" (\"&{s};\").",
+        .{ name, name },
+    );
     return null;
 }

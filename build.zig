@@ -3,48 +3,27 @@ const pkg_zon = @import("build.zig.zon");
 
 const Step = std.Build.Step;
 
-/// What we can install when building as a library.
-const LibraryArtifacts = struct {
-    static_lib: *Step.InstallArtifact,
-    shared_lib: *Step.InstallArtifact,
-    header: *Step.InstallFile,
-    pkgconfig: *Step.InstallFile,
-};
-
-/// We have multiple groups of tests:
-/// * Unit tests (defined alongside the source code for the library)
-/// * Spec tests (test conformance with the MyST spec)
-/// * CLI tests (runs atrus as a subprocess, functional tests)
-/// * C API tests (makes sure the C API links and works)
-const TestCmds = struct {
-    unit: *Step.Run,
-    spec: *Step.Run,
-    cli: *Step.Run,
-    c_api: *Step.Run,
-};
-
-/// We have two benchmark executables, one that benchmarks peak memory usage
-/// and another that benchmarks (wall clock) performance.
-const BenchmarkCmds = struct {
-    memory: *Step.Run,
-    speed: *Step.Run,
-};
-
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{
         .preferred_optimize_mode = .ReleaseSafe,
     });
 
+    // Project-specific options
     const allow_log_scopes = b.option(
         bool,
-        "log-scopes",
+        "allow-log-scopes",
         "Enables fine-grained log scopes",
     );
     const test_case_filter = b.option(
         []const u8,
         "test-filter",
         "Filter for test cases",
+    );
+    const entities_json_path = b.option(
+        []const u8,
+        "entities-json-path",
+        "Path to JSON file with named character entities table",
     );
 
     // data module
@@ -87,6 +66,9 @@ pub fn build(b: *std.Build) void {
         test_case_filter,
     );
     const benchmark_cmds = addBenchmarks(b, exe_artifact.artifact, optimize);
+
+    // tools
+    const entities_tool = addUpdateEntitiesTool(b, entities_json_path);
 
     // docs
     const docs = installDocs(b, exe_artifact.artifact);
@@ -149,6 +131,14 @@ pub fn build(b: *std.Build) void {
     benchmark_step.dependOn(&benchmark_cmds.memory.step);
     benchmark_step.dependOn(&benchmark_cmds.speed.step);
 
+    // tools
+    const generate_entities_step = b.step(
+        "update-entities",
+        "Update named character entities table",
+    );
+    generate_entities_step.dependOn(&entities_tool.cmd.step);
+    generate_entities_step.dependOn(&entities_tool.update.step);
+
     // docs
     const docs_step = b.step("docs", "Install documentation");
     docs_step.dependOn(&docs.step);
@@ -173,6 +163,14 @@ fn installExecutable(
     });
     return b.addInstallArtifact(exe, .{});
 }
+
+/// What we can install when building as a library.
+const LibraryArtifacts = struct {
+    static_lib: *Step.InstallArtifact,
+    shared_lib: *Step.InstallArtifact,
+    header: *Step.InstallFile,
+    pkgconfig: *Step.InstallFile,
+};
 
 fn installLibrary(
     b: *std.Build,
@@ -239,6 +237,18 @@ fn installLibrary(
         .pkgconfig = pc,
     };
 }
+
+/// We have multiple groups of tests:
+/// * Unit tests (defined alongside the source code for the library)
+/// * Spec tests (test conformance with the MyST spec)
+/// * CLI tests (runs atrus as a subprocess, functional tests)
+/// * C API tests (makes sure the C API links and works)
+const TestCmds = struct {
+    unit: *Step.Run,
+    spec: *Step.Run,
+    cli: *Step.Run,
+    c_api: *Step.Run,
+};
 
 fn addTests(
     b: *std.Build,
@@ -316,6 +326,13 @@ fn addTests(
     };
 }
 
+/// We have two benchmark executables, one that benchmarks peak memory usage
+/// and another that benchmarks (wall clock) performance.
+const BenchmarkCmds = struct {
+    memory: *Step.Run,
+    speed: *Step.Run,
+};
+
 fn addBenchmarks(
     b: *std.Build,
     atrus_exe: *Step.Compile,
@@ -348,6 +365,41 @@ fn addBenchmarks(
     return .{
         .memory = memory_cmd,
         .speed = speed_cmd,
+    };
+}
+
+const EntitiesTool = struct {
+    cmd: *Step.Run,
+    update: *Step.UpdateSourceFiles,
+};
+
+fn addUpdateEntitiesTool(
+    b: *std.Build,
+    maybe_json_path: ?[]const u8,
+) EntitiesTool {
+    const exe = b.addExecutable(.{
+        .name = "generate-entities",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/generate_entities.zig"),
+            .target = b.graph.host,
+        }),
+    });
+    const cmd = b.addRunArtifact(exe);
+
+    if (maybe_json_path) |json_path| {
+        cmd.addFileArg(b.path(json_path));
+    } else {
+        cmd.step.dependOn(&b.addFail("missing input file path").step);
+    }
+
+    const output_path = cmd.addOutputFileArg("data/entities.zon");
+
+    const update_src = b.addUpdateSourceFiles();
+    update_src.addCopyFileToSource(output_path, "data/entities.zon");
+
+    return .{
+        .cmd = cmd,
+        .update = update_src,
     };
 }
 
