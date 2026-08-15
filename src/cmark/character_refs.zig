@@ -10,6 +10,7 @@ const unicode = std.unicode;
 const logger = @import("../logging.zig").logger(.character_refs);
 
 const named_entities = @import("data").named_entities;
+const EntityEntry = @import("data").EntityEntry;
 
 pub const CharacterReferenceError = error{
     UnicodeError,
@@ -17,7 +18,7 @@ pub const CharacterReferenceError = error{
 
 /// Handles numeric character references like `&#42;` (decimal) or `&xaf;`
 /// (hexadecimal).
-pub fn resolveNumericCharacter(
+pub fn resolveNumeric(
     alloc: Allocator,
     digits: []const u8,
     base: u8,
@@ -35,16 +36,24 @@ pub fn resolveNumericCharacter(
 }
 
 /// Handles named entity references like `&amp;` and `&quot;`.
-pub fn resolveCharacterEntity(name: []const u8) ?[]const u8 {
-    for (named_entities) |entry| {
-        if (mem.eql(u8, name, entry.name)) {
-            return entry.characters;
-        }
-    }
+pub fn resolveNamed(name: []const u8) ?[]const u8 {
+    const index = std.sort.binarySearch(
+        EntityEntry,
+        named_entities,
+        name,
+        struct {
+            fn inner(context: []const u8, entry: EntityEntry) std.math.Order {
+                return std.mem.order(u8, context, entry.name);
+            }
+        }.inner,
+    ) orelse {
+        logger.warn(
+            "No named character reference found for name \"{s}\" (\"&{s};\").",
+            .{ name, name },
+        );
+        return null;
+    };
 
-    logger.warn(
-        "No named character reference found for name \"{s}\" (\"&{s};\").",
-        .{ name, name },
-    );
-    return null;
+    const entry = named_entities[index];
+    return entry.characters;
 }

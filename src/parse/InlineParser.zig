@@ -3847,7 +3847,7 @@ fn resolveCharacterReference(
 ) ![]const u8 {
     switch (token.token_type) {
         .decimal_character_reference => {
-            const value = try cmark.character_refs.resolveNumericCharacter(
+            const value = try cmark.character_refs.resolveNumeric(
                 scratch,
                 token.lexeme[2 .. token.lexeme.len - 1],
                 10, // base
@@ -3855,7 +3855,7 @@ fn resolveCharacterReference(
             return value;
         },
         .hexadecimal_character_reference => {
-            const value = try cmark.character_refs.resolveNumericCharacter(
+            const value = try cmark.character_refs.resolveNumeric(
                 scratch,
                 token.lexeme[3 .. token.lexeme.len - 1],
                 16, // base
@@ -3864,7 +3864,7 @@ fn resolveCharacterReference(
         },
         .entity_reference => {
             const lexeme = token.lexeme;
-            const value = cmark.character_refs.resolveCharacterEntity(
+            const value = cmark.character_refs.resolveNamed(
                 lexeme[1 .. lexeme.len - 1],
             );
             return value orelse lexeme;

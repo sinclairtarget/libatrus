@@ -1,4 +1,8 @@
-pub const named_entities: []const struct {
+const std = @import("std");
+
+pub const EntityEntry = struct {
     name: []const u8,
     characters: []const u8,
-} = @import("entities.zon");
+};
+
+pub const named_entities: []const EntityEntry = @import("entities.zon");
