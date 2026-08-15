@@ -32,7 +32,7 @@ const Test = struct {
     // value for the AST we loaded from the spec test cases.
     //
     // If there is an expected HTML rendering we test that too.
-    pub fn func(
+    pub fn run(
         self: Self,
         alloc: Allocator,
         options: struct { verbose: bool = false },
@@ -114,7 +114,7 @@ fn gatherTests(
 }
 
 pub const std_options: std.Options = .{
-    .log_level = .info,
+    .log_level = .err,
 };
 
 pub fn main() !void {
@@ -147,7 +147,7 @@ pub fn main() !void {
 
     if (tests.len == 1) {
         const t = tests[0];
-        try t.func(scratch, .{ .verbose = true });
+        try t.run(scratch, .{ .verbose = true });
         return;
     }
 
@@ -159,9 +159,19 @@ pub fn main() !void {
 
     var num_succeeded: u32 = 0;
     var num_failed: u32 = 0;
+    var num_skipped: u32 = 0;
     for (tests, 1..) |t, i| {
+        if (t.case.skip) {
+            std.debug.print(
+                "{d}/{d} {s}: skipped\n",
+                .{ i, tests.len, t.case.title,  },
+            );
+            num_skipped += 1;
+            continue;
+        }
+
         defer _ = per_test_arena.reset(.retain_capacity);
-        t.func(per_test_arena.allocator(), .{}) catch |err| {
+        t.run(per_test_arena.allocator(), .{}) catch |err| {
             std.debug.print(
                 "{d}/{d} \x1b[31m{any}: {s}\x1b[0m\n",
                 .{ i, tests.len, err, t.case.title },
@@ -186,8 +196,8 @@ pub fn main() !void {
     }
 
     std.debug.print(
-        "{d} cases succeeded. {d} cases failed.\n",
-        .{ num_succeeded, num_failed },
+        "{d} cases succeeded. {d} cases failed. {d} cases skipped.\n",
+        .{ num_succeeded, num_failed, num_skipped },
     );
     if (num_failed > 0) {
         var it = map.iterator();

@@ -9,6 +9,7 @@ pub const TestCase = struct {
     myst: []const u8,
     mdast: json.Value,
     html: ?[]const u8 = null,
+    skip: bool = false,
 };
 
 pub fn readTestCases(alloc: Allocator, path: []const u8) ![]const TestCase {
