@@ -28,6 +28,7 @@ const Io = std.Io;
 const fmt = std.fmt;
 
 const ast = @import("../ast.zig");
+const cmark = @import("../cmark/cmark.zig");
 const logging = @import("../logging.zig");
 const BlockToken = @import("../lex/tokens.zig").BlockToken;
 const BlockTokenType = @import("../lex/tokens.zig").BlockTokenType;
@@ -40,6 +41,12 @@ const util = @import("../util/util.zig");
 const logger = logging.logger(.container);
 
 const Error = error{
+    LineTooLong,
+    ReadFailed,
+    WriteFailed,
+} || Allocator.Error || cmark.character_refs.CharacterReferenceError;
+
+const TokenError = error{
     LineTooLong,
     ReadFailed,
     WriteFailed,
@@ -338,7 +345,7 @@ fn iterator(self: *Self) TokenIterator(BlockTokenType) {
 }
 
 /// Called by LeafBlockParser to get next token.
-fn nextIterator(ctx: *anyopaque, scratch: Allocator) Error!?BlockToken {
+fn nextIterator(ctx: *anyopaque, scratch: Allocator) TokenError!?BlockToken {
     const self: *Self = @ptrCast(@alignCast(ctx));
 
     const maybe_token = try self.next(scratch);
@@ -351,7 +358,7 @@ fn nextIterator(ctx: *anyopaque, scratch: Allocator) Error!?BlockToken {
     return maybe_token;
 }
 
-fn next(self: *Self, scratch: Allocator) Error!?BlockToken {
+fn next(self: *Self, scratch: Allocator) TokenError!?BlockToken {
     if (self.can_open_containers) {
         // We're at the beginning of the line. We need to establish any stacked
         // containers.

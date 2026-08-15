@@ -100,6 +100,18 @@ fn tokenize(self: *Self, scratch: Allocator) !BlockToken {
             break :blk result;
         }
 
+        if (try self.matchEntityReference(scratch)) |result| {
+            break :blk result;
+        }
+
+        if (try self.matchDecimalCharacterReference(scratch)) |result| {
+            break :blk result;
+        }
+
+        if (try self.matchHexCharacterReference(scratch)) |result| {
+            break :blk result;
+        }
+
         if (try self.matchPound(scratch)) |result| {
             break :blk result;
         }
@@ -142,7 +154,7 @@ fn matchSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
         else => return null,
     };
 
-    const lexeme = try evaluateLexeme(self, scratch, token_type, self.i + 1);
+    const lexeme = try self.evaluateLexeme(scratch, token_type, self.i + 1);
     const token = BlockToken{
         .token_type = token_type,
         .lexeme = lexeme,
@@ -179,9 +191,216 @@ fn matchEscapedTokens(self: Self, scratch: Allocator) !?TokenizeResult {
     };
     lookahead_i += 1;
 
-    const lexeme = try evaluateLexeme(self, scratch, token_type, lookahead_i);
+    const lexeme = try self.evaluateLexeme(scratch, token_type, lookahead_i);
     const token = BlockToken{
         .token_type = token_type,
+        .lexeme = lexeme,
+        .col = self.col,
+    };
+    return .{
+        .token = token,
+        .next_i = lookahead_i,
+        .next_col = self.col + @as(u32, @intCast(lookahead_i - self.i)),
+    };
+}
+
+fn matchEntityReference(self: Self, scratch: Allocator) !?TokenizeResult {
+    var lookahead_i = self.i;
+
+    const State = enum { started, rest };
+    fsm: switch (State.started) {
+        .started => {
+            switch (self.line[lookahead_i]) {
+                '&' => {
+                    lookahead_i += 1;
+                    continue :fsm .rest;
+                },
+                else => return null,
+            }
+        },
+        .rest => {
+            if (lookahead_i >= self.line.len) {
+                return null;
+            }
+
+            switch (self.line[lookahead_i]) {
+                'a'...'z', 'A'...'Z', '0'...'9' => {
+                    lookahead_i += 1;
+                    continue :fsm .rest;
+                },
+                ';' => {
+                    lookahead_i += 1;
+                    break :fsm;
+                },
+                else => return null,
+            }
+        },
+    }
+
+    const lexeme = try self.evaluateLexeme(
+        scratch,
+        .entity_reference,
+        lookahead_i,
+    );
+    const token = BlockToken{
+        .token_type = .entity_reference,
+        .lexeme = lexeme,
+        .col = self.col,
+    };
+    return .{
+        .token = token,
+        .next_i = lookahead_i,
+        .next_col = self.col + @as(u32, @intCast(lookahead_i - self.i)),
+    };
+}
+
+fn matchDecimalCharacterReference(
+    self: Self,
+    scratch: Allocator,
+) !?TokenizeResult {
+    var lookahead_i = self.i;
+
+    const State = enum { started, pound, rest };
+    var num_digits: u8 = 0;
+    fsm: switch (State.started) {
+        .started => {
+            switch (self.line[lookahead_i]) {
+                '&' => {
+                    lookahead_i += 1;
+                    continue :fsm .pound;
+                },
+                else => return null,
+            }
+        },
+        .pound => {
+            if (lookahead_i >= self.line.len) {
+                return null;
+            }
+
+            switch (self.line[lookahead_i]) {
+                '#' => {
+                    lookahead_i += 1;
+                    continue :fsm .rest;
+                },
+                else => return null,
+            }
+        },
+        .rest => {
+            if (lookahead_i >= self.line.len) {
+                return null;
+            }
+
+            switch (self.line[lookahead_i]) {
+                '0'...'9' => {
+                    lookahead_i += 1;
+                    num_digits += 1;
+                    continue :fsm .rest;
+                },
+                ';' => {
+                    lookahead_i += 1;
+                    break :fsm;
+                },
+                else => return null,
+            }
+        },
+    }
+
+    if (num_digits < 1 or num_digits > 7) {
+        return null;
+    }
+
+    const lexeme = try self.evaluateLexeme(
+        scratch,
+        .decimal_character_reference,
+        lookahead_i,
+    );
+    const token = BlockToken{
+        .token_type = .decimal_character_reference,
+        .lexeme = lexeme,
+        .col = self.col,
+    };
+    return .{
+        .token = token,
+        .next_i = lookahead_i,
+        .next_col = self.col + @as(u32, @intCast(lookahead_i - self.i)),
+    };
+}
+
+fn matchHexCharacterReference(
+    self: Self,
+    scratch: Allocator,
+) !?TokenizeResult {
+    var lookahead_i = self.i;
+
+    const State = enum { started, pound, base, rest };
+    var num_digits: u8 = 0;
+    fsm: switch (State.started) {
+        .started => {
+            switch (self.line[lookahead_i]) {
+                '&' => {
+                    lookahead_i += 1;
+                    continue :fsm .pound;
+                },
+                else => return null,
+            }
+        },
+        .pound => {
+            if (lookahead_i >= self.line.len) {
+                return null;
+            }
+
+            switch (self.line[lookahead_i]) {
+                '#' => {
+                    lookahead_i += 1;
+                    continue :fsm .base;
+                },
+                else => return null,
+            }
+        },
+        .base => {
+            if (lookahead_i >= self.line.len) {
+                return null;
+            }
+
+            switch (self.line[lookahead_i]) {
+                'x', 'X' => {
+                    lookahead_i += 1;
+                    continue :fsm .rest;
+                },
+                else => return null,
+            }
+        },
+        .rest => {
+            if (lookahead_i >= self.line.len) {
+                return null;
+            }
+
+            switch (self.line[lookahead_i]) {
+                '0'...'9', 'a'...'f', 'A'...'F' => {
+                    lookahead_i += 1;
+                    num_digits += 1;
+                    continue :fsm .rest;
+                },
+                ';' => {
+                    lookahead_i += 1;
+                    break :fsm;
+                },
+                else => return null,
+            }
+        },
+    }
+
+    if (num_digits < 1 or num_digits > 6) {
+        return null;
+    }
+
+    const lexeme = try self.evaluateLexeme(
+        scratch,
+        .hexadecimal_character_reference,
+        lookahead_i,
+    );
+    const token = BlockToken{
+        .token_type = .hexadecimal_character_reference,
         .lexeme = lexeme,
         .col = self.col,
     };
@@ -218,7 +437,7 @@ fn matchPound(self: Self, scratch: Allocator) !?TokenizeResult {
         },
     }
 
-    const lexeme = try evaluateLexeme(self, scratch, .pound, lookahead_i);
+    const lexeme = try self.evaluateLexeme(scratch, .pound, lookahead_i);
     const token = BlockToken{
         .token_type = .pound,
         .lexeme = lexeme,
@@ -236,7 +455,7 @@ fn matchNewline(self: Self, scratch: Allocator) !?TokenizeResult {
         return null;
     }
 
-    const lexeme = try evaluateLexeme(self, scratch, .newline, self.i + 1);
+    const lexeme = try self.evaluateLexeme(scratch, .newline, self.i + 1);
     const token = BlockToken{
         .token_type = .newline,
         .lexeme = lexeme,
@@ -341,7 +560,7 @@ fn matchRule(self: Self, scratch: Allocator) !?TokenizeResult {
         else => unreachable,
     };
 
-    const lexeme = try evaluateLexeme(self, scratch, token_type, lookahead_i);
+    const lexeme = try self.evaluateLexeme(scratch, token_type, lookahead_i);
     const token = BlockToken{
         .token_type = token_type,
         .lexeme = lexeme,
@@ -423,7 +642,7 @@ fn matchFence(self: Self, scratch: Allocator) !?TokenizeResult {
         },
     };
 
-    const lexeme = try evaluateLexeme(self, scratch, token_type, lookahead_i);
+    const lexeme = try self.evaluateLexeme(scratch, token_type, lookahead_i);
     const token = BlockToken{
         .token_type = token_type,
         .lexeme = lexeme,
@@ -459,6 +678,7 @@ fn matchText(self: Self, scratch: Allocator) !TokenizeResult {
         },
         .text => {
             switch (self.line[lookahead_i]) {
+                // These can all interrupt a text token.
                 '"',
                 '\'',
                 '<',
@@ -477,6 +697,7 @@ fn matchText(self: Self, scratch: Allocator) !TokenizeResult {
                 '\t',
                 '.',
                 '=',
+                '&',
                 => break :fsm,
                 '\\' => {
                     lookahead_i += 1;
@@ -499,7 +720,7 @@ fn matchText(self: Self, scratch: Allocator) !TokenizeResult {
         },
     }
 
-    const lexeme = try evaluateLexeme(self, scratch, .text, lookahead_i);
+    const lexeme = try self.evaluateLexeme(scratch, .text, lookahead_i);
     const token = BlockToken{
         .token_type = .text,
         .lexeme = lexeme,

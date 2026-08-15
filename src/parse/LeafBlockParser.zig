@@ -43,7 +43,7 @@ const Error = error{
     LineTooLong,
     ReadFailed,
     WriteFailed,
-} || Allocator.Error;
+} || Allocator.Error || cmark.character_refs.CharacterReferenceError;
 
 const close_token_panic_msg = "encountered unexpected CLOSE token";
 
@@ -529,16 +529,25 @@ fn parseFencedCode(
     ) orelse return fail;
 
     const info_lang = blk: {
+        var lang_content = Io.Writer.Allocating.init(scratch);
+
         // Whitespace allowed between fence and info string
         _ = try self.it.consumeWhitespace(scratch);
 
-        // First text token is treated as language
-        const text = try self.it.consume(
-            scratch,
-            &.{.text},
-        ) orelse break :blk "";
+        // Initial text before whitespace treated as language
+        while (try self.it.consume(scratch, &.{
+            .text,
+            .entity_reference,
+            .decimal_character_reference,
+            .hexadecimal_character_reference,
+        })) |token| {
+            _ = try lang_content.writer.write(try resolveText(scratch, token));
+        }
+        if (lang_content.written().len == 0) {
+            break :blk "";
+        }
         if (open_fence.token_type == .backtick_fence and
-            std.mem.count(u8, text.lexeme, "`") > 0)
+            std.mem.count(u8, lang_content.written(), "`") > 0)
         {
             return fail;
         }
@@ -567,7 +576,7 @@ fn parseFencedCode(
             }
         }
 
-        break :blk text.lexeme;
+        break :blk lang_content.written();
     };
     _ = try self.it.consume(scratch, &.{.newline}) orelse return fail;
 
@@ -911,6 +920,9 @@ fn scanLinkDefDestination(self: *Self, scratch: Allocator) !?[]const u8 {
                 .slash,
                 .period,
                 .equals,
+                .entity_reference,
+                .decimal_character_reference,
+                .hexadecimal_character_reference,
                 => |t| {
                     _ = try self.it.consume(scratch, &.{t});
                     const value = try resolveText(scratch, token);
@@ -974,6 +986,9 @@ fn scanLinkDefDestination(self: *Self, scratch: Allocator) !?[]const u8 {
                 .slash,
                 .period,
                 .equals,
+                .entity_reference,
+                .decimal_character_reference,
+                .hexadecimal_character_reference,
                 => |t| {
                     _ = try self.it.consume(scratch, &.{t});
                     if (util.strings.containsAsciiControl(token.lexeme)) {
@@ -2153,6 +2168,13 @@ fn scanHTMLAttrValQuoted(self: *Self, scratch: Allocator) !?[]const u8 {
                     break;
                 }
             },
+            .entity_reference,
+            .decimal_character_reference,
+            .hexadecimal_character_reference,
+            => |token_type| {
+                _ = try self.it.consume(scratch, &.{token_type});
+                _ = try running_text.writer.write(token.lexeme);
+            },
             else => |token_type| {
                 _ = try self.it.consume(scratch, &.{token_type});
                 const value = try resolveText(scratch, token);
@@ -2596,12 +2618,48 @@ fn createParagraphNode(alloc: Allocator, text_content: []const u8) !*ast.Node {
 /// the inline parser.
 fn resolveText(scratch: Allocator, token: BlockToken) ![]const u8 {
     const value = switch (token.token_type) {
+        .decimal_character_reference,
+        .hexadecimal_character_reference,
+        .entity_reference,
+        => try resolveCharacterReference(scratch, token),
         .text => try escape.strip(scratch, token.lexeme),
         .escaped_single_quote => "'",
         .escaped_double_quote => "\"",
         else => token.lexeme,
     };
     return value;
+}
+
+fn resolveCharacterReference(
+    scratch: Allocator,
+    token: BlockToken,
+) ![]const u8 {
+    switch (token.token_type) {
+        .decimal_character_reference => {
+            const value = try cmark.character_refs.resolveNumeric(
+                scratch,
+                token.lexeme[2 .. token.lexeme.len - 1],
+                10, // base
+            );
+            return value;
+        },
+        .hexadecimal_character_reference => {
+            const value = try cmark.character_refs.resolveNumeric(
+                scratch,
+                token.lexeme[3 .. token.lexeme.len - 1],
+                16, // base
+            );
+            return value;
+        },
+        .entity_reference => {
+            const lexeme = token.lexeme;
+            const value = cmark.character_refs.resolveNamed(
+                lexeme[1 .. lexeme.len - 1],
+            );
+            return value orelse lexeme;
+        },
+        else => unreachable,
+    }
 }
 
 // ----------------------------------------------------------------------------

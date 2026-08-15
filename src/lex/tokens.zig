@@ -34,6 +34,9 @@ pub const BlockTokenType = enum {
     backtick_fence, // three or more consecutive '`' symbols
     tilde_fence, // three or more consecutive '~' symbols
     colon_fence, // three or more consecutive ':' symbols
+    decimal_character_reference,
+    hexadecimal_character_reference,
+    entity_reference,
     // --- must match entire line --
     rule_star,
     rule_underline,
