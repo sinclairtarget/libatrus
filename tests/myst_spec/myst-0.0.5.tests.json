@@ -618,14 +618,14 @@
           "children": [
             {
               "type": "text",
-              "value": "  & © Æ Ď\n¾ ℋ ⅆ\n∲ ≧̸"
+              "value": "  & © Æ Ď\n¾ ℋ ⅆ\n∲ ≧̸"
             }
           ]
         }
       ]
     },
     "myst": "&nbsp; &amp; &copy; &AElig; &Dcaron;\n&frac34; &HilbertSpace; &DifferentialD;\n&ClockwiseContourIntegral; &ngE;\n",
-    "html": "<p>  &amp; © Æ Ď\n¾ ℋ ⅆ\n∲ ≧̸</p>\n"
+    "html": "<p>  &amp; © Æ Ď\n¾ ℋ ⅆ\n∲ ≧̸</p>\n"
   },
   {
     "title": "cmark_spec_0.30: Entity and numeric character references - example 26",
