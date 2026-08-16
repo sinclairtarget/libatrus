@@ -977,10 +977,6 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
             }
 
             switch (self.in[lookahead_i]) {
-                '{', '}' => {
-                    // cannot be escaped
-                    break :fsm .normal;
-                },
                 '`',
                 '\'',
                 '"',
@@ -1006,6 +1002,8 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
                 '^',
                 '|',
                 '~',
+                '{',
+                '}',
                 => {
                     lookahead_i += 1; // skip escaped character
                     continue :fsm .punct;

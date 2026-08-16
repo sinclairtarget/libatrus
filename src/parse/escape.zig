@@ -9,7 +9,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 /// Returns a copy of the given string with backslash characters that are
-/// backslash-escaping removed.
+/// triggering backslash-escaping removed.
 ///
 /// This function just cleans up the backslash characters that we no longer
 /// need. The actual semantic backslash-escaping is done elsewhere. This

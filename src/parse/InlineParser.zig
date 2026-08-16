@@ -1351,13 +1351,13 @@ fn parseInlineCode(
                 // Backslash-escaping is not allowed in code spans. Treat as a
                 // backslash followed by a backtick.
                 _ = try self.consume(scratch, &.{.escaped_backtick});
-                try values.append(scratch, "\\");
 
                 if (try self.consume(scratch, &.{.backtick})) |following| {
                     // Handle case where escaped backtick should be counted
                     // with following backticks.
                     const backtick_count = following.lexeme.len + 1;
                     if (open.lexeme.len == backtick_count) {
+                        try values.append(scratch, "\\");
                         break;
                     }
 
@@ -1372,6 +1372,7 @@ fn parseInlineCode(
                     // No following backticks, so we just have a single
                     // backtick.
                     if (open.lexeme.len == 1) {
+                        try values.append(scratch, "\\");
                         break;
                     }
 

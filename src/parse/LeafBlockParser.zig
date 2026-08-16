@@ -2177,8 +2177,7 @@ fn scanHTMLAttrValQuoted(self: *Self, scratch: Allocator) !?[]const u8 {
             },
             else => |token_type| {
                 _ = try self.it.consume(scratch, &.{token_type});
-                const value = try resolveText(scratch, token);
-                _ = try running_text.writer.write(value);
+                _ = try running_text.writer.write(token.lexeme);
             },
         }
     }
@@ -2207,8 +2206,7 @@ fn scanHTMLAttrValUnquoted(self: *Self, scratch: Allocator) !?[]const u8 {
         .r_paren,
         .exclamation_mark,
     })) |token| {
-        const value = try resolveText(scratch, token);
-        _ = try running_text.writer.write(value);
+        _ = try running_text.writer.write(token.lexeme);
     }
 
     if (running_text.written().len == 0) {

@@ -348,7 +348,7 @@
   },
   {
     "title": "cmark_spec_0.30: Backslash escapes - example 12",
-    "skip": true,
+    "skip": false,
     "mdast": {
       "type": "root",
       "children": [
@@ -460,7 +460,6 @@
   },
   {
     "title": "cmark_spec_0.30: Backslash escapes - example 17",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -535,7 +534,6 @@
   },
   {
     "title": "cmark_spec_0.30: Backslash escapes - example 21",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
