@@ -10077,7 +10077,6 @@
   },
   {
     "title": "cmark_spec_0.30: Emphasis and strong emphasis - example 353",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -10086,14 +10085,14 @@
           "children": [
             {
               "type": "text",
-              "value": "* a *"
+              "value": "* a *"
             }
           ]
         }
       ]
     },
-    "myst": "* a *\n",
-    "html": "<p>* a *</p>\n"
+    "myst": "* a *\n",
+    "html": "<p>* a *</p>\n"
   },
   {
     "title": "cmark_spec_0.30: Emphasis and strong emphasis - example 354",

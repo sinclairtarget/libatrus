@@ -125,6 +125,10 @@ fn tokenize(self: *Self, scratch: Allocator) !InlineToken {
                 break :blk result;
             }
 
+            if (try self.matchUnicodeWhitespace(scratch)) |result| {
+                break :blk result;
+            }
+
             break :blk null;
         };
 
@@ -520,6 +524,16 @@ fn matchDelimStarRun(
                     continue :fsm .l_delim_run;
                 },
                 ' ', '\t', '\n' => return null,
+                // TODO: Proper unicode handling
+                '\xc2' => {
+                    if (lookahead_i + 1 < self.in.len and
+                        self.in[lookahead_i + 1] == '\xa0')
+                    {
+                        return null;
+                    }
+
+                    break :fsm .l_delim_star;
+                },
                 else => break :fsm .l_delim_star,
             }
         },
@@ -551,6 +565,16 @@ fn matchDelimStarRun(
                     // be left-delimiting
                     break :fsm .r_delim_star;
                 },
+                // TODO: Proper unicode handling
+                '\xc2' => {
+                    if (lookahead_i + 1 < self.in.len and
+                        self.in[lookahead_i + 1] == '\xa0')
+                    {
+                        break :fsm .r_delim_star;
+                    }
+
+                    break :fsm .lr_delim_star;
+                },
                 else => break :fsm .lr_delim_star,
             }
         },
@@ -565,6 +589,16 @@ fn matchDelimStarRun(
                     continue :fsm .r_delim_punct_run;
                 },
                 ' ', '\t', '\n' => break :fsm .r_delim_star,
+                // TODO: Proper unicode handling
+                '\xc2' => {
+                    if (lookahead_i + 1 < self.in.len and
+                        self.in[lookahead_i + 1] == '\xa0')
+                    {
+                        break :fsm .r_delim_star;
+                    }
+
+                    break :fsm .l_delim_star;
+                },
                 '_',
                 '!'...'%',
                 '\''...')',
@@ -879,6 +913,40 @@ fn matchWhitespace(self: Self, scratch: Allocator) !?TokenizeResult {
     };
 }
 
+// TODO: Count more than nonbreaking spaces as unicode whitespace
+// TODO: This is only valid for utf8. Is that okay?
+fn matchUnicodeWhitespace(self: Self, scratch: Allocator) !?TokenizeResult {
+    var lookahead_i = self.i;
+    while (lookahead_i < self.in.len) {
+        switch (self.in[lookahead_i]) {
+            '\xc2' => {
+                if (self.in[lookahead_i + 1] == '\xa0') {
+                    lookahead_i += 2;
+                } else {
+                    break;
+                }
+            },
+            else => break,
+        }
+    }
+
+    if (lookahead_i == self.i) {
+        return null;
+    }
+
+    const tokens = try evaluateTokens(
+        scratch,
+        .unicode_whitespace,
+        .default,
+        self.in[self.i..lookahead_i],
+    );
+    return .{
+        .tokens = tokens,
+        .next_i = lookahead_i,
+        .next_state = .whitespace,
+    };
+}
+
 /// Tokenize basic text.
 ///
 /// This is basically anything that wasn't already tokenized as something else.
@@ -961,6 +1029,18 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
                 '}',
                 => {
                     break :fsm .normal;
+                },
+                // TODO: This handles nonbreaking whitespace characters in utf8
+                // only.
+                '\xc2' => {
+                    if (lookahead_i + 1 < self.in.len and
+                        self.in[lookahead_i + 1] == '\xa0')
+                    {
+                        break :fsm .normal;
+                    }
+
+                    lookahead_i += 1;
+                    continue :fsm .normal;
                 },
                 '#'...'%', '+', ',', '.', ':', ';', '@', '^', '|', '~' => {
                     continue :fsm .punct;
@@ -1190,6 +1270,7 @@ fn evaluateTokens(
         .entity_reference,
         .backtick,
         .whitespace,
+        .unicode_whitespace,
         .hard_break,
         .text,
         => {

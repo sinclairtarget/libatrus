@@ -80,6 +80,7 @@ pub const InlineTokenType = enum {
     // --- multi-character tokens ---
     backtick, // one or more consecutive backticks
     whitespace, // run of spaces/tabs (NOT unicode whitespace)
+    unicode_whitespace,
     text,
     decimal_character_reference,
     hexadecimal_character_reference,

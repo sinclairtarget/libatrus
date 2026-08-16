@@ -3810,6 +3810,7 @@ fn emitInlineLiteral(token: InlineToken) []const u8 {
         .entity_reference,
         .backtick,
         .whitespace,
+        .unicode_whitespace,
         .text,
         // If we are emitting the hard break, it was matched in a place where
         // hard linebreaks aren't allowed. So just emit the chars as text
