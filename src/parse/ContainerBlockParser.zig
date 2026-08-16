@@ -163,10 +163,11 @@ const ContainerBlock = struct {
         self: ContainerBlock,
         scratch: Allocator,
         it: *TokenIterator(BlockTokenType),
+        in_paragraph: bool,
     ) !?ContainerBlock {
         switch (self.variant) {
             .root, .blockquote, .bullet_list_item, .ordered_list_item => {
-                return try parseAnyContainerOpen(scratch, it);
+                return try parseAnyContainerOpen(scratch, it, in_paragraph);
             },
             .bullet_list => |payload| {
                 if (try parseBulletListItemOpen(
@@ -385,7 +386,10 @@ fn next(self: *Self, scratch: Allocator) TokenError!?BlockToken {
                 .root, .bullet_list, .ordered_list => {
                     return null;
                 },
-                inline else => |*payload| {
+                inline .blockquote,
+                .bullet_list_item,
+                .ordered_list_item,
+                => |*payload| {
                     // Soft close.
                     if (!payload.soft_closed) {
                         payload.soft_closed = true;
@@ -395,30 +399,110 @@ fn next(self: *Self, scratch: Allocator) TokenError!?BlockToken {
             }
         }
 
-        // We now look for tokens that could open new containers. Pushing a new
-        // container should coincide with ending the token stream for the
-        // current container.
+        // We now look for tokens that could open new containers.
+        //
+        // When the top container is still open, we look to parse only those
+        // containers that could be children of the top container. If we find
+        // one, we push it onto the stack.
+        //
+        // When the top container has been soft-closed, we look to parse a
+        // container that could be the child of the *parent* container (or
+        // sometimes even grandparent container). If we find one, we don't push
+        // it onto the stack but we do hard-close the top container.
         if (self.leaf_parser.?.interruptible) {
             const top_container = self.top();
-            const maybe_container = try top_container.openChildContainer(
-                scratch,
-                self.it,
-            );
+
+            const checkpoint_index = self.it.checkpoint();
+            const maybe_container = blk: {
+                switch (top_container.variant) {
+                    .root, .bullet_list, .ordered_list => {
+                        break :blk try top_container.openChildContainer(
+                            scratch,
+                            self.it,
+                            self.leaf_parser.?.in_paragraph,
+                        );
+                    },
+                    .blockquote => |payload| {
+                        // We can rely on there being at least the root
+                        // container and the blockquote container.
+                        std.debug.assert(self.container_stack.items.len >= 2);
+
+                        if (payload.soft_closed) {
+                            const base_container = &self.container_stack.items[
+                                self.container_stack.items.len - 2
+                            ];
+                            break :blk try base_container.openChildContainer(
+                                scratch,
+                                self.it,
+                                self.leaf_parser.?.in_paragraph,
+                            );
+                        } else {
+                            break :blk try top_container.openChildContainer(
+                                scratch,
+                                self.it,
+                                self.leaf_parser.?.in_paragraph,
+                            );
+                        }
+                    },
+                    inline .bullet_list_item, .ordered_list_item => |payload| {
+                        // We can rely on there being at least the root
+                        // container, the list container, and the list item
+                        // container.
+                        std.debug.assert(self.container_stack.items.len >= 3);
+
+                        if (payload.soft_closed) {
+                            // Try parse child of parent list first
+                            var base_container = &self.container_stack.items[
+                                self.container_stack.items.len - 2
+                            ];
+                            if (try base_container.openChildContainer(
+                                scratch,
+                                self.it,
+                                self.leaf_parser.?.in_paragraph,
+                            )) |container| {
+                                break :blk container;
+                            }
+
+                            // Try parse child of grandparent
+                            base_container = &self.container_stack.items[
+                                self.container_stack.items.len - 3
+                            ];
+                            break :blk try base_container.openChildContainer(
+                                scratch,
+                                self.it,
+                                self.leaf_parser.?.in_paragraph,
+                            );
+                        } else {
+                            break :blk try top_container.openChildContainer(
+                                scratch,
+                                self.it,
+                                self.leaf_parser.?.in_paragraph,
+                            );
+                        }
+                    },
+                }
+            };
 
             if (maybe_container) |container| {
                 switch (top_container.variant) {
                     .root, .bullet_list, .ordered_list => {},
-                    inline else => |payload| {
+                    inline .blockquote,
+                    .bullet_list_item,
+                    .ordered_list_item,
+                    => |payload| {
                         if (payload.soft_closed) {
-                            // Time to hard-close this container. We can't be
-                            // adding new child containers to already-closed
-                            // containers.
+                            // Time to hard-close this container. We found
+                            // another container that can be opened.
+                            self.it.backtrack(checkpoint_index);
                             return null;
                         }
                     },
                 }
 
                 try self.push(scratch, container);
+
+                // Pushing a new container onto the stack should coincide with
+                // ending the token stream for the current top container.
                 return null;
             }
         }
@@ -512,6 +596,7 @@ fn parseBlockquoteOpen(
 fn parseBulletListOpen(
     scratch: Allocator,
     it: *TokenIterator(BlockTokenType),
+    in_paragraph: bool,
 ) !?ContainerBlock {
     const checkpoint_index = it.checkpoint();
     defer it.backtrack(checkpoint_index); // always backtrack
@@ -539,8 +624,32 @@ fn parseBulletListOpen(
     };
 
     // Must be followed by at least one space or a newline
-    _ = try it.consume(scratch, &.{ .tab, .space, .newline }) orelse
+    const blank_token = try it.consume(scratch, &.{
+        .tab,
+        .space,
+        .newline,
+    }) orelse return null;
+
+    const starts_with_blank_line = blk: {
+        // blank line could be either
+        // 1. an immediate newline
+        if (blank_token.token_type == .newline) {
+            break :blk true;
+        }
+
+        // 2. whitespace followed by a newline
+        _ = try it.consumeWhitespace(scratch);
+        if (try it.consume(scratch, &.{.newline})) |_| {
+            break :blk true;
+        }
+
+        break :blk false;
+    };
+
+    if (in_paragraph and starts_with_blank_line) {
+        // Can't interrupt a paragraph if the list starts with a blank line
         return null;
+    }
 
     return .{
         .variant = .{
@@ -570,6 +679,7 @@ fn parseBulletListItemOpen(
     const leading_ws_tokens = try it.consumeWhitespaceUpTo(scratch, 3);
 
     _ = try it.consume(scratch, &.{marker_token_type}) orelse {
+        // handle case where a hyphen might have been tokenized as a rule dash
         if (marker_token_type != .hyphen) {
             return null;
         }
@@ -631,6 +741,7 @@ fn parseBulletListItemOpen(
 fn parseOrderedListOpen(
     scratch: Allocator,
     it: *TokenIterator(BlockTokenType),
+    in_paragraph: bool,
 ) !?ContainerBlock {
     const checkpoint_index = it.checkpoint();
     defer it.backtrack(checkpoint_index); // always backtrack
@@ -646,8 +757,32 @@ fn parseOrderedListOpen(
     }) orelse return null;
 
     // Must be followed by at least one space or newline
-    _ = try it.consume(scratch, &.{ .tab, .space, .newline }) orelse
+    const blank_token = try it.consume(scratch, &.{
+        .tab,
+        .space,
+        .newline,
+    }) orelse return null;
+
+    const starts_with_blank_line = blk: {
+        // blank line could be either
+        // 1. an immediate newline
+        if (blank_token.token_type == .newline) {
+            break :blk true;
+        }
+
+        // 2. whitespace followed by a newline
+        _ = try it.consumeWhitespace(scratch);
+        if (try it.consume(scratch, &.{.newline})) |_| {
+            break :blk true;
+        }
+
+        break :blk false;
+    };
+
+    if (in_paragraph and starts_with_blank_line) {
+        // Can't interrupt a paragraph if the list starts with a blank line
         return null;
+    }
 
     const start = cmark.parseOrderedListNumber(numeral_token.lexeme) catch
         return null;
@@ -736,16 +871,17 @@ fn parseOrderedListItemOpen(
 fn parseAnyContainerOpen(
     scratch: Allocator,
     it: *TokenIterator(BlockTokenType),
+    in_paragraph: bool,
 ) !?ContainerBlock {
     if (try parseBlockquoteOpen(scratch, it)) |container| {
         return container;
     }
 
-    if (try parseBulletListOpen(scratch, it)) |container| {
+    if (try parseBulletListOpen(scratch, it, in_paragraph)) |container| {
         return container;
     }
 
-    if (try parseOrderedListOpen(scratch, it)) |container| {
+    if (try parseOrderedListOpen(scratch, it, in_paragraph)) |container| {
         return container;
     }
 

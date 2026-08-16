@@ -18,6 +18,10 @@
 //! block) that cannot be interrupted by the start of a new container. This
 //! flag lets the container block parser know that ">" tokens, for example,
 //! cannot begin a blockquote in the current context.
+//!
+//! Finally, the parser also sets a flag when it is parsing a paragraph. This
+//! flag lets the container block parser handle some nasty special cases where
+//! certain kinds of list items cannot interrupt a paragraph.
 
 const std = @import("std");
 const fmt = std.fmt;
@@ -53,6 +57,8 @@ it: *TokenIterator(BlockTokenType),
 /// Set this to false when parsing something (like a code block) where all
 /// tokens must be consumed by the current leaf block parser.
 interruptible: bool = true,
+/// Whether the leaf block parser is potentially parsing a paragraph.
+in_paragraph: bool = false,
 
 const Self = @This();
 
@@ -80,6 +86,8 @@ pub fn parse(
         }
         children.deinit();
     }
+
+    self.in_paragraph = false;
 
     for (0..util.safety.loop_bound) |_| {
         self.it.clearConsumed();
@@ -159,6 +167,11 @@ pub fn parse(
             try children.flush(); // Blank lines close paragraphs
             continue;
         }
+
+        // We set this true here, before parsing setext headings, because
+        // setext headings can look like paragraphs right until the end
+        self.in_paragraph = true;
+        defer self.in_paragraph = false;
 
         if (try self.parseSetextHeading(alloc, scratch)) |heading| {
             try children.append(heading);

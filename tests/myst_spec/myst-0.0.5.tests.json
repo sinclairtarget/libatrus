@@ -7284,7 +7284,6 @@
   },
   {
     "title": "cmark_spec_0.30: List items - example 285",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
