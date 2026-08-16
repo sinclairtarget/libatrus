@@ -7135,7 +7135,6 @@
   },
   {
     "title": "cmark_spec_0.30: List items - example 281",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -7178,7 +7177,6 @@
   },
   {
     "title": "cmark_spec_0.30: List items - example 282",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -7221,7 +7219,6 @@
   },
   {
     "title": "cmark_spec_0.30: List items - example 283",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [

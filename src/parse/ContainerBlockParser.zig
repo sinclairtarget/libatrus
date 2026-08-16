@@ -138,6 +138,8 @@ const ContainerBlock = struct {
 
                 if (try it.peek(scratch)) |next_token| {
                     if (next_token.token_type == .newline) {
+                        payload.saw_blank_line = true;
+
                         if (payload.starts_with_blank_line and
                             self.children.items.len == 0)
                         {
@@ -146,7 +148,6 @@ const ContainerBlock = struct {
                             break :blk false;
                         }
 
-                        payload.saw_blank_line = true;
                         break :blk true;
                     }
                 }
@@ -212,11 +213,15 @@ const ContainerBlock = struct {
                 };
             },
             inline .bullet_list_item, .ordered_list_item => |payload| {
+                const spread = payload.saw_blank_line or
+                    (payload.starts_with_blank_line and
+                        payload.saw_blank_line) or
+                    (payload.starts_with_blank_line and
+                        owned_children.len > 0);
                 node.* = .{
                     .list_item = .{
                         .children = owned_children,
-                        .spread = payload.saw_blank_line or
-                            payload.starts_with_blank_line,
+                        .spread = spread,
                     },
                 };
             },
@@ -640,10 +645,11 @@ fn parseOrderedListOpen(
         .r_paren,
     }) orelse return null;
 
-    // Must be followed by at least one space
-    _ = try it.consume(scratch, &.{ .tab, .space }) orelse return null;
+    // Must be followed by at least one space or newline
+    _ = try it.consume(scratch, &.{ .tab, .space, .newline }) orelse
+        return null;
 
-    const start = parseOrderedListNumber(numeral_token.lexeme) catch
+    const start = cmark.parseOrderedListNumber(numeral_token.lexeme) catch
         return null;
 
     return .{
@@ -701,7 +707,7 @@ fn parseOrderedListItemOpen(
         following_ws_tokens = &.{};
     }
 
-    _ = parseOrderedListNumber(numeral_token.lexeme) catch return null;
+    _ = cmark.parseOrderedListNumber(numeral_token.lexeme) catch return null;
 
     var starts_with_blank_line = false;
     const numeral_len: u32 = @intCast(numeral_token.lexeme.len);
@@ -794,6 +800,7 @@ fn tightenListChildren(alloc: Allocator, list_items: []*ast.Node) !bool {
     //
     // - When there is just a single list item
     // - When any of the list items has an html block as a child
+    // - When any of the list items is empty (has no children)
     const has_any_html_nodes = outer: for (list_items) |item| {
         for (item.list_item.children) |item_child| {
             if (@as(ast.NodeType, item_child.*) == .html) {
@@ -802,7 +809,17 @@ fn tightenListChildren(alloc: Allocator, list_items: []*ast.Node) !bool {
         }
     } else false;
 
-    if (!is_tight_list or list_items.len == 1 or has_any_html_nodes) {
+    const has_any_empty_items = for (list_items) |item| {
+        if (item.list_item.children.len == 0) {
+            break true;
+        }
+    } else false;
+
+    if (!is_tight_list or
+        list_items.len == 1 or
+        has_any_html_nodes or
+        has_any_empty_items)
+    {
         // Make sure all list items are marked spread
         for (list_items) |child| {
             child.list_item.spread = true;
@@ -844,21 +861,6 @@ fn unwrapParagraphs(alloc: Allocator, item: *ast.Node) !void {
             item.list_item.children = new_children;
         }
     }
-}
-
-/// Sequence of 1 to 9 arabic digits. Can begin with 0s.
-fn parseOrderedListNumber(s: []const u8) !u32 {
-    if (s.len > 9) {
-        return error.TooManyDigits;
-    }
-
-    for (s) |c| {
-        if (!std.ascii.isDigit(c)) {
-            return error.ContainedNonDigit;
-        }
-    }
-
-    return try fmt.parseInt(u32, s, 10);
 }
 
 // ----------------------------------------------------------------------------
