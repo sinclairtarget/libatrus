@@ -928,38 +928,45 @@ fn tightenListChildren(alloc: Allocator, list_items: []*ast.Node) !bool {
         }
     }
 
-    // If we have a loose list, we need to mark all the list items as "spread."
-    //
-    // According to the MyST 0.0.5 test cases, we also need to mark all the
-    // list items as "spread" in the following cases, even though it doesn't
-    // make much sense (at least to me) to do so:
-    //
-    // - When there is just a single list item
-    // - When any of the list items has an html block as a child
-    // - When any of the list items is empty (has no children)
-    const has_any_html_nodes = outer: for (list_items) |item| {
-        for (item.list_item.children) |item_child| {
-            if (@as(ast.NodeType, item_child.*) == .html) {
-                break :outer true;
-            }
-        }
-    } else false;
+    //// If we have a loose list, we need to mark all the list items as "spread."
+    ////
+    //// According to the MyST 0.0.5 test cases, we also need to mark all the
+    //// list items as "spread" in the following cases, even though it doesn't
+    //// make much sense (at least to me) to do so:
+    ////
+    //// - When there is just a single list item
+    //// - When any of the list items has an html block as a child
+    //// - When any of the list items is empty (has no children)
+    //const has_any_html_nodes = outer: for (list_items) |item| {
+    //    for (item.list_item.children) |item_child| {
+    //        if (@as(ast.NodeType, item_child.*) == .html) {
+    //            break :outer true;
+    //        }
+    //    }
+    //} else false;
 
-    const has_any_empty_items = for (list_items) |item| {
-        if (item.list_item.children.len == 0) {
-            break true;
-        }
-    } else false;
+    //const has_any_empty_items = for (list_items) |item| {
+    //    if (item.list_item.children.len == 0) {
+    //        break true;
+    //    }
+    //} else false;
 
-    if (!is_tight_list or
-        list_items.len == 1 or
-        has_any_html_nodes or
-        has_any_empty_items)
-    {
-        // Make sure all list items are marked spread
-        for (list_items) |child| {
-            child.list_item.spread = true;
-        }
+    //if (!is_tight_list or
+    //    list_items.len == 1 or
+    //    has_any_html_nodes or
+    //    has_any_empty_items)
+    //{
+    //    // Make sure all list items are marked spread
+    //    for (list_items) |child| {
+    //        child.list_item.spread = true;
+    //    }
+    //}
+
+    // Make sure all list items are marked spread.
+    //
+    // All list items have spread = true in the MyST 0.0.5 test cases.
+    for (list_items) |child| {
+        child.list_item.spread = true;
     }
 
     return is_tight_list;
@@ -1458,7 +1465,7 @@ test "simple bullet list" {
             .list_item,
             @as(ast.NodeType, list_item_node.*),
         );
-        try testing.expectEqual(false, list_item_node.list_item.spread);
+        try testing.expectEqual(true, list_item_node.list_item.spread);
         try testing.expectEqual(1, list_item_node.list_item.children.len);
 
         const txt_node = list_item_node.list_item.children[0];
@@ -1600,7 +1607,7 @@ test "bullet list trailing blank lines" {
     {
         const child = list_node.list.children[0];
         try testing.expectEqual(.list_item, @as(ast.NodeType, child.*));
-        try testing.expectEqual(false, child.list_item.spread);
+        try testing.expectEqual(true, child.list_item.spread);
         try testing.expectEqual(1, child.list_item.children.len);
 
         const txt_node = child.list_item.children[0];
@@ -1773,7 +1780,7 @@ test "simple ordered list" {
             .list_item,
             @as(ast.NodeType, list_item_node.*),
         );
-        try testing.expectEqual(false, list_item_node.list_item.spread);
+        try testing.expectEqual(true, list_item_node.list_item.spread);
         try testing.expectEqual(1, list_item_node.list_item.children.len);
 
         const txt_node = list_item_node.list_item.children[0];
@@ -1826,7 +1833,7 @@ test "ordered list invalid number not at start" {
 
     const list_item_node = list_node.list.children[0];
     try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node.*));
-    try testing.expectEqual(false, list_item_node.list_item.spread);
+    try testing.expectEqual(true, list_item_node.list_item.spread);
     try testing.expectEqual(1, list_item_node.list_item.children.len);
 
     const txt_node = list_item_node.list_item.children[0];
@@ -1942,7 +1949,7 @@ test "ordered list trailing blank lines" {
     {
         const child = list_node.list.children[0];
         try testing.expectEqual(.list_item, @as(ast.NodeType, child.*));
-        try testing.expectEqual(false, child.list_item.spread);
+        try testing.expectEqual(true, child.list_item.spread);
         try testing.expectEqual(1, child.list_item.children.len);
 
         const txt_node = child.list_item.children[0];
