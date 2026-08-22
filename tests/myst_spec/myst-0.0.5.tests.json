@@ -1393,7 +1393,6 @@
   },
   {
     "title": "cmark_spec_0.30: Thematic breaks - example 61",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -7969,7 +7968,6 @@
   },
   {
     "title": "cmark_spec_0.30: List items - example 300",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [

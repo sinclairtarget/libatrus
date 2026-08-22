@@ -9,28 +9,29 @@ const Io = std.Io;
 const ast = @import("../ast.zig");
 
 const Self = @This();
-const CreateTextNodeFunc = *const fn (
-    alloc: Allocator,
-    value: []const u8,
+
+const CreateTextNode = *const fn (
+    Allocator,
+    []const u8,
 ) Allocator.Error!*ast.Node;
 
 allocator: Allocator,
 list: ArrayList(*ast.Node),
 running_text: Io.Writer.Allocating,
-create_text_node: CreateTextNodeFunc,
+createTextNodeFn: CreateTextNode,
 values_to_strip: []const u8,
 
 pub fn init(
     perm: Allocator,
     scratch: Allocator,
-    create_text_node: CreateTextNodeFunc,
+    createTextNodeFn: CreateTextNode,
     opts: struct { values_to_strip: []const u8 = "" },
 ) Self {
     return .{
         .allocator = perm,
         .list = .empty,
         .running_text = Io.Writer.Allocating.init(scratch),
-        .create_text_node = create_text_node,
+        .createTextNodeFn = createTextNodeFn,
         .values_to_strip = opts.values_to_strip,
     };
 }
@@ -57,7 +58,7 @@ pub fn hasUnflushed(self: *Self) bool {
 }
 
 pub fn append(self: *Self, node: *ast.Node) !void {
-    try self.checkAppendCollected();
+    try self.flush();
     try self.list.append(self.allocator, node);
 }
 
@@ -66,7 +67,20 @@ pub fn appendText(self: *Self, value: []const u8) !void {
 }
 
 pub fn flush(self: *Self) !void {
-    try self.checkAppendCollected();
+    try self.checkAppendCollected(self, createTextNode);
+}
+
+/// Flushes text using an override of the default create text node func.
+pub fn flushToNode(
+    self: *Self,
+    context: anytype,
+    comptime createFn: fn (
+        @TypeOf(context),
+        Allocator,
+        []const u8,
+    ) Allocator.Error!*ast.Node,
+) !void {
+    try self.checkAppendCollected(context, createFn);
 }
 
 /// Returns the underlying array list as a slice.
@@ -74,13 +88,21 @@ pub fn flush(self: *Self) !void {
 /// It might still be necessary to call deinit() depending on the original
 /// allocators used for the NodeList.
 pub fn toOwnedSlice(self: *Self) ![]*ast.Node {
-    try self.checkAppendCollected();
+    try self.checkAppendCollected(self, createTextNode);
     return try self.list.toOwnedSlice(self.allocator);
 }
 
 /// Appends a text node with any text content accumulated since we last
 /// appended a node.
-fn checkAppendCollected(self: *Self) !void {
+fn checkAppendCollected(
+    self: *Self,
+    context: anytype,
+    comptime createFn: fn (
+        @TypeOf(context),
+        Allocator,
+        []const u8,
+    ) Allocator.Error!*ast.Node,
+) !void {
     if (!self.hasUnflushed()) {
         return;
     }
@@ -88,9 +110,17 @@ fn checkAppendCollected(self: *Self) !void {
     const written = self.running_text.written();
     const trimmed = std.mem.trim(u8, written, self.values_to_strip);
     if (trimmed.len > 0) {
-        const text = try self.create_text_node(self.allocator, trimmed);
-        try self.list.append(self.allocator, text);
+        const node = try createFn(context, self.allocator, trimmed);
+        try self.list.append(self.allocator, node);
     }
 
     self.running_text.clearRetainingCapacity();
+}
+
+fn createTextNode(
+    context: *Self,
+    alloc: Allocator,
+    value: []const u8,
+) !*ast.Node {
+    return try context.createTextNodeFn(alloc, value);
 }

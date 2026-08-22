@@ -168,24 +168,24 @@ pub fn parse(
             continue;
         }
 
-        // We set this true here, before parsing setext headings, because
-        // setext headings can look like paragraphs right until the end
         self.in_paragraph = true;
         defer self.in_paragraph = false;
-
-        if (try self.parseSetextHeading(alloc, scratch)) |heading| {
-            try children.append(heading);
-            continue;
-        }
 
         // Parse paragraph text
         const result = try self.scanParagraphText(scratch);
         if (result) |val| {
             try children.appendText(val);
+
+            // Handle setext heading
+            if (try self.parseSetextUnderline(scratch)) |depth| {
+                try children.flushToNode(depth, createSetextHeadingNode);
+            }
+
             continue;
         }
 
         // Parse paragraph text (last resort)
+        // TODO: Is this needed?
         const val = try self.scanTextFallback(scratch);
         if (val.len > 0) {
             try children.appendText(val);
@@ -283,17 +283,10 @@ fn parseATXHeading(
     return node;
 }
 
-/// Parses a setext heading.
-///
-/// Will parse more than a setext heading if you let it... best to call this
-/// last, with low precedence.
+/// Parses a setext heading underline. Returns the heading depth.
 ///
 /// https://spec.commonmark.org/0.30/#setext-headings
-fn parseSetextHeading(
-    self: *Self,
-    alloc: Allocator,
-    scratch: Allocator,
-) !?*ast.Node {
+fn parseSetextUnderline(self: *Self, scratch: Allocator) !?u8 {
     var did_parse = false;
     const checkpoint_index = self.it.checkpoint();
     defer {
@@ -302,104 +295,95 @@ fn parseSetextHeading(
         }
     }
 
-    var inner = Io.Writer.Allocating.init(scratch);
+    _ = try self.it.consumeWhitespaceUpTo(scratch, 3);
 
-    const State = enum { open, maybe_close };
-    fsm: switch (State.open) {
-        .open => {
-            const token = try self.it.peek(scratch) orelse break :fsm;
-            switch (token.token_type) {
-                .newline => {
-                    _ = try self.it.consume(scratch, &.{.newline});
-                    _ = try inner.writer.write("\n");
-                    continue :fsm .maybe_close;
-                },
-                .close => return null,
-                else => |t| {
-                    _ = try self.it.consume(scratch, &.{t});
-                    _ = try inner.writer.write(token.lexeme);
-                    continue :fsm .open;
-                },
-            }
-        },
-        .maybe_close => {
-            const token = try self.it.peek(scratch) orelse break :fsm;
-            switch (token.token_type) {
-                .newline,
-                .pound,
-                .rule_star,
-                .rule_underline,
-                .rule_dash_with_whitespace,
-                .rule_dash,
-                .rule_equals,
-                .backtick_fence,
-                .tilde_fence,
-                => {
-                    // These tokens can interrupt a paragraph. The text before
-                    // the underline in a setext heading would otherwise be
-                    // parsed as a paragraph.
-                    break :fsm;
-                },
-                .close => return null,
-                else => continue :fsm .open,
-            }
-        },
+    const start_token = try self.it.consume(scratch, &.{
+        .hyphen,
+        .equals,
+    }) orelse return null;
+
+    var saw_whitespace = false;
+    while (try self.it.peek(scratch)) |token| {
+        switch (token.token_type) {
+            .space, .tab => {
+                _ = try self.it.consume(scratch, &.{token.token_type});
+                saw_whitespace = true;
+            },
+            .hyphen, .equals => {
+                if (saw_whitespace or
+                    token.token_type != start_token.token_type)
+                {
+                    return null;
+                }
+
+                _ = try self.it.consume(scratch, &.{token.token_type});
+            },
+            .newline => {
+                _ = try self.it.consume(scratch, &.{.newline});
+                break;
+            },
+            else => return null,
+        }
     }
 
-    const depth: u8 = blk: {
-        if (try self.it.consume(scratch, &.{.rule_equals})) |_| {
-            break :blk 1;
-        } else if (try self.it.consume(scratch, &.{.rule_dash})) |_| {
-            break :blk 2;
-        } else {
-            return null;
-        }
+    const depth: u8 = switch (start_token.token_type) {
+        .equals => 1,
+        .hyphen => 2,
+        else => unreachable,
     };
 
-    const children: []*ast.Node = blk: {
-        const trimmed_inner = std.mem.trim(u8, inner.written(), " \t\n");
-        if (trimmed_inner.len == 0) {
-            break :blk &.{};
-        }
-        const text_node = try util.nodes.createTextNode(alloc, trimmed_inner);
-        break :blk try alloc.dupe(*ast.Node, &.{text_node});
-    };
-    errdefer alloc.free(children);
-
-    const node = try alloc.create(ast.Node);
-    node.* = .{
-        .heading = .{
-            .children = children,
-            .depth = depth,
-        },
-    };
     did_parse = true;
-    return node;
+    return depth;
 }
 
+/// Parses a thematic break.
+///
+/// A thematic break is a line with a sequence of three or more matching '-',
+/// '*', or '_' characters. There can be any amount of whitespace on either
+/// side of this sequence.
 fn parseThematicBreak(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
 ) !?*ast.Node {
     var did_parse = false;
+    const checkpoint_index = self.it.checkpoint();
+    defer if (!did_parse) {
+        self.it.backtrack(checkpoint_index);
+    };
 
-    const token = try self.it.peek(scratch) orelse return null;
-    switch (token.token_type) {
-        .rule_star, .rule_underline, .rule_dash_with_whitespace => |t| {
-            _ = try self.it.consume(scratch, &.{t});
-        },
-        .rule_dash => |t| {
-            if (token.lexeme.len < 3) {
-                return null;
+    _ = try self.it.consumeWhitespaceUpTo(scratch, 3);
+
+    const start_token = try self.it.peek(scratch) orelse return null;
+    if (start_token.token_type == .rule_underline) {
+        _ = try self.it.consume(scratch, &.{.rule_underline});
+        _ = try self.it.consumeWhitespace(scratch);
+        _ = try self.it.consume(scratch, &.{.newline}) orelse return null;
+    } else {
+        var count: u8 = 0;
+        while (try self.it.peek(scratch)) |token| {
+            switch (token.token_type) {
+                .hyphen, .star => |t| {
+                    if (t != start_token.token_type) {
+                        return null;
+                    }
+
+                    count += 1;
+                    _ = try self.it.consume(scratch, &.{t});
+                },
+                .space, .tab => |t| {
+                    _ = try self.it.consume(scratch, &.{t});
+                },
+                .newline => break,
+                else => return null,
             }
+        }
 
-            _ = try self.it.consume(scratch, &.{t});
-        },
-        else => return null,
+        if (count < 3) {
+            return null;
+        }
+        _ = try self.it.consume(scratch, &.{.newline}) orelse return null;
     }
-
-    _ = try self.it.consume(scratch, &.{.newline});
 
     const node = try alloc.create(ast.Node);
     node.* = .{ .thematic_break = {} };
@@ -899,13 +883,7 @@ fn scanLinkDefDestination(self: *Self, scratch: Allocator) !?[]const u8 {
                 .close => @panic("unimplemented"), // TODO
                 .l_angle_bracket, .newline => return null,
                 .r_angle_bracket => break,
-                // None of these tokens should really be possible here, since
-                // they can only be matched at the beginning of a line.
-                .rule_star,
                 .rule_underline,
-                .rule_dash_with_whitespace,
-                .rule_dash,
-                .rule_equals,
                 .backtick_fence,
                 .tilde_fence,
                 .colon_fence,
@@ -969,11 +947,7 @@ fn scanLinkDefDestination(self: *Self, scratch: Allocator) !?[]const u8 {
                     _ = try running_text.writer.write(token.lexeme);
                 },
                 .newline, .space, .tab => break,
-                .rule_star,
                 .rule_underline,
-                .rule_dash_with_whitespace,
-                .rule_dash,
-                .rule_equals,
                 .backtick_fence,
                 .tilde_fence,
                 .colon_fence,
@@ -2523,19 +2497,22 @@ fn scanParagraphText(self: *Self, scratch: Allocator) !?[]const u8 {
             }
         },
         .maybe_end => {
+            const indent_checkpoint_index = self.it.checkpoint();
+            _ = try self.it.consumeWhitespaceUpTo(scratch, 3);
+
             const token = try self.it.peek(scratch) orelse break :fsm;
             switch (token.token_type) {
                 .newline,
                 .pound,
-                .rule_star,
                 .rule_underline,
-                .rule_dash_with_whitespace,
-                .rule_dash,
-                .rule_equals,
+                .hyphen,
+                .star,
+                .equals,
                 .backtick_fence,
                 .tilde_fence,
                 => {
                     // These tokens can interrupt a paragraph.
+                    self.it.backtrack(indent_checkpoint_index);
                     break :fsm;
                 },
                 .l_angle_bracket => {
@@ -2569,6 +2546,7 @@ fn scanParagraphText(self: *Self, scratch: Allocator) !?[]const u8 {
                         }
                     }
 
+                    self.it.backtrack(indent_checkpoint_index);
                     break :fsm;
                 },
                 .close => {
@@ -2621,6 +2599,29 @@ fn createParagraphNode(alloc: Allocator, text_content: []const u8) !*ast.Node {
         },
     };
     return paragraph_node;
+}
+
+fn createSetextHeadingNode(
+    depth: u8,
+    alloc: Allocator,
+    text_content: []const u8,
+) !*ast.Node {
+    std.debug.assert(text_content.len > 0);
+
+    const text_node = try util.nodes.createTextNode(alloc, text_content);
+    errdefer text_node.deinit(alloc);
+
+    const children = try alloc.dupe(*ast.Node, &.{text_node});
+    errdefer alloc.free(children);
+
+    const heading_node = try alloc.create(ast.Node);
+    heading_node.* = .{
+        .heading = .{
+            .children = children,
+            .depth = depth,
+        },
+    };
+    return heading_node;
 }
 
 /// Resolve token lexeme into actual string content for a block node.
@@ -2722,6 +2723,32 @@ test "blank lines" {
         "foo",
         text_node.text.value,
     );
+}
+
+test "thematic breaks" {
+    const md =
+        \\___
+        \\  ___
+        \\***
+        \\ - - -    - -
+        \\
+    ;
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksMd(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(4, nodes.len);
+    for (nodes) |node| {
+        try testing.expectEqual(.thematic_break, @as(ast.NodeType, node.*));
+    }
 }
 
 test "ATX heading and paragraphs" {
@@ -3601,7 +3628,7 @@ test "close token before thematic break" {
             .token_type = .close,
         },
         .{
-            .token_type = .rule_star,
+            .token_type = .rule_underline,
         },
         .{
             .token_type = .newline,
@@ -3644,8 +3671,16 @@ test "close token in setext heading" {
             .token_type = .close,
         },
         .{
-            .token_type = .rule_equals,
-            .lexeme = "===",
+            .token_type = .equals,
+            .lexeme = "=",
+        },
+        .{
+            .token_type = .equals,
+            .lexeme = "=",
+        },
+        .{
+            .token_type = .equals,
+            .lexeme = "=",
         },
         .{
             .token_type = .newline,

@@ -468,101 +468,52 @@ fn matchNewline(self: Self, scratch: Allocator) !?TokenizeResult {
     };
 }
 
-/// Tokenize a rule line (later parsed into setext headings or thematic
-/// breaks).
+/// Tokenize a rule line (later parsed into thematic breaks).
+///
+/// We only tokenize underscore rule lines. We could conceivably have rule
+/// lines composed of '*' or '-', but since these get tokenized as separate
+/// tokens we don't bother.
+///
+/// An underscore rule line is a sequence of '_' characters possibly separated
+/// by spaces or tabs.
 fn matchRule(self: Self, scratch: Allocator) !?TokenizeResult {
-    if (self.i > 0) {
-        // valid only at beginning of line
-        return null;
-    }
-
     var lookahead_i = self.i;
 
-    // Up to three leading spaces allowed
-    loop: for (0..4) |_| {
-        switch (self.line[lookahead_i]) {
-            ' ' => {
-                lookahead_i += 1;
-            },
-            else => break :loop,
+    const start_char = self.line[lookahead_i];
+    if (start_char != '_') {
+        return null;
+    }
+
+    var last_char_i: usize = 0;
+    var num_chars: u32 = 0;
+    while (lookahead_i < self.line.len) {
+        if (self.line[lookahead_i] == start_char) {
+            last_char_i = lookahead_i;
+            num_chars += 1;
+            lookahead_i += 1;
+        } else if (self.line[lookahead_i] == ' ' or
+            self.line[lookahead_i] == '\t')
+        {
+            lookahead_i += 1;
+        } else {
+            break;
         }
     }
-    if (lookahead_i > 3) {
+
+    if (num_chars < 3) {
         return null;
     }
 
-    const start_char = self.line[lookahead_i];
-    switch (start_char) {
-        '*', '_', '-', '=' => {},
-        else => return null,
-    }
+    // Don't include trailing whitespace
+    lookahead_i = last_char_i + 1;
 
-    var num_chars: u32 = 0;
-    var contains_whitespace = false;
-    const State = enum { normal, whitespace };
-    fsm: switch (State.normal) {
-        .normal => {
-            if (self.line[lookahead_i] == start_char) {
-                num_chars += 1;
-                lookahead_i += 1;
-                continue :fsm .normal;
-            } else if (self.line[lookahead_i] == '\n') {
-                break :fsm;
-            } else if (self.line[lookahead_i] == ' ' or
-                self.line[lookahead_i] == '\t')
-            {
-                lookahead_i += 1;
-                continue :fsm .whitespace;
-            } else {
-                return null;
-            }
-        },
-        .whitespace => {
-            if (self.line[lookahead_i] == start_char) {
-                contains_whitespace = true; // internal whitespace found
-                num_chars += 1;
-                lookahead_i += 1;
-                continue :fsm .normal;
-            } else if (self.line[lookahead_i] == '\n') {
-                break :fsm;
-            } else if (self.line[lookahead_i] == ' ' or
-                self.line[lookahead_i] == '\t')
-            {
-                lookahead_i += 1;
-                continue :fsm .whitespace;
-            } else {
-                return null;
-            }
-        },
-    }
-
-    if (start_char != '-' and start_char != '=' and num_chars < 3) {
-        return null;
-    }
-
-    const token_type: BlockTokenType = switch (start_char) {
-        '*' => .rule_star,
-        '_' => .rule_underline,
-        '-' => blk: {
-            if (contains_whitespace) {
-                break :blk .rule_dash_with_whitespace;
-            } else {
-                break :blk .rule_dash;
-            }
-        },
-        '=' => blk: {
-            if (contains_whitespace) {
-                return null;
-            } else {
-                break :blk .rule_equals;
-            }
-        },
-        else => unreachable,
-    };
-
-    const lexeme = try self.evaluateLexeme(scratch, token_type, lookahead_i);
+    const lexeme = try self.evaluateLexeme(
+        scratch,
+        .rule_underline,
+        lookahead_i,
+    );
     const token = BlockToken{
-        .token_type = token_type,
+        .token_type = .rule_underline,
         .lexeme = lexeme,
         .col = self.col,
     };
@@ -743,12 +694,10 @@ fn evaluateLexeme(
     std.debug.assert(lookahead_i - self.i > 0);
 
     switch (token_type) {
-        .newline, .rule_star, .rule_underline, .rule_dash_with_whitespace => {
+        .newline => {
             return ""; // no lexeme
         },
-        // rule_dash and rule_equals need lexeme because parser needs to know
-        // length of rule.
-        .pound, .rule_dash, .rule_equals => {
+        .pound => {
             const lexeme = try scratch.dupe(
                 u8,
                 std.mem.trim(u8, self.line[self.i..lookahead_i], " \t"),
@@ -846,22 +795,33 @@ test "rule" {
         \\
     ;
 
+    // zig fmt: off
     try expectEqualTokens(&.{
-        .rule_star,                 .newline,
-        .rule_dash,                 .newline,
-        .rule_underline,            .newline,
-        .rule_dash,                 .newline,
-        .rule_dash,                 .newline,
-        .rule_dash,                 .newline,
-        .rule_equals,               .newline,
-        .rule_dash_with_whitespace, .newline,
+        .star, .star, .star,                                .newline,
+        .hyphen, .hyphen, .hyphen,                          .newline,
+        .rule_underline,                                    .newline,
+        .space, .hyphen, .hyphen, .hyphen,                  .newline,
+        .space, .space, .hyphen, .hyphen, .hyphen,          .newline,
+        .space, .space, .space, .hyphen, .hyphen, .hyphen,  .newline,
+        .equals, .equals,                                   .newline,
+        .space, .hyphen, .hyphen, .space, .hyphen, .hyphen, .newline,
     }, md);
+    // zig fmt: on
 }
 
 test "rule with trailing whitespace" {
-    const md = "   ---   \n";
+    const md = "   ___   \n";
 
-    try expectEqualTokens(&.{ .rule_dash, .newline }, md);
+    try expectEqualTokens(&.{
+        .space,
+        .space,
+        .space,
+        .rule_underline,
+        .space,
+        .space,
+        .space,
+        .newline,
+    }, md);
 }
 
 test "indent" {

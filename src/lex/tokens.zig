@@ -37,12 +37,7 @@ pub const BlockTokenType = enum {
     decimal_character_reference,
     hexadecimal_character_reference,
     entity_reference,
-    // --- must match entire line --
-    rule_star,
-    rule_underline,
-    rule_dash_with_whitespace,
-    rule_dash,
-    rule_equals,
+    rule_underline, // three or more '_' with interior whitespace allowed
     // --- escaped tokens ---
     // See comment below for inline escaped tokens.
     escaped_single_quote,

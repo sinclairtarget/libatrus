@@ -165,6 +165,15 @@ const ContainerBlock = struct {
         it: *TokenIterator(BlockTokenType),
         in_paragraph: bool,
     ) !?ContainerBlock {
+        // Thematic breaks take precedence over container structures.
+        //
+        // This is a little ugly, but we check here to see if we have a
+        // thematic break. If we do, then we must let the leaf block parser
+        // parse it.
+        if (try peekThematicBreak(scratch, it)) {
+            return null;
+        }
+
         switch (self.variant) {
             .root, .blockquote, .bullet_list_item, .ordered_list_item => {
                 return try parseAnyContainerOpen(scratch, it, in_paragraph);
@@ -604,24 +613,11 @@ fn parseBulletListOpen(
     // Up to 3 leading spaces allowed before marker token
     _ = try it.consumeWhitespaceUpTo(scratch, 3);
 
-    const marker_token_type = blk: {
-        const marker_token = try it.consume(scratch, &.{
-            .star,
-            .hyphen,
-            .plus,
-            .rule_dash,
-        }) orelse return null;
-
-        if (marker_token.token_type == .rule_dash) {
-            if (marker_token.lexeme.len == 1) {
-                break :blk .hyphen;
-            }
-
-            return null;
-        }
-
-        break :blk marker_token.token_type;
-    };
+    const marker_token = try it.consume(scratch, &.{
+        .star,
+        .hyphen,
+        .plus,
+    }) orelse return null;
 
     // Must be followed by at least one space or a newline
     const blank_token = try it.consume(scratch, &.{
@@ -654,7 +650,7 @@ fn parseBulletListOpen(
     return .{
         .variant = .{
             .bullet_list = .{
-                .marker_token_type = marker_token_type,
+                .marker_token_type = marker_token.token_type,
             },
         },
     };
@@ -678,18 +674,7 @@ fn parseBulletListItemOpen(
     // Up to 3 leading spaces allowed before marker token
     const leading_ws_tokens = try it.consumeWhitespaceUpTo(scratch, 3);
 
-    _ = try it.consume(scratch, &.{marker_token_type}) orelse {
-        // handle case where a hyphen might have been tokenized as a rule dash
-        if (marker_token_type != .hyphen) {
-            return null;
-        }
-
-        const rule = try it.consume(scratch, &.{.rule_dash}) orelse
-            return null;
-        if (rule.lexeme.len > 1) {
-            return null;
-        }
-    };
+    _ = try it.consume(scratch, &.{marker_token_type}) orelse return null;
 
     // Handle whitespace following marker token.
     //
@@ -886,6 +871,49 @@ fn parseAnyContainerOpen(
     }
 
     return null;
+}
+
+fn peekThematicBreak(
+    scratch: Allocator,
+    it: *TokenIterator(BlockTokenType),
+) !bool {
+    const checkpoint_index = it.checkpoint();
+    defer it.backtrack(checkpoint_index); // always backtrack
+
+    _ = try it.consumeWhitespaceUpTo(scratch, 3);
+
+    const start_token = try it.peek(scratch) orelse return false;
+    if (start_token.token_type == .rule_underline) {
+        _ = try it.consume(scratch, &.{.rule_underline});
+        _ = try it.consumeWhitespace(scratch);
+        _ = try it.consume(scratch, &.{.newline}) orelse return false;
+    } else {
+        var count: u8 = 0;
+        while (try it.peek(scratch)) |token| {
+            switch (token.token_type) {
+                .hyphen, .star => |t| {
+                    if (t != start_token.token_type) {
+                        return false;
+                    }
+
+                    count += 1;
+                    _ = try it.consume(scratch, &.{t});
+                },
+                .space, .tab => |t| {
+                    _ = try it.consume(scratch, &.{t});
+                },
+                .newline => break,
+                else => return false,
+            }
+        }
+
+        if (count < 3) {
+            return false;
+        }
+        _ = try it.consume(scratch, &.{.newline}) orelse return false;
+    }
+
+    return true;
 }
 
 /// Handles list tightness/looseness of list children.
@@ -1696,6 +1724,59 @@ test "indented bullet list items" {
         try testing.expectEqual(.text, @as(ast.NodeType, txt_node.*));
         try testing.expectEqualStrings("foo", txt_node.text.value);
     }
+}
+
+test "not a thematic break" {
+    const md =
+        \\- * * * a
+        \\
+    ;
+
+    const root_node = try parseBlocks(md);
+    defer root_node.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
+
+    // -
+    const l1 = root_node.root.children[0];
+    try testing.expectEqual(.list, @as(ast.NodeType, l1.*));
+    try testing.expectEqual(1, l1.list.children.len);
+
+    const li1 = l1.list.children[0];
+    try testing.expectEqual(.list_item, @as(ast.NodeType, li1.*));
+    try testing.expectEqual(1, li1.list_item.children.len);
+
+    // *
+    const l2 = li1.list_item.children[0];
+    try testing.expectEqual(.list, @as(ast.NodeType, l2.*));
+    try testing.expectEqual(1, l2.list.children.len);
+
+    const li2 = l2.list.children[0];
+    try testing.expectEqual(.list_item, @as(ast.NodeType, li2.*));
+    try testing.expectEqual(1, li2.list_item.children.len);
+
+    // *
+    const l3 = li2.list_item.children[0];
+    try testing.expectEqual(.list, @as(ast.NodeType, l3.*));
+    try testing.expectEqual(1, l3.list.children.len);
+
+    const li3 = l3.list.children[0];
+    try testing.expectEqual(.list_item, @as(ast.NodeType, li3.*));
+    try testing.expectEqual(1, li3.list_item.children.len);
+
+    // *
+    const l4 = li3.list_item.children[0];
+    try testing.expectEqual(.list, @as(ast.NodeType, l4.*));
+    try testing.expectEqual(1, l4.list.children.len);
+
+    const li4 = l4.list.children[0];
+    try testing.expectEqual(.list_item, @as(ast.NodeType, li4.*));
+    try testing.expectEqual(1, li4.list_item.children.len);
+
+    // a
+    const text = li4.list_item.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, text.*));
+    try testing.expectEqualStrings("a", text.text.value);
 }
 
 test "interleave blockquote and bullet list" {

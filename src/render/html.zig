@@ -158,7 +158,7 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
         .list => |n| {
             if (n.ordered) {
                 if (n.start != 1) {
-                    try out.print("<ol start=\"{d}\">\n", .{ n.start });
+                    try out.print("<ol start=\"{d}\">\n", .{n.start});
                 } else {
                     _ = try out.writeAll("<ol>\n");
                 }
@@ -191,7 +191,8 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
                     }
 
                     if (n.children.len == 1 and
-                        @as(ast.NodeType, n.children[0].*) == .text) {
+                        @as(ast.NodeType, n.children[0].*) == .text)
+                    {
                         break :blk true;
                     }
 
@@ -209,9 +210,15 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
                         _ = try out.writeAll("\n");
                     }
 
-                    for (n.children) |child| {
+                    for (n.children, 0..) |child, i| {
                         _ = try renderNode(child, out);
-                        _ = try out.writeAll("\n");
+
+                        // Add newline as long as this isn't a last text child
+                        if (i < n.children.len - 1 or
+                            @as(ast.NodeType, child.*) != .text)
+                        {
+                            _ = try out.writeAll("\n");
+                        }
                     }
                 }
                 _ = try out.writeAll("</li>");
