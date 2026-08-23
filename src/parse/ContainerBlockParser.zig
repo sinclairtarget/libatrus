@@ -437,13 +437,14 @@ fn next(self: *Self, scratch: Allocator) TokenError!?BlockToken {
                         std.debug.assert(self.container_stack.items.len >= 2);
 
                         if (payload.soft_closed) {
+                            // parent container
                             const base_container = &self.container_stack.items[
                                 self.container_stack.items.len - 2
                             ];
                             break :blk try base_container.openChildContainer(
                                 scratch,
                                 self.it,
-                                self.leaf_parser.?.in_paragraph,
+                                false,
                             );
                         } else {
                             break :blk try top_container.openChildContainer(
@@ -460,26 +461,26 @@ fn next(self: *Self, scratch: Allocator) TokenError!?BlockToken {
                         std.debug.assert(self.container_stack.items.len >= 3);
 
                         if (payload.soft_closed) {
-                            // Try parse child of parent list first
+                            // parent container (list)
                             var base_container = &self.container_stack.items[
                                 self.container_stack.items.len - 2
                             ];
                             if (try base_container.openChildContainer(
                                 scratch,
                                 self.it,
-                                self.leaf_parser.?.in_paragraph,
+                                false,
                             )) |container| {
                                 break :blk container;
                             }
 
-                            // Try parse child of grandparent
+                            // grandparent container
                             base_container = &self.container_stack.items[
                                 self.container_stack.items.len - 3
                             ];
                             break :blk try base_container.openChildContainer(
                                 scratch,
                                 self.it,
-                                self.leaf_parser.?.in_paragraph,
+                                false,
                             );
                         } else {
                             break :blk try top_container.openChildContainer(
@@ -2046,4 +2047,34 @@ test "ordered list trailing blank lines" {
         const txt_node = child.list_item.children[0];
         try testing.expectEqual(.text, @as(ast.NodeType, txt_node.*));
     }
+}
+
+test "paragraph interruption" {
+    const md =
+        \\Foo
+        \\*
+        \\
+        \\> Foo
+        \\*
+        \\
+    ;
+
+    const root_node = try parseBlocks(md);
+    defer root_node.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
+    try testing.expectEqual(3, root_node.root.children.len);
+
+    const p_node = root_node.root.children[0];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node.*));
+
+    const bq_node = root_node.root.children[1];
+    try testing.expectEqual(.blockquote, @as(ast.NodeType, bq_node.*));
+
+    const list_node = root_node.root.children[2];
+    try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
+    try testing.expectEqual(1, list_node.list.children.len);
+    const list_item_node = list_node.list.children[0];
+    try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node.*));
+    try testing.expectEqual(0, list_item_node.list_item.children.len);
 }
