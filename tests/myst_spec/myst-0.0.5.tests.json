@@ -965,7 +965,6 @@
   },
   {
     "title": "cmark_spec_0.30: Precedence - example 42",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
