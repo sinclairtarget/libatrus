@@ -8019,7 +8019,6 @@
   },
   {
     "title": "cmark_spec_0.30: Lists - example 301",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -8074,7 +8073,6 @@
   },
   {
     "title": "cmark_spec_0.30: Lists - example 302",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -8131,7 +8129,6 @@
   },
   {
     "title": "cmark_spec_0.30: Lists - example 303",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -8373,7 +8370,6 @@
   },
   {
     "title": "cmark_spec_0.30: Lists - example 308",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -8508,7 +8504,6 @@
   },
   {
     "title": "cmark_spec_0.30: Lists - example 310",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -8659,7 +8654,6 @@
   },
   {
     "title": "cmark_spec_0.30: Lists - example 312",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -9137,7 +9131,6 @@
   },
   {
     "title": "cmark_spec_0.30: Lists - example 320",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -9189,7 +9182,6 @@
   },
   {
     "title": "cmark_spec_0.30: Lists - example 321",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -9413,7 +9405,6 @@
   },
   {
     "title": "cmark_spec_0.30: Lists - example 326",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
