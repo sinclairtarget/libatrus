@@ -772,13 +772,14 @@ fn parseOrderedListOpen(
         break :blk false;
     };
 
-    if (in_paragraph and starts_with_blank_line) {
-        // Can't interrupt a paragraph if the list starts with a blank line
-        return null;
-    }
-
     const start = cmark.parseOrderedListNumber(numeral_token.lexeme) catch
         return null;
+
+    if (in_paragraph and (starts_with_blank_line or start > 1)) {
+        // Can't interrupt a paragraph if the list starts with a blank line
+        // Can't interrupt a paragraph if the start number is not 1
+        return null;
+    }
 
     return .{
         .variant = .{

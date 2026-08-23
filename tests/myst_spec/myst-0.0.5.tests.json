@@ -8175,7 +8175,6 @@
   },
   {
     "title": "cmark_spec_0.30: Lists - example 304",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
