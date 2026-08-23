@@ -2320,7 +2320,6 @@
   },
   {
     "title": "cmark_spec_0.30: Setext headings - example 93",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [

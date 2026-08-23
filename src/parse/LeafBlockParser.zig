@@ -2469,6 +2469,7 @@ fn parseMySTDirectiveOption(
 fn scanParagraphText(self: *Self, scratch: Allocator) !?[]const u8 {
     var running_text = Io.Writer.Allocating.init(scratch);
     var close_token_checkpoint_index: ?usize = null;
+    var saw_close = false;
 
     const start_token = try self.it.peek(scratch) orelse return null;
     _ = try self.it.consume(scratch, &.{start_token.token_type});
@@ -2486,6 +2487,7 @@ fn scanParagraphText(self: *Self, scratch: Allocator) !?[]const u8 {
                 },
                 .close => {
                     close_token_checkpoint_index = self.it.checkpoint();
+                    saw_close = true;
                     _ = try self.it.consume(scratch, &.{.close});
                     continue :fsm .maybe_end;
                 },
@@ -2505,15 +2507,37 @@ fn scanParagraphText(self: *Self, scratch: Allocator) !?[]const u8 {
                 .newline,
                 .pound,
                 .rule_underline,
-                .hyphen,
                 .star,
-                .equals,
                 .backtick_fence,
                 .tilde_fence,
                 => {
                     // These tokens can interrupt a paragraph.
                     self.it.backtrack(indent_checkpoint_index);
                     break :fsm;
+                },
+                .equals => {
+                    if (saw_close) {
+                        // Can't be parsed as a setext heading
+                        continue :fsm .continuing;
+                    } else {
+                        self.it.backtrack(indent_checkpoint_index);
+                        break :fsm;
+                    }
+                },
+                .hyphen => {
+                    if (saw_close) {
+                        // Can't be parsed as a setext heading. Can only
+                        // interrupt a paragraph if it's a thematic break.
+                        if (try peekThematicBreak(scratch, self.it)) {
+                            self.it.backtrack(indent_checkpoint_index);
+                            break :fsm;
+                        }
+
+                        continue :fsm .continuing;
+                    } else {
+                        self.it.backtrack(indent_checkpoint_index);
+                        break :fsm;
+                    }
                 },
                 .l_angle_bracket => {
                     // Interrupts a paragraph, but only if this isn't a type 7
@@ -2551,6 +2575,7 @@ fn scanParagraphText(self: *Self, scratch: Allocator) !?[]const u8 {
                 },
                 .close => {
                     close_token_checkpoint_index = self.it.checkpoint();
+                    saw_close = true;
                     _ = try self.it.consume(scratch, &.{.close});
                     continue :fsm .maybe_end;
                 },
@@ -2674,6 +2699,48 @@ fn resolveCharacterReference(
     }
 }
 
+fn peekThematicBreak(
+    scratch: Allocator,
+    it: *TokenIterator(BlockTokenType),
+) !bool {
+    const checkpoint_index = it.checkpoint();
+    defer it.backtrack(checkpoint_index); // always backtrack
+
+    _ = try it.consumeWhitespaceUpTo(scratch, 3);
+
+    const start_token = try it.peek(scratch) orelse return false;
+    if (start_token.token_type == .rule_underline) {
+        _ = try it.consume(scratch, &.{.rule_underline});
+        _ = try it.consumeWhitespace(scratch);
+        _ = try it.consume(scratch, &.{.newline}) orelse return false;
+    } else {
+        var count: u8 = 0;
+        while (try it.peek(scratch)) |token| {
+            switch (token.token_type) {
+                .hyphen, .star => |t| {
+                    if (t != start_token.token_type) {
+                        return false;
+                    }
+
+                    count += 1;
+                    _ = try it.consume(scratch, &.{t});
+                },
+                .space, .tab => |t| {
+                    _ = try it.consume(scratch, &.{t});
+                },
+                .newline => break,
+                else => return false,
+            }
+        }
+
+        if (count < 3) {
+            return false;
+        }
+        _ = try it.consume(scratch, &.{.newline}) orelse return false;
+    }
+
+    return true;
+}
 // ----------------------------------------------------------------------------
 // Unit Tests
 // ----------------------------------------------------------------------------
@@ -3652,9 +3719,6 @@ test "close token before thematic break" {
     try testing.expectEqualStrings("foo", txt.text.value);
 }
 
-// !! DIFFERENT FROM REFERENCE MYST PARSER !!
-//
-// The JS MyST parser will parse this whole token stream as a single paragraph.
 test "close token in setext heading" {
     var link_defs: LinkDefMap = .empty;
     defer link_defs.deinit(testing.allocator);
@@ -3701,7 +3765,7 @@ test "close token in setext heading" {
 
     const txt = p.paragraph.children[0];
     try testing.expectEqual(.text, @as(ast.NodeType, txt.*));
-    try testing.expectEqualStrings("foo", txt.text.value);
+    try testing.expectEqualStrings("foo\n===", txt.text.value);
 }
 
 // This is a case where the parser has to detect the close token in the body of

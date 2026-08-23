@@ -310,7 +310,14 @@ pub fn parse(
         // before any of the logic in the iterator func below can run and we'd
         // end up adding leaf block children to a list container, which is
         // invalid.
-        if (!self.can_open_containers and self.top().isList()) {
+        if (!leaf_it.is_exhausted and
+            leaf_it.tokens.items.len > leaf_it.token_index and
+            self.top().isList())
+        {
+            logger.debug(
+                "Popping list container because of buffered tokens",
+                .{},
+            );
             try self.pop(alloc, scratch);
             continue;
         }
@@ -2077,4 +2084,69 @@ test "paragraph interruption" {
     const list_item_node = list_node.list.children[0];
     try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node.*));
     try testing.expectEqual(0, list_item_node.list_item.children.len);
+}
+
+test "setext lazy continuation" {
+    const md =
+        \\Foo
+        \\==
+        \\
+        \\> Bar
+        \\==
+        \\
+    ;
+
+    const root_node = try parseBlocks(md);
+    defer root_node.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
+    try testing.expectEqual(2, root_node.root.children.len);
+
+    const h_node = root_node.root.children[0];
+    try testing.expectEqual(.heading, @as(ast.NodeType, h_node.*));
+
+    const bq_node = root_node.root.children[1];
+    try testing.expectEqual(.blockquote, @as(ast.NodeType, bq_node.*));
+    try testing.expectEqual(1, bq_node.blockquote.children.len);
+
+    const p_node = bq_node.blockquote.children[0];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node.*));
+}
+
+test "hyphens after blockquote" {
+    // These should parse as:
+    // 1. Blockquote followed by empty list item.
+    // 2. Blockquote, containing setext underline parsed as regular paragraph
+    //    text.
+    // 3. Blockquote, followed by a thematic break.
+    const md =
+        \\> Foo
+        \\-
+        \\
+        \\> Foo
+        \\--
+        \\
+        \\> Foo
+        \\---
+        \\
+    ;
+
+    const root_node = try parseBlocks(md);
+    defer root_node.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
+    try testing.expectEqual(5, root_node.root.children.len);
+
+    const bq1_node = root_node.root.children[0];
+    try testing.expectEqual(.blockquote, @as(ast.NodeType, bq1_node.*));
+    const list_node = root_node.root.children[1];
+    try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
+
+    const bq2_node = root_node.root.children[2];
+    try testing.expectEqual(.blockquote, @as(ast.NodeType, bq2_node.*));
+
+    const bq3_node = root_node.root.children[3];
+    try testing.expectEqual(.blockquote, @as(ast.NodeType, bq3_node.*));
+    const break_node = root_node.root.children[4];
+    try testing.expectEqual(.thematic_break, @as(ast.NodeType, break_node.*));
 }
