@@ -604,6 +604,7 @@ fn parseFencedCode(
                 // TODO: all tokens should have lexemes
                 _ = try self.it.consume(scratch, &.{.newline});
                 _ = try content.writer.write("\n");
+                continue;
             },
             .close => {
                 // Container is closing, can't keep parsing fenced code
@@ -647,7 +648,7 @@ fn parseFencedCode(
     // MyST tests require trailing newline to be trimmed for AST, even though
     // it should be added back when rendered as HTML.
     // https://spec.commonmark.org/0.30/#example-119
-    const trimmed = std.mem.trimEnd(u8, content.written(), "\n");
+    const trimmed = util.strings.trimEndOne(content.written(), "\n");
 
     const value = try alloc.dupeZ(u8, trimmed);
     errdefer alloc.free(value);
@@ -3328,6 +3329,36 @@ test "tilde code fence" {
     try testing.expectEqualStrings(
         "python",
         code_node.code.lang,
+    );
+}
+
+test "code fence with trailing blank line" {
+    const md =
+        \\```
+        \\foo()
+        \\
+        \\```
+        \\
+    ;
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksMd(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(1, nodes.len);
+
+    const code_node = nodes[0];
+    try testing.expectEqual(.code, @as(ast.NodeType, code_node.*));
+    try testing.expectEqualStrings(
+        "foo()\n",
+        code_node.code.value,
     );
 }
 

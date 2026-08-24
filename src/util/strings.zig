@@ -74,3 +74,19 @@ pub fn trimWhitespaceStart(s: []const u8, count: usize) []const u8 {
     }
     return s[begin..];
 }
+
+/// Like std.mem.trimEnd(), but only trims a single character.
+pub fn trimEndOne(s: []const u8, values_to_strip: []const u8) []const u8 {
+    if (s.len == 0) {
+        return s;
+    }
+
+    const last_index = s.len - 1;
+    for (values_to_strip) |value| {
+        if (s[last_index] == value) {
+            return s[0..last_index];
+        }
+    }
+
+    return s;
+}
