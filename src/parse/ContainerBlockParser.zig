@@ -56,6 +56,7 @@ const TokenError = error{
 /// it) and hasn't yet been turned into an AST node.
 const ContainerBlock = struct {
     children: ArrayList(*ast.Node) = .empty,
+    start_line_num: usize,
     variant: union(enum) {
         root,
         blockquote: struct {
@@ -63,21 +64,27 @@ const ContainerBlock = struct {
         },
         bullet_list: struct {
             marker_token_type: BlockTokenType,
+            first_blank_line_num: ?usize = null,
+            last_blank_line_num: ?usize = null,
         },
         bullet_list_item: struct {
             indent: u32,
             starts_with_blank_line: bool = false,
-            saw_blank_line: bool = false,
+            first_blank_line_num: ?usize = null,
+            last_blank_line_num: ?usize = null,
             soft_closed: bool = false,
         },
         ordered_list: struct {
             marker_token_type: BlockTokenType,
             start: u32,
+            first_blank_line_num: ?usize = null,
+            last_blank_line_num: ?usize = null,
         },
         ordered_list_item: struct {
             indent: u32,
             starts_with_blank_line: bool = false,
-            saw_blank_line: bool = false,
+            first_blank_line_num: ?usize = null,
+            last_blank_line_num: ?usize = null,
             soft_closed: bool = false,
         },
     },
@@ -111,6 +118,7 @@ const ContainerBlock = struct {
         self: *ContainerBlock,
         scratch: Allocator,
         it: *TokenIterator(BlockTokenType),
+        line_num: usize,
     ) !bool {
         const checkpoint_index = it.checkpoint();
         var did_establish = false;
@@ -119,9 +127,13 @@ const ContainerBlock = struct {
         };
 
         did_establish = switch (self.variant) {
-            .root, .bullet_list, .ordered_list => true, // always established
+            .root => true, // always established
+            .bullet_list, .ordered_list => blk: {
+                const next_token = try it.peek(scratch);
+                break :blk next_token != null;
+            },
             .blockquote => blk: {
-                if (try parseBlockquoteOpen(scratch, it)) |_| {
+                if (try parseBlockquoteOpen(scratch, it, line_num)) |_| {
                     break :blk true;
                 }
 
@@ -138,10 +150,8 @@ const ContainerBlock = struct {
 
                 if (try it.peek(scratch)) |next_token| {
                     if (next_token.token_type == .newline) {
-                        payload.saw_blank_line = true;
-
                         if (payload.starts_with_blank_line and
-                            self.children.items.len == 0)
+                            line_num == self.start_line_num + 1)
                         {
                             // List item cannot start with more than one blank
                             // line.
@@ -164,6 +174,7 @@ const ContainerBlock = struct {
         scratch: Allocator,
         it: *TokenIterator(BlockTokenType),
         in_paragraph: bool,
+        line_num: usize,
     ) !?ContainerBlock {
         // Thematic breaks take precedence over container structures.
         //
@@ -176,13 +187,19 @@ const ContainerBlock = struct {
 
         switch (self.variant) {
             .root, .blockquote, .bullet_list_item, .ordered_list_item => {
-                return try parseAnyContainerOpen(scratch, it, in_paragraph);
+                return try parseAnyContainerOpen(
+                    scratch,
+                    it,
+                    in_paragraph,
+                    line_num,
+                );
             },
             .bullet_list => |payload| {
                 if (try parseBulletListItemOpen(
                     scratch,
                     it,
                     payload.marker_token_type,
+                    line_num,
                 )) |container| {
                     return container;
                 }
@@ -192,6 +209,7 @@ const ContainerBlock = struct {
                     scratch,
                     it,
                     payload.marker_token_type,
+                    line_num,
                 )) |container| {
                     return container;
                 }
@@ -201,10 +219,53 @@ const ContainerBlock = struct {
         return null;
     }
 
+    fn recordBlankLine(self: *ContainerBlock, line_num: usize) void {
+        if (line_num <= self.start_line_num) {
+            return;
+        }
+
+        switch (self.variant) {
+            inline .bullet_list_item,
+            .ordered_list_item,
+            .bullet_list,
+            .ordered_list,
+            => |*payload| {
+                if (payload.first_blank_line_num == null) {
+                    payload.first_blank_line_num = line_num;
+                }
+                payload.last_blank_line_num = line_num;
+            },
+            else => {},
+        }
+    }
+
     /// Close this container block, turning it into an AST node.
-    fn toNode(self: ContainerBlock, alloc: Allocator) !*ast.Node {
+    fn toNode(
+        self: ContainerBlock,
+        alloc: Allocator,
+        line_num: usize,
+    ) !*ast.Node {
         const owned_children = try alloc.dupe(*ast.Node, self.children.items);
         errdefer alloc.free(owned_children);
+
+        const has_interior_blank_line = blk: {
+            switch (self.variant) {
+                inline .bullet_list_item,
+                .ordered_list_item,
+                .bullet_list,
+                .ordered_list,
+                => |payload| {
+                    if (payload.first_blank_line_num) |i| {
+                        if (i < line_num - 1) {
+                            break :blk true;
+                        }
+                    }
+                },
+                else => {},
+            }
+
+            break :blk false;
+        };
 
         const node = try alloc.create(ast.Node);
         switch (self.variant) {
@@ -222,10 +283,8 @@ const ContainerBlock = struct {
                     },
                 };
             },
-            inline .bullet_list_item, .ordered_list_item => |payload| {
-                const spread = payload.saw_blank_line or
-                    (payload.starts_with_blank_line and
-                        owned_children.len > 0);
+            inline .bullet_list_item, .ordered_list_item => {
+                const spread = isSpreadListItem(has_interior_blank_line);
                 node.* = .{
                     .list_item = .{
                         .children = owned_children,
@@ -234,7 +293,10 @@ const ContainerBlock = struct {
                 };
             },
             .bullet_list => {
-                const spread = try isSpreadList(owned_children);
+                const spread = isSpreadList(
+                    owned_children,
+                    has_interior_blank_line,
+                );
                 if (!spread) {
                     for (owned_children) |child| {
                         try unwrapParagraphs(alloc, child);
@@ -249,7 +311,10 @@ const ContainerBlock = struct {
                 };
             },
             .ordered_list => |payload| {
-                const spread = try isSpreadList(owned_children);
+                const spread = isSpreadList(
+                    owned_children,
+                    has_interior_blank_line,
+                );
                 if (!spread) {
                     for (owned_children) |child| {
                         try unwrapParagraphs(alloc, child);
@@ -277,6 +342,7 @@ container_stack: ArrayList(ContainerBlock),
 unestablished_container_i: usize,
 can_open_containers: bool,
 override_spread: bool,
+line_num: usize,
 
 const Self = @This();
 
@@ -291,6 +357,7 @@ pub fn init(
         .unestablished_container_i = 0,
         .can_open_containers = true,
         .override_spread = opts.override_spread,
+        .line_num = 1,
     };
 }
 
@@ -307,6 +374,7 @@ pub fn parse(
 ) Error!*ast.Node {
     try self.container_stack.append(scratch, .{
         .variant = .{ .root = {} },
+        .start_line_num = 1,
     });
     self.unestablished_container_i = 0;
     self.can_open_containers = true;
@@ -371,7 +439,7 @@ pub fn parse(
         try self.pop(alloc, scratch);
     } else @panic(util.safety.loop_bound_panic_msg);
 
-    const root = try self.top().toNode(alloc);
+    const root = try self.top().toNode(alloc, self.line_num);
     errdefer root.deinit();
 
     if (self.override_spread) {
@@ -406,7 +474,11 @@ fn next(self: *Self, scratch: Allocator) TokenError!?BlockToken {
         if (self.unestablished_container_i == 0) {
             for (0..self.container_stack.items.len) |i| {
                 const container = &self.container_stack.items[i];
-                if (!try container.establish(scratch, self.it)) {
+                if (!try container.establish(
+                    scratch,
+                    self.it,
+                    self.line_num,
+                )) {
                     break;
                 }
 
@@ -455,6 +527,7 @@ fn next(self: *Self, scratch: Allocator) TokenError!?BlockToken {
                             scratch,
                             self.it,
                             self.leaf_parser.?.in_paragraph,
+                            self.line_num,
                         );
                     },
                     .blockquote => |payload| {
@@ -471,12 +544,14 @@ fn next(self: *Self, scratch: Allocator) TokenError!?BlockToken {
                                 scratch,
                                 self.it,
                                 false,
+                                self.line_num,
                             );
                         } else {
                             break :blk try top_container.openChildContainer(
                                 scratch,
                                 self.it,
                                 self.leaf_parser.?.in_paragraph,
+                                self.line_num,
                             );
                         }
                     },
@@ -495,6 +570,7 @@ fn next(self: *Self, scratch: Allocator) TokenError!?BlockToken {
                                 scratch,
                                 self.it,
                                 false,
+                                self.line_num,
                             )) |container| {
                                 break :blk container;
                             }
@@ -507,12 +583,14 @@ fn next(self: *Self, scratch: Allocator) TokenError!?BlockToken {
                                 scratch,
                                 self.it,
                                 false,
+                                self.line_num,
                             );
                         } else {
                             break :blk try top_container.openChildContainer(
                                 scratch,
                                 self.it,
                                 self.leaf_parser.?.in_paragraph,
+                                self.line_num,
                             );
                         }
                     },
@@ -542,6 +620,11 @@ fn next(self: *Self, scratch: Allocator) TokenError!?BlockToken {
                 return null;
             }
         }
+
+        // Record a blank line if this is one
+        if (try peekBlankLine(scratch, self.it)) {
+            self.top().recordBlankLine(self.line_num);
+        }
     }
 
     const next_token = try self.it.peek(scratch) orelse return null;
@@ -561,6 +644,7 @@ fn next(self: *Self, scratch: Allocator) TokenError!?BlockToken {
         }
 
         _ = try self.it.consume(scratch, &.{.newline});
+        self.line_num += 1;
         return next_token;
     }
 
@@ -600,14 +684,45 @@ fn push(self: *Self, scratch: Allocator, container: ContainerBlock) !void {
 
 fn pop(self: *Self, alloc: Allocator, scratch: Allocator) !void {
     const popped = self.container_stack.pop() orelse unreachable;
-    const node = try popped.toNode(alloc);
+
+    const top_container = self.top();
+    switch (top_container.variant) {
+        inline .bullet_list, .ordered_list => {
+            switch (popped.variant) {
+                inline .bullet_list_item, .ordered_list_item => |item| {
+                    if (item.last_blank_line_num) |i| {
+                        if (i >= self.line_num - 1) {
+                            top_container.recordBlankLine(i);
+                        }
+                    }
+                },
+                else => unreachable,
+            }
+        },
+        inline .bullet_list_item, .ordered_list_item => {
+            switch (popped.variant) {
+                inline .bullet_list, .ordered_list => |list| {
+                    if (list.last_blank_line_num) |i| {
+                        if (i >= self.line_num - 1) {
+                            top_container.recordBlankLine(i);
+                        }
+                    }
+                },
+                else => {},
+            }
+        },
+        else => {},
+    }
+
+    const node = try popped.toNode(alloc, self.line_num);
     errdefer node.deinit(alloc);
-    try self.top().addChild(scratch, node);
+    try top_container.addChild(scratch, node);
 }
 
 fn parseBlockquoteOpen(
     scratch: Allocator,
     it: *TokenIterator(BlockTokenType),
+    line_num: usize,
 ) !?ContainerBlock {
     const checkpoint_index = it.checkpoint();
     var did_parse = false;
@@ -626,6 +741,7 @@ fn parseBlockquoteOpen(
         .variant = .{
             .blockquote = .{},
         },
+        .start_line_num = line_num,
     };
 }
 
@@ -633,6 +749,7 @@ fn parseBulletListOpen(
     scratch: Allocator,
     it: *TokenIterator(BlockTokenType),
     in_paragraph: bool,
+    line_num: usize,
 ) !?ContainerBlock {
     const checkpoint_index = it.checkpoint();
     defer it.backtrack(checkpoint_index); // always backtrack
@@ -680,6 +797,7 @@ fn parseBulletListOpen(
                 .marker_token_type = marker_token.token_type,
             },
         },
+        .start_line_num = line_num,
     };
 }
 
@@ -687,6 +805,7 @@ fn parseBulletListItemOpen(
     scratch: Allocator,
     it: *TokenIterator(BlockTokenType),
     marker_token_type: BlockTokenType,
+    line_num: usize,
 ) !?ContainerBlock {
     std.debug.assert(marker_token_type == .star or
         marker_token_type == .hyphen or
@@ -747,6 +866,7 @@ fn parseBulletListItemOpen(
                 .starts_with_blank_line = starts_with_blank_line,
             },
         },
+        .start_line_num = line_num,
     };
 }
 
@@ -754,6 +874,7 @@ fn parseOrderedListOpen(
     scratch: Allocator,
     it: *TokenIterator(BlockTokenType),
     in_paragraph: bool,
+    line_num: usize,
 ) !?ContainerBlock {
     const checkpoint_index = it.checkpoint();
     defer it.backtrack(checkpoint_index); // always backtrack
@@ -807,6 +928,7 @@ fn parseOrderedListOpen(
                 .start = start,
             },
         },
+        .start_line_num = line_num,
     };
 }
 
@@ -814,6 +936,7 @@ fn parseOrderedListItemOpen(
     scratch: Allocator,
     it: *TokenIterator(BlockTokenType),
     marker_token_type: BlockTokenType,
+    line_num: usize,
 ) !?ContainerBlock {
     std.debug.assert(marker_token_type == .period or
         marker_token_type == .r_paren);
@@ -878,6 +1001,7 @@ fn parseOrderedListItemOpen(
                 .starts_with_blank_line = starts_with_blank_line,
             },
         },
+        .start_line_num = line_num,
     };
 }
 
@@ -885,16 +1009,27 @@ fn parseAnyContainerOpen(
     scratch: Allocator,
     it: *TokenIterator(BlockTokenType),
     in_paragraph: bool,
+    line_num: usize,
 ) !?ContainerBlock {
-    if (try parseBlockquoteOpen(scratch, it)) |container| {
+    if (try parseBlockquoteOpen(scratch, it, line_num)) |container| {
         return container;
     }
 
-    if (try parseBulletListOpen(scratch, it, in_paragraph)) |container| {
+    if (try parseBulletListOpen(
+        scratch,
+        it,
+        in_paragraph,
+        line_num,
+    )) |container| {
         return container;
     }
 
-    if (try parseOrderedListOpen(scratch, it, in_paragraph)) |container| {
+    if (try parseOrderedListOpen(
+        scratch,
+        it,
+        in_paragraph,
+        line_num,
+    )) |container| {
         return container;
     }
 
@@ -944,36 +1079,36 @@ fn peekThematicBreak(
     return true;
 }
 
-/// Returns whether the list is spread.
-fn isSpreadList(list_items: []*ast.Node) !bool {
-    // find index of last spread child
-    var maybe_last_spread_i: ?usize = null;
-    for (list_items, 0..) |child, i| {
+fn peekBlankLine(
+    scratch: Allocator,
+    it: *TokenIterator(BlockTokenType),
+) !bool {
+    const checkpoint_index = it.checkpoint();
+    defer it.backtrack(checkpoint_index); // always backtrack
+
+    _ = try it.consumeWhitespace(scratch);
+    return (try it.consume(scratch, &.{.newline})) != null;
+}
+
+fn isSpreadListItem(has_interior_blank_line: bool) bool {
+    return has_interior_blank_line;
+}
+
+fn isSpreadList(
+    list_items: []const *ast.Node,
+    has_interior_blank_line: bool,
+) bool {
+    if (has_interior_blank_line) {
+        return true;
+    }
+
+    for (list_items) |child| {
         if (child.list_item.spread) {
-            maybe_last_spread_i = i;
+            return true;
         }
     }
 
-    const is_tight_list: bool = blk: {
-        if (maybe_last_spread_i) |last_spread_i| {
-            if (last_spread_i < list_items.len - 1) {
-                // Spread item that isn't the last child, definitely loose
-                break :blk false;
-            }
-
-            // Only spread item is the last item in the list.
-            // We are a tight list if the last item has no more than one
-            // child (the spread would have come from trailing blank
-            // lines). Otherwise we are loose.
-            const last_item = list_items[last_spread_i];
-            break :blk last_item.list_item.children.len <= 1;
-        } else {
-            // No spread children, so we must be a tight list.
-            break :blk true;
-        }
-    };
-
-    return !is_tight_list;
+    return false;
 }
 
 /// For tight lists, we want to make sure paragraphs are unwrapped.
@@ -1038,7 +1173,6 @@ fn overrideSpread(node: *ast.Node) void {
                     }
                 },
             }
-
         },
         .no => {},
     }
@@ -1599,7 +1733,7 @@ test "bullet list spread list" {
 
     const list_item_node_1 = list_node.list.children[0];
     try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node_1.*));
-    try testing.expectEqual(true, list_item_node_1.list_item.spread);
+    try testing.expectEqual(false, list_item_node_1.list_item.spread);
     try testing.expectEqual(1, list_item_node_1.list_item.children.len);
 
     const p_node_1 = list_item_node_1.list_item.children[0];
@@ -1655,7 +1789,7 @@ test "bullet list trailing blank lines" {
     {
         const child = list_node.list.children[1];
         try testing.expectEqual(.list_item, @as(ast.NodeType, child.*));
-        try testing.expectEqual(true, child.list_item.spread);
+        try testing.expectEqual(false, child.list_item.spread);
         try testing.expectEqual(1, child.list_item.children.len);
 
         const txt_node = child.list_item.children[0];
@@ -1995,7 +2129,7 @@ test "ordered list spread list" {
 
     const list_item_node_1 = list_node.list.children[0];
     try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node_1.*));
-    try testing.expectEqual(true, list_item_node_1.list_item.spread);
+    try testing.expectEqual(false, list_item_node_1.list_item.spread);
 
     const p_node_1 = list_item_node_1.list_item.children[0];
     try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node_1.*));
@@ -2050,7 +2184,7 @@ test "ordered list trailing blank lines" {
     {
         const child = list_node.list.children[1];
         try testing.expectEqual(.list_item, @as(ast.NodeType, child.*));
-        try testing.expectEqual(true, child.list_item.spread);
+        try testing.expectEqual(false, child.list_item.spread);
         try testing.expectEqual(1, child.list_item.children.len);
 
         const txt_node = child.list_item.children[0];

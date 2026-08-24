@@ -8293,7 +8293,6 @@
   },
   {
     "title": "cmark_spec_0.30: Lists - example 307",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -8437,7 +8436,6 @@
   },
   {
     "title": "cmark_spec_0.30: Lists - example 309",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -8710,7 +8708,6 @@
   },
   {
     "title": "cmark_spec_0.30: Lists - example 313",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -8949,7 +8946,6 @@
   },
   {
     "title": "cmark_spec_0.30: Lists - example 317",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -9061,7 +9057,6 @@
   },
   {
     "title": "cmark_spec_0.30: Lists - example 319",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [

@@ -211,11 +211,11 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
                     }
 
                     for (n.children, 0..) |child, i| {
-                        _ = try renderNode(child, out);
+                        const rendered = try renderNode(child, out);
 
                         // Add newline as long as this isn't a last text child
-                        if (i < n.children.len - 1 or
-                            @as(ast.NodeType, child.*) != .text)
+                        if (rendered and (i < n.children.len - 1 or
+                            @as(ast.NodeType, child.*) != .text))
                         {
                             _ = try out.writeAll("\n");
                         }
