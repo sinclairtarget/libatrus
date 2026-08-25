@@ -619,11 +619,11 @@ fn next(self: *Self, scratch: Allocator) TokenError!?BlockToken {
                 // ending the token stream for the current top container.
                 return null;
             }
-        }
 
-        // Record a blank line if this is one
-        if (try peekBlankLine(scratch, self.it)) {
-            self.top().recordBlankLine(self.line_num);
+            // Record a blank line if this is one
+            if (try peekBlankLine(scratch, self.it)) {
+                self.top().recordBlankLine(self.line_num);
+            }
         }
     }
 
