@@ -225,8 +225,6 @@ const ContainerBlock = struct {
             inline .bullet_list_item, .ordered_list_item => |payload| {
                 const spread = payload.saw_blank_line or
                     (payload.starts_with_blank_line and
-                        payload.saw_blank_line) or
-                    (payload.starts_with_blank_line and
                         owned_children.len > 0);
                 node.* = .{
                     .list_item = .{
