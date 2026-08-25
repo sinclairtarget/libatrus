@@ -234,22 +234,32 @@ const ContainerBlock = struct {
                 };
             },
             .bullet_list => {
-                _ = try tightenListChildren(alloc, owned_children);
+                const spread = try isSpreadList(owned_children);
+                if (!spread) {
+                    for (owned_children) |child| {
+                        try unwrapParagraphs(alloc, child);
+                    }
+                }
                 node.* = .{
                     .list = .{
                         .children = owned_children,
                         .ordered = false,
-                        .spread = false, // Always false for MyST 0.0.5 tests
+                        .spread = spread,
                     },
                 };
             },
             .ordered_list => |payload| {
-                _ = try tightenListChildren(alloc, owned_children);
+                const spread = try isSpreadList(owned_children);
+                if (!spread) {
+                    for (owned_children) |child| {
+                        try unwrapParagraphs(alloc, child);
+                    }
+                }
                 node.* = .{
                     .list = .{
                         .children = owned_children,
                         .ordered = true,
-                        .spread = false, // Always false for MyST 0.0.5 tests
+                        .spread = spread,
                         .start = payload.start,
                     },
                 };
@@ -266,16 +276,21 @@ leaf_parser: ?LeafBlockParser,
 container_stack: ArrayList(ContainerBlock),
 unestablished_container_i: usize,
 can_open_containers: bool,
+override_spread: bool,
 
 const Self = @This();
 
-pub fn init(it: *TokenIterator(BlockTokenType)) Self {
+pub fn init(
+    it: *TokenIterator(BlockTokenType),
+    opts: struct { override_spread: bool = false },
+) Self {
     return .{
         .it = it,
         .leaf_parser = null,
         .container_stack = .empty,
         .unestablished_container_i = 0,
         .can_open_containers = true,
+        .override_spread = opts.override_spread,
     };
 }
 
@@ -356,7 +371,13 @@ pub fn parse(
         try self.pop(alloc, scratch);
     } else @panic(util.safety.loop_bound_panic_msg);
 
-    return try self.top().toNode(alloc);
+    const root = try self.top().toNode(alloc);
+    errdefer root.deinit();
+
+    if (self.override_spread) {
+        overrideSpread(root);
+    }
+    return root;
 }
 
 /// Iterator for the leaf block parser to consume
@@ -923,12 +944,8 @@ fn peekThematicBreak(
     return true;
 }
 
-/// Handles list tightness/looseness of list children.
-///
-/// Marks list children sparse or not based on the tightness of the overall
-/// list. Also handles removing redundant paragraph descendants for tight
-/// lists.
-fn tightenListChildren(alloc: Allocator, list_items: []*ast.Node) !bool {
+/// Returns whether the list is spread.
+fn isSpreadList(list_items: []*ast.Node) !bool {
     // find index of last spread child
     var maybe_last_spread_i: ?usize = null;
     for (list_items, 0..) |child, i| {
@@ -956,21 +973,7 @@ fn tightenListChildren(alloc: Allocator, list_items: []*ast.Node) !bool {
         }
     };
 
-    if (is_tight_list) {
-        // Eliminate redundant paragraph nodes in tight list
-        for (list_items) |child| {
-            try unwrapParagraphs(alloc, child);
-        }
-    }
-
-    // Make sure all list items are marked spread.
-    //
-    // All list items have spread = true in the MyST 0.0.5 test cases.
-    for (list_items) |child| {
-        child.list_item.spread = true;
-    }
-
-    return is_tight_list;
+    return !is_tight_list;
 }
 
 /// For tight lists, we want to make sure paragraphs are unwrapped.
@@ -1007,6 +1010,40 @@ fn unwrapParagraphs(alloc: Allocator, item: *ast.Node) !void {
     }
 }
 
+/// The MyST 0.0.5 spec tests seem to expect all list items to have spread set
+/// to true and all lists to have spread set to false.
+///
+/// This doesn't make much sense and seems likely to change in subsequent
+/// versions of the spec, so we ensure compliance here with a little post-hoc
+/// transformation.
+fn overrideSpread(node: *ast.Node) void {
+    switch (node.allowedChildren()) {
+        .yes => |branch_node| {
+            switch (branch_node) {
+                .list => |n| {
+                    n.spread = false;
+                    for (n.children) |child| {
+                        overrideSpread(child);
+                    }
+                },
+                .list_item => |n| {
+                    n.spread = true;
+                    for (n.children) |child| {
+                        overrideSpread(child);
+                    }
+                },
+                inline else => |n| {
+                    for (n.children) |child| {
+                        overrideSpread(child);
+                    }
+                },
+            }
+
+        },
+        .no => {},
+    }
+}
+
 // ----------------------------------------------------------------------------
 // Unit Tests
 // ----------------------------------------------------------------------------
@@ -1020,7 +1057,7 @@ fn parseBlocks(md: []const u8) !*ast.Node {
     const line_reader: LineReader = .{ .in = &reader, .buf = &line_buf };
     var tokenizer = BlockTokenizer.init(line_reader);
     var it = tokenizer.iterator();
-    var parser = Self.init(&it);
+    var parser = Self.init(&it, .{});
 
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
@@ -1466,7 +1503,7 @@ test "simple bullet list" {
             .list_item,
             @as(ast.NodeType, list_item_node.*),
         );
-        try testing.expectEqual(true, list_item_node.list_item.spread);
+        try testing.expectEqual(false, list_item_node.list_item.spread);
         try testing.expectEqual(1, list_item_node.list_item.children.len);
 
         const txt_node = list_item_node.list_item.children[0];
@@ -1519,7 +1556,7 @@ test "bullet list spread item" {
     const list_node = root_node.root.children[0];
     try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
     try testing.expectEqual(false, list_node.list.ordered);
-    try testing.expectEqual(false, list_node.list.spread);
+    try testing.expectEqual(true, list_node.list.spread);
     try testing.expectEqual(2, list_node.list.children.len);
 
     const list_item_node_1 = list_node.list.children[0];
@@ -1529,7 +1566,7 @@ test "bullet list spread item" {
 
     const list_item_node_2 = list_node.list.children[1];
     try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node_2.*));
-    try testing.expectEqual(true, list_item_node_2.list_item.spread);
+    try testing.expectEqual(false, list_item_node_2.list_item.spread);
     try testing.expectEqual(1, list_item_node_2.list_item.children.len);
 
     const p_node_2 = list_item_node_2.list_item.children[0];
@@ -1557,7 +1594,7 @@ test "bullet list spread list" {
     const list_node = root_node.root.children[0];
     try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
     try testing.expectEqual(false, list_node.list.ordered);
-    try testing.expectEqual(false, list_node.list.spread);
+    try testing.expectEqual(true, list_node.list.spread);
     try testing.expectEqual(2, list_node.list.children.len);
 
     const list_item_node_1 = list_node.list.children[0];
@@ -1574,7 +1611,7 @@ test "bullet list spread list" {
 
     const list_item_node_2 = list_node.list.children[1];
     try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node_2.*));
-    try testing.expectEqual(true, list_item_node_2.list_item.spread);
+    try testing.expectEqual(false, list_item_node_2.list_item.spread);
 
     const p_node_2 = list_item_node_2.list_item.children[0];
     try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node_2.*));
@@ -1608,7 +1645,7 @@ test "bullet list trailing blank lines" {
     {
         const child = list_node.list.children[0];
         try testing.expectEqual(.list_item, @as(ast.NodeType, child.*));
-        try testing.expectEqual(true, child.list_item.spread);
+        try testing.expectEqual(false, child.list_item.spread);
         try testing.expectEqual(1, child.list_item.children.len);
 
         const txt_node = child.list_item.children[0];
@@ -1645,7 +1682,7 @@ test "bullet list match indent" {
     const list_node = root_node.root.children[0];
     try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
     try testing.expectEqual(false, list_node.list.ordered);
-    try testing.expectEqual(false, list_node.list.spread);
+    try testing.expectEqual(true, list_node.list.spread);
     try testing.expectEqual(1, list_node.list.children.len);
 
     const list_item_node = list_node.list.children[0];
@@ -1793,7 +1830,7 @@ test "interleave blockquote and bullet list" {
     {
         const item_node = list_node.list.children[1];
         try testing.expectEqual(.list_item, @as(ast.NodeType, item_node.*));
-        try testing.expectEqual(true, item_node.list_item.spread);
+        try testing.expectEqual(false, item_node.list_item.spread);
         try testing.expectEqual(1, item_node.list_item.children.len);
 
         const nested_bq_node = item_node.list_item.children[0];
@@ -1834,7 +1871,7 @@ test "simple ordered list" {
             .list_item,
             @as(ast.NodeType, list_item_node.*),
         );
-        try testing.expectEqual(true, list_item_node.list_item.spread);
+        try testing.expectEqual(false, list_item_node.list_item.spread);
         try testing.expectEqual(1, list_item_node.list_item.children.len);
 
         const txt_node = list_item_node.list_item.children[0];
@@ -1887,7 +1924,7 @@ test "ordered list invalid number not at start" {
 
     const list_item_node = list_node.list.children[0];
     try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node.*));
-    try testing.expectEqual(true, list_item_node.list_item.spread);
+    try testing.expectEqual(false, list_item_node.list_item.spread);
     try testing.expectEqual(1, list_item_node.list_item.children.len);
 
     const txt_node = list_item_node.list_item.children[0];
@@ -1916,7 +1953,7 @@ test "ordered list spread item" {
     const list_node = root_node.root.children[0];
     try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
     try testing.expectEqual(true, list_node.list.ordered);
-    try testing.expectEqual(false, list_node.list.spread);
+    try testing.expectEqual(true, list_node.list.spread);
     try testing.expectEqual(2, list_node.list.children.len);
 
     const list_item_node_1 = list_node.list.children[0];
@@ -1926,7 +1963,7 @@ test "ordered list spread item" {
 
     const list_item_node_2 = list_node.list.children[1];
     try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node_2.*));
-    try testing.expectEqual(true, list_item_node_2.list_item.spread);
+    try testing.expectEqual(false, list_item_node_2.list_item.spread);
 
     const p_node_2 = list_item_node_2.list_item.children[0];
     try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node_2.*));
@@ -1953,7 +1990,7 @@ test "ordered list spread list" {
     const list_node = root_node.root.children[0];
     try testing.expectEqual(.list, @as(ast.NodeType, list_node.*));
     try testing.expectEqual(true, list_node.list.ordered);
-    try testing.expectEqual(false, list_node.list.spread);
+    try testing.expectEqual(true, list_node.list.spread);
     try testing.expectEqual(2, list_node.list.children.len);
 
     const list_item_node_1 = list_node.list.children[0];
@@ -1969,7 +2006,7 @@ test "ordered list spread list" {
 
     const list_item_node_2 = list_node.list.children[1];
     try testing.expectEqual(.list_item, @as(ast.NodeType, list_item_node_2.*));
-    try testing.expectEqual(true, list_item_node_2.list_item.spread);
+    try testing.expectEqual(false, list_item_node_2.list_item.spread);
 
     const p_node_2 = list_item_node_2.list_item.children[0];
     try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node_2.*));
@@ -2003,7 +2040,7 @@ test "ordered list trailing blank lines" {
     {
         const child = list_node.list.children[0];
         try testing.expectEqual(.list_item, @as(ast.NodeType, child.*));
-        try testing.expectEqual(true, child.list_item.spread);
+        try testing.expectEqual(false, child.list_item.spread);
         try testing.expectEqual(1, child.list_item.children.len);
 
         const txt_node = child.list_item.children[0];

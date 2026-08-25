@@ -102,7 +102,10 @@ pub fn parse(
     logger.debug("Beginning block parsing...", .{});
     var block_tokenizer = BlockTokenizer.init(line_reader);
     var iterator = block_tokenizer.iterator();
-    var block_parser = ContainerBlockParser.init(&iterator);
+    var block_parser = ContainerBlockParser.init(
+        &iterator,
+        .{ .override_spread = true }, // MyST 0.0.5 spec compatability
+    );
     var root = try block_parser.parse(alloc, scratch, &link_defs);
     logger.debug("Done in {D}.", .{timer.read()});
 

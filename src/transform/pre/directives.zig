@@ -15,7 +15,7 @@ pub fn transform(
     original_node: *ast.Node,
 ) !*ast.Node {
     switch (original_node.allowedChildren()) {
-        .yes => |leaf_node| switch (leaf_node) {
+        .yes => |branch_node| switch (branch_node) {
             .myst_directive => |n| {
                 // Check to see if we have already transformed this node. If
                 // so, abort. This ensures the transform is idempotent.
