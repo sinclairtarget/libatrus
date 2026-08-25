@@ -163,7 +163,7 @@ pub fn parse(
         }
 
         // blank lines
-        if (try self.it.consume(scratch, &.{.newline}) != null) {
+        if (try self.parseBlankLine(scratch)) {
             try children.flush(); // Blank lines close paragraphs
             continue;
         }
@@ -2459,6 +2459,19 @@ fn parseMySTDirectiveOption(
     };
 }
 
+fn parseBlankLine(self: *Self, scratch: Allocator) !bool {
+    var did_parse = false;
+    const checkpoint_index = self.it.checkpoint();
+    defer if (!did_parse) {
+        self.it.backtrack(checkpoint_index);
+    };
+    _ = try self.it.consumeWhitespace(scratch);
+    _ = try self.it.consume(scratch, &.{.newline}) orelse return false;
+
+    did_parse = true;
+    return true;
+}
+
 /// Scan text for a paragraph. Returns the scanned text.
 ///
 /// Paragraph can start with almost anything. If the token could have been
@@ -2786,10 +2799,33 @@ test "blank lines" {
 
     const text_node = p_node.paragraph.children[0];
     try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
-    try testing.expectEqualStrings(
-        "foo",
-        text_node.text.value,
-    );
+    try testing.expectEqualStrings("foo", text_node.text.value);
+}
+
+test "interior blank lines" {
+    const md = "foo\n  \nfoo\n";
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksMd(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(2, nodes.len);
+
+    for (nodes) |node| {
+        try testing.expectEqual(.paragraph, @as(ast.NodeType, node.*));
+        try testing.expectEqual(1, node.paragraph.children.len);
+
+        const text_node = node.paragraph.children[0];
+        try testing.expectEqual(.text, @as(ast.NodeType, text_node.*));
+        try testing.expectEqualStrings("foo", text_node.text.value);
+    }
 }
 
 test "thematic breaks" {
