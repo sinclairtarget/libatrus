@@ -8,24 +8,30 @@ const ast = @import("../ast.zig");
 /// The given AST node might be the root, but it might not. We support
 /// rendering arbitrary subtrees of a complete MyST AST.
 pub fn render(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!void {
-    _ = try renderNode(node, out);
+    if (try renderNode(node, out)) {
+        _ = try out.print("\n", .{}); // add trailing newline
+    }
     try out.flush();
 }
 
-/// Renders output, returning true if anything was written.
+/// Renders output, returning true if anything was written (directly or by a
+/// further child node).
+///
+/// Node is always rendered without a trailing newline.
 fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
     switch (node.*) {
-        .root => |n| {
-            for (n.children) |child| {
-                _ = try renderNode(child, out);
-            }
-        },
-        .block => |n| {
-            for (n.children) |child| {
+        inline .root, .block => |n| {
+            var wrote_anything = false;
+            for (n.children, 0..) |child, i| {
                 if (try renderNode(child, out)) {
-                    try out.print("\n", .{});
+                    wrote_anything = true;
+                    if (i < n.children.len - 1) {
+                        try out.print("\n", .{});
+                    }
                 }
             }
+
+            return wrote_anything;
         },
         .blockquote => |n| {
             try out.print("<blockquote>\n", .{});
@@ -84,7 +90,7 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
             try out.print("</code></pre>", .{});
         },
         .@"break" => {
-            try out.print("<br />\n", .{});
+            try out.print("<br />", .{});
         },
         .thematic_break => {
             try out.print("<hr />", .{});
@@ -136,14 +142,13 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
             // Rendered verbatim, unescaped!
             try out.print("{s}", .{n.value});
         },
-        // Doesn't get rendered
-        .definition => return false,
+        .definition => return false, // Doesn't get rendered
         .container => |n| {
             const kind = n.kind;
             if (std.mem.eql(u8, kind, "figure")) {
                 try renderFigure(out, node);
             } else {
-                @panic("no HTML rendering implementation for  container kind");
+                @panic("no HTML rendering implementation for container kind");
             }
         },
         .caption => |n| {
@@ -333,7 +338,8 @@ fn renderNode(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!bool {
 
             // If we don't have a child title, we must render one ourselves.
             // But only if we aren't a simple admonition.
-            const have_title = (n.children.len == 0 or @as(ast.NodeType, n.children[0].*) != .admonition_title);
+            const have_title = (n.children.len == 0 or
+                @as(ast.NodeType, n.children[0].*) != .admonition_title);
             if (have_title and !std.mem.eql(u8, kind, "admonition")) {
                 _ = try out.writeAll("  ");
                 try renderAdmonitionTitle(out, kind);
@@ -435,4 +441,34 @@ fn printHTMLEscapedAttrValue(
             else => try out.writeByte(c),
         }
     }
+}
+
+// ----------------------------------------------------------------------------
+// Unit Tests
+// ----------------------------------------------------------------------------
+const testing = std.testing;
+
+fn renderAndCompare(root: *ast.Node, expected: []const u8) !void {
+    var buf = Io.Writer.Allocating.init(testing.allocator);
+    try render(root, &buf.writer);
+    const result = try buf.toOwnedSlice();
+    defer testing.allocator.free(result);
+
+    try testing.expectEqualStrings(expected, result);
+}
+
+test "emtpy ast" {
+    var root: ast.Node = .{
+        .root = .{ .children = &.{} },
+    };
+    try renderAndCompare(&root, "");
+
+    var block: ast.Node = .{
+        .block = .{ .children = &.{} },
+    };
+    var children = [_]*ast.Node{&block};
+    root = .{
+        .root = .{ .children = &children },
+    };
+    try renderAndCompare(&root, "");
 }

@@ -119,7 +119,6 @@ pub fn main() !void {
                 },
                 .html => {
                     try atrus.renderHTML(ast, stdout, .{});
-                    try stdout.print("\n", .{});
                 },
                 .typst => try atrus.renderTypst(ast, stdout, .{}),
             }
