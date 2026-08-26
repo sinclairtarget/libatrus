@@ -185,7 +185,7 @@ pub fn transform(
     return transformed;
 }
 
-pub const HTMLOptions = struct {}; // No options (yet!)
+pub const HTMLOptions = html.Options;
 
 pub const RenderHTMLError = error{
     WriteFailed,
@@ -199,8 +199,7 @@ pub fn renderHTML(
     out: *Io.Writer,
     options: HTMLOptions,
 ) RenderHTMLError!void {
-    _ = options;
-    try html.render(root, out);
+    try html.render(root, out, options);
 }
 
 pub const JSONOptions = json.Options;
