@@ -10335,7 +10335,6 @@
   },
   {
     "title": "cmark_spec_0.30: Emphasis and strong emphasis - example 366",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
