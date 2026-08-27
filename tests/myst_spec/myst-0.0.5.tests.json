@@ -17963,7 +17963,7 @@
   },
   {
     "title": "commonmark.breaks: CommonMark hard breaks",
-    "skip": true,
+    "skip_html": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -17990,7 +17990,7 @@
   },
   {
     "title": "commonmark.breaks: CommonMark thematic breaks",
-    "skip": true,
+    "skip_html": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -18195,7 +18195,7 @@
   },
   {
     "title": "commonmark.links: CommonMark inline image",
-    "skip": true,
+    "skip_html": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -18217,7 +18217,6 @@
   },
   {
     "title": "commonmark.lists: CommonMark bullet list",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -18288,11 +18287,11 @@
       ]
     },
     "myst": "- headings\n- lists\n  - bullets\n  - numbers\n- code blocks",
+    "html_indented": true,
     "html": "<ul>\n  <li>headings</li>\n  <li>lists\n    <ul>\n      <li>bullets</li>\n      <li>numbers</li>\n    </ul>\n  </li>\n  <li>code blocks</li>\n</ul>\n"
   },
   {
     "title": "commonmark.lists: CommonMark numbered list",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -18337,6 +18336,7 @@
       ]
     },
     "myst": "1. quotes\n2. breaks\n3. links",
+    "html_indented": true,
     "html": "<ol>\n  <li>quotes</li>\n  <li>breaks</li>\n  <li>links</li>\n</ol>\n"
   },
   {
@@ -18437,7 +18437,6 @@
   },
   {
     "title": "commonmark.quotes: CommonMark blockquote",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -18458,6 +18457,7 @@
       ]
     },
     "myst": "> To be or not to be",
+    "html_indented": true,
     "html": "<blockquote>\n  <p>To be or not to be</p>\n</blockquote>\n"
   },
   {
