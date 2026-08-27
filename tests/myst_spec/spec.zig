@@ -9,6 +9,7 @@ pub const TestCase = struct {
     myst: []const u8,
     mdast: json.Value,
     html: ?[]const u8 = null,
+    html_indented: bool = false,
     skip: bool = false,
 };
 

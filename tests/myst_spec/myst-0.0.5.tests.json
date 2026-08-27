@@ -18490,6 +18490,7 @@
       ]
     },
     "myst": "```{attention} Admonition attention\n```",
+    "html_indented": true,
     "html": "<aside class=\"admonition attention\">\n  <p class=\"admonition-title\">Attention</p>\n  <p>Admonition attention</p>\n</aside>\n"
   },
   {
@@ -18522,6 +18523,7 @@
       ]
     },
     "myst": "```{caution} Admonition caution\n```",
+    "html_indented": true,
     "html": "<aside class=\"admonition caution\">\n  <p class=\"admonition-title\">Caution</p>\n  <p>Admonition caution</p>\n</aside>\n"
   },
   {
@@ -18554,6 +18556,7 @@
       ]
     },
     "myst": "```{danger} Admonition danger\n```",
+    "html_indented": true,
     "html": "<aside class=\"admonition danger\">\n  <p class=\"admonition-title\">Danger</p>\n  <p>Admonition danger</p>\n</aside>\n"
   },
   {
@@ -18586,6 +18589,7 @@
       ]
     },
     "myst": "```{error} Admonition error\n```",
+    "html_indented": true,
     "html": "<aside class=\"admonition error\">\n  <p class=\"admonition-title\">Error</p>\n  <p>Admonition error</p>\n</aside>\n"
   },
   {
@@ -18618,6 +18622,7 @@
       ]
     },
     "myst": "```{important} Admonition important\n```",
+    "html_indented": true,
     "html": "<aside class=\"admonition important\">\n  <p class=\"admonition-title\">Important</p>\n  <p>Admonition important</p>\n</aside>\n"
   },
   {
@@ -18650,6 +18655,7 @@
       ]
     },
     "myst": "```{hint} Admonition hint\n```",
+    "html_indented": true,
     "html": "<aside class=\"admonition hint\">\n  <p class=\"admonition-title\">Hint</p>\n  <p>Admonition hint</p>\n</aside>\n"
   },
   {
@@ -18682,6 +18688,7 @@
       ]
     },
     "myst": "```{note} Admonition note\n```",
+    "html_indented": true,
     "html": "<aside class=\"admonition note\">\n  <p class=\"admonition-title\">Note</p>\n  <p>Admonition note</p>\n</aside>\n"
   },
   {
@@ -18714,6 +18721,7 @@
       ]
     },
     "myst": "```{seealso} Admonition seealso\n```",
+    "html_indented": true,
     "html": "<aside class=\"admonition seealso\">\n  <p class=\"admonition-title\">See Also</p>\n  <p>Admonition seealso</p>\n</aside>\n"
   },
   {
@@ -18746,6 +18754,7 @@
       ]
     },
     "myst": "```{tip} Admonition tip\n```",
+    "html_indented": true,
     "html": "<aside class=\"admonition tip\">\n  <p class=\"admonition-title\">Tip</p>\n  <p>Admonition tip</p>\n</aside>\n"
   },
   {
@@ -18778,6 +18787,7 @@
       ]
     },
     "myst": "```{warning} Admonition warning\n```",
+    "html_indented": true,
     "html": "<aside class=\"admonition warning\">\n  <p class=\"admonition-title\">Warning</p>\n  <p>Admonition warning</p>\n</aside>\n"
   },
   {
@@ -18832,6 +18842,7 @@
       ]
     },
     "myst": "```{admonition} This is a title\n  An example of an admonition with a _title_.\n```",
+    "html_indented": true,
     "html": "<aside class=\"admonition\">\n  <p class=\"admonition-title\">This is a title</p>\n  <p>An example of an admonition with a <em>title</em>.</p>\n</aside>\n"
   },
   {
@@ -18864,6 +18875,7 @@
       ]
     },
     "myst": "```{note}\n  Please note!\n```",
+    "html_indented": true,
     "html": "<aside class=\"admonition note\">\n  <p class=\"admonition-title\">Note</p>\n  <p>Please note!</p>\n</aside>\n"
   },
   {
@@ -18931,6 +18943,7 @@
       ]
     },
     "myst": "```{admonition} This is a title!\n:class: tip\n\nAn example of a general `admonition` with a custom _class_.\n```",
+    "html_indented": true,
     "html": "<aside class=\"tip admonition\">\n  <p class=\"admonition-title\">This is a title!</p>\n  <p>An example of a general <code>admonition</code> with a custom <em>class</em>.</p>\n</aside>\n"
   },
   {
@@ -18968,6 +18981,7 @@
       ]
     },
     "myst": "```{seealso}\n:class: tip\nTip class comes first!!\n```",
+    "html_indented": true,
     "html": "<aside class=\"tip admonition seealso\">\n  <p class=\"admonition-title\">See Also</p>\n  <p>Tip class comes first!!</p>\n</aside>\n"
   },
   {

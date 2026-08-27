@@ -79,7 +79,16 @@ const Test = struct {
         );
         if (self.case.html) |expected_html| {
             outbuf = Io.Writer.Allocating.init(alloc);
-            try atrus.renderHTML(post_ast, &outbuf.writer, .{});
+            try atrus.renderHTML(
+                post_ast,
+                &outbuf.writer,
+                .{
+                    .whitespace = if (self.case.html_indented)
+                        .indent_2
+                    else
+                        .indent_none,
+                },
+            );
             const actual_html = outbuf.written();
             if (!std.mem.eql(u8, expected_html, actual_html)) {
                 if (options.verbose) {

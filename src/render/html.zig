@@ -380,9 +380,9 @@ fn renderNode(
 
             // If we don't have a child title, we must render one ourselves.
             // But only if we aren't a simple admonition.
-            const have_title = (n.children.len == 0 or
+            const missing_title = (n.children.len == 0 or
                 @as(ast.NodeType, n.children[0].*) != .admonition_title);
-            if (have_title and !std.mem.eql(u8, kind, "admonition")) {
+            if (missing_title and !std.mem.eql(u8, kind, "admonition")) {
                 try printIndent(out, options, f.depth + 1);
                 try renderAdmonitionTitle(out, kind);
                 _ = try out.writeAll("\n");
@@ -414,13 +414,11 @@ fn renderNode(
                     out,
                     options,
                     .{
-                        .depth = f.depth + 1,
-                        .begin_line = true,
+                        .depth = f.depth,
+                        .begin_line = false,
                     },
                 );
-                _ = try out.writeAll("\n");
             }
-            try printIndent(out, options, f.depth);
             _ = try out.writeAll("</p>");
         },
         // --- Inlines ---
