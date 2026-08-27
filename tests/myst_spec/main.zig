@@ -2,8 +2,8 @@
 //!
 //! Since we load the test cases from a JSON file rather than defining them in
 //! our Zig source, this is just a regular Zig CLI program and not a module
-//! containing Zig test declarations. We consider a non-zero exit code a failure
-//! of the test suite.
+//! containing Zig test declarations. We consider a non-zero exit code a
+//! failure of the test suite.
 //!
 //! The MyST spec tests verify that the "raw" AST output by libatrus is
 //! correct.
@@ -77,7 +77,8 @@ const Test = struct {
             &reader,
             .{ .parse_level = .post },
         );
-        if (self.case.html) |expected_html| {
+        if (self.case.html != null and !self.case.skip_html) {
+            const expected_html = self.case.html.?;
             outbuf = Io.Writer.Allocating.init(alloc);
             try atrus.renderHTML(
                 post_ast,
@@ -181,6 +182,7 @@ pub fn main() !void {
 
         defer _ = per_test_arena.reset(.retain_capacity);
         t.run(per_test_arena.allocator(), .{}) catch |err| {
+            // show error in red
             std.debug.print(
                 "{d}/{d} \x1b[31m{any}: {s}\x1b[0m\n",
                 .{ i, tests.len, err, t.case.title },
@@ -197,9 +199,11 @@ pub fn main() !void {
             continue;
         };
 
+        // show success in green
+        const extra = if (t.case.skip_html) " (skipped html)" else "";
         std.debug.print(
-            "{d}/{d} \x1b[32m{s}\x1b[0m\n",
-            .{ i, tests.len, t.case.title },
+            "{d}/{d} \x1b[32m{s}\x1b[0m{s}\n",
+            .{ i, tests.len, t.case.title, extra },
         );
         num_succeeded += 1;
     }

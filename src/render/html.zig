@@ -1,3 +1,9 @@
+//! HTML renderer.
+//!
+//! Some stylistic choices we stick to:
+//! * Self-closing tags are always rendered with a closing forward-slash after
+//!   a space, e.g. `<br />` or `<hr />`.
+
 const std = @import("std");
 const Io = std.Io;
 
