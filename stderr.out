@@ -1,3 +1,0 @@
-info(main): Parsing with options: .{ .filepath = '_scratch/examples/test.md', .output_choice = .html, .parse_level = .post }
-info(main): Rendering...
-info(main): Done.
