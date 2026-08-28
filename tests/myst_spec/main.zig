@@ -5,7 +5,7 @@
 //! containing Zig test declarations. We consider a non-zero exit code a
 //! failure of the test suite.
 //!
-//! The MyST spec tests verify that the "raw" AST output by libatrus is
+//! The MyST spec tests verify that the "pre" AST output by libatrus is
 //! correct.
 
 const std = @import("std");
