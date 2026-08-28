@@ -34,6 +34,7 @@ pub const NodeType = enum(c_uint) {
     caption = 26,
     list = 27,
     list_item = 28,
+    comment = 29,
     // built-in roles
     myst_role = 16,
     myst_role_error = 17,
@@ -56,6 +57,7 @@ pub const NodeType = enum(c_uint) {
             .myst_directive_error => "mystDirectiveError",
             .admonition_title => "admonitionTitle",
             .list_item => "listItem",
+            .comment => "mystComment",
             else => @tagName(self),
         };
     }
@@ -83,6 +85,7 @@ pub const Node = union(NodeType) {
     caption: Wrapper,
     list: List,
     list_item: ListItem,
+    comment: Text,
     myst_role: MySTRole,
     myst_role_error: MySTRoleError,
     subscript: Wrapper,
@@ -466,6 +469,7 @@ pub const AllowedChildren = enum {
             .image,
             .html,
             .myst_role_error,
+            .comment,
             => .no,
         };
     }

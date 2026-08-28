@@ -149,6 +149,7 @@ fn matchSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
         '/' => .slash,
         '.' => .period,
         '=' => .equals,
+        '%' => .percent,
         ' ' => .space,
         '\t' => .tab,
         else => return null,
@@ -1015,6 +1016,16 @@ test "escaped quote tokens" {
         .escaped_single_quote,
         .text,
         .single_quote,
+        .newline,
+    }, md);
+}
+
+test "MyST comment" {
+    const md = "% foobar\n";
+    try expectEqualTokens(&.{
+        .percent,
+        .space,
+        .text,
         .newline,
     }, md);
 }

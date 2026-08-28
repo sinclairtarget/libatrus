@@ -427,6 +427,14 @@ fn renderNode(
             }
             _ = try out.writeAll("</p>");
         },
+        .comment => |n| {
+            if (f.begin_line) {
+                try printIndent(out, options, f.depth);
+            }
+            _ = try out.writeAll("<!--");
+            _ = try printEscapedComment(out, n.value);
+            _ = try out.writeAll("-->");
+        },
         // --- Inlines ---
         .text => |n| {
             if (f.begin_line) {
@@ -728,6 +736,28 @@ fn willRenderAnything(node: *const ast.Node) bool {
     };
 }
 
+fn printEscapedComment(
+    out: *Io.Writer,
+    s: []const u8,
+) Io.Writer.Error!void {
+    var i: usize = 0;
+    while (i < s.len) {
+        if (i + 4 <= s.len and std.mem.eql(u8, s[i..i+4], "--!>")) {
+            _ = try out.writeAll("--!&gt;");
+            i += 4;
+        } else if (i + 3 <= s.len and std.mem.eql(u8, s[i..i+3], "<!-")) {
+            _ = try out.writeAll("&lt;!-");
+            i += 3;
+        } else if (i + 2 <= s.len and std.mem.eql(u8, s[i..i+2], "->")) {
+            _ = try out.writeAll("-&gt;");
+            i += 2;
+        } else {
+            _ = try out.writeByte(s[i]);
+            i += 1;
+        }
+    }
+}
+
 /// HTML-escape output to appear as text content.
 fn printHTMLEscapedContent(
     out: *Io.Writer,
@@ -967,4 +997,25 @@ test "render list with indentation" {
     ;
 
     try renderAndCompare(&root_node, .{ .whitespace = .indent_2 }, expected);
+}
+
+test "render comment escaping" {
+    var comment_node: ast.Node = .{
+        .comment = .{
+            .value = "<!- -> <script> --> --!>",
+        },
+    };
+    var root_node: ast.Node = blk: {
+        var children = [_]*ast.Node{&comment_node};
+        break :blk .{
+            .root = .{ .children = &children },
+        };
+    };
+
+    const expected =
+        \\<!--&lt;!- -&gt; <script> --&gt; --!&gt;-->
+        \\
+    ;
+
+    try renderAndCompare(&root_node, .{}, expected);
 }

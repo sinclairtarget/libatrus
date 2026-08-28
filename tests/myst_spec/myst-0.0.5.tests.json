@@ -17882,7 +17882,6 @@
   },
   {
     "title": "comments: Simple comment",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -17897,7 +17896,6 @@
   },
   {
     "title": "comments: Comment between paragraphs",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -17926,11 +17924,11 @@
       ]
     },
     "myst": "Something\n% A comment\nSomething else",
+    "skip_html": true,
     "html": "<p>Something</p><!--A comment-->\n<p>Something else</p>\n"
   },
   {
     "title": "comments: Comment with script tag",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -17959,6 +17957,7 @@
       ]
     },
     "myst": "Something\n% A comment --> <script>\nSomething else",
+    "skip_html": true,
     "html": "<p>Something</p><!--A comment --&#x3E; <script>-->\n<p>Something else</p>\n"
   },
   {

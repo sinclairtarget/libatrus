@@ -176,7 +176,7 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
             },
         },
         .no => |leaf_node| switch (leaf_node) {
-            inline .text, .inline_code, .html => |n| {
+            inline .text, .inline_code, .html, .comment => |n| {
                 try stringify.objectField("value");
                 try stringify.write(n.value);
             },
@@ -216,7 +216,7 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
                 }
             },
             .@"break", .thematic_break => {},
-            .definition => unreachable,
+            .definition => unreachable, // See above
             .myst_role_error => |n| {
                 try stringify.objectField("value");
                 try stringify.write(n.value);

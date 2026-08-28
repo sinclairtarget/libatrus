@@ -110,6 +110,11 @@ pub fn parse(
             }
         }
 
+        if (try self.parseMySTComment(alloc, scratch)) |comment| {
+            try children.append(comment);
+            continue;
+        }
+
         {
             const result = try self.parseMySTDirective(alloc, scratch);
             if (result.maybe_node) |directive| {
@@ -387,6 +392,51 @@ fn parseThematicBreak(
 
     const node = try alloc.create(ast.Node);
     node.* = .{ .thematic_break = {} };
+    did_parse = true;
+    return node;
+}
+
+/// Parses a MyST comment.
+///
+/// A MyST comment begins with '%' at the start of the line and continues to
+/// the end of the line. Can be optionally indented three spaces.
+fn parseMySTComment(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) !?*ast.Node {
+    var did_parse = false;
+    const checkpoint_index = self.it.checkpoint();
+    defer if (!did_parse) {
+        self.it.backtrack(checkpoint_index);
+    };
+
+    _ = try self.it.consumeWhitespaceUpTo(scratch, 3);
+    _ = try self.it.consume(scratch, &.{.percent}) orelse return null;
+
+    var running_text = Io.Writer.Allocating.init(scratch);
+
+    while (try self.it.peek(scratch)) |token| {
+        switch (token.token_type) {
+            .newline => break,
+            else => {
+                _ = try running_text.writer.write(token.lexeme);
+                _ = try self.it.consume(scratch, &.{token.token_type});
+            },
+        }
+    }
+
+    _ = try self.it.consume(scratch, &.{.newline}) orelse unreachable;
+
+    const trimmed = std.mem.trim(u8, running_text.written(), " \t");
+
+    const value = try alloc.dupeZ(u8, trimmed);
+    errdefer alloc.free(value);
+
+    const node = try alloc.create(ast.Node);
+    node.* = .{
+        .comment = .{ .value = value },
+    };
     did_parse = true;
     return node;
 }
@@ -916,6 +966,7 @@ fn scanLinkDefDestination(self: *Self, scratch: Allocator) !?[]const u8 {
                 .slash,
                 .period,
                 .equals,
+                .percent,
                 .entity_reference,
                 .decimal_character_reference,
                 .hexadecimal_character_reference,
@@ -978,6 +1029,7 @@ fn scanLinkDefDestination(self: *Self, scratch: Allocator) !?[]const u8 {
                 .slash,
                 .period,
                 .equals,
+                .percent,
                 .entity_reference,
                 .decimal_character_reference,
                 .hexadecimal_character_reference,
@@ -2524,6 +2576,7 @@ fn scanParagraphText(self: *Self, scratch: Allocator) !?[]const u8 {
             switch (token.token_type) {
                 .newline,
                 .pound,
+                .percent,
                 .rule_underline,
                 .star,
                 .backtick_fence,
@@ -4695,4 +4748,44 @@ test "HTML unknown tag cannot interrupt paragraph" {
             "supposed\nto be inline HTML.",
         text_node.text.value,
     );
+}
+
+test "MyST comment" {
+    const md =
+        \\This is a paragraph.
+        \\   % Isn't MyST great?
+        \\This is another paragraph.
+        \\
+        \\    % This is a code block.
+        \\
+    ;
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksMd(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(4, nodes.len);
+
+    const p_node_1 = nodes[0];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node_1.*));
+
+    const comment_node = nodes[1];
+    try testing.expectEqual(.comment, @as(ast.NodeType, comment_node.*));
+    try testing.expectEqualStrings(
+        "Isn't MyST great?",
+        comment_node.comment.value,
+    );
+
+    const p_node_2 = nodes[2];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node_2.*));
+
+    const code_node = nodes[3];
+    try testing.expectEqual(.code, @as(ast.NodeType, code_node.*));
 }
