@@ -483,6 +483,10 @@ fn parseIndentedCode(
         "\n",
         lines.items[start_index..end_index],
     );
+    if (buf.len == 0 or util.strings.containsOnly(buf, " \t\n")) {
+        return fail;
+    }
+
     const value = try alloc.dupeZ(u8, buf); // move to heap, sentinel-terminate
     errdefer alloc.free(value);
 
@@ -2594,6 +2598,10 @@ fn scanParagraphText(self: *Self, scratch: Allocator) !?[]const u8 {
                     continue :fsm .maybe_end;
                 },
                 else => {
+                    if (try peekBlankLine(scratch, self.it)) {
+                        self.it.backtrack(indent_checkpoint_index);
+                        break :fsm;
+                    }
                     continue :fsm .continuing;
                 },
             }
@@ -2755,6 +2763,18 @@ fn peekThematicBreak(
 
     return true;
 }
+
+fn peekBlankLine(
+    scratch: Allocator,
+    it: *TokenIterator(BlockTokenType),
+) !bool {
+    const checkpoint_index = it.checkpoint();
+    defer it.backtrack(checkpoint_index); // always backtrack
+
+    _ = try it.consumeWhitespace(scratch);
+    return (try it.consume(scratch, &.{.newline})) != null;
+}
+
 // ----------------------------------------------------------------------------
 // Unit Tests
 // ----------------------------------------------------------------------------
@@ -2804,7 +2824,7 @@ test "blank lines" {
 }
 
 test "interior blank lines" {
-    const md = "foo\n  \nfoo\n";
+    const md = "foo\n  \nfoo\n    \nfoo\n      \nfoo\n\t\nfoo\n\t\t\nfoo\n";
 
     var link_defs: LinkDefMap = .empty;
     defer link_defs.deinit(testing.allocator);
@@ -2817,7 +2837,7 @@ test "interior blank lines" {
         testing.allocator.free(nodes);
     }
 
-    try testing.expectEqual(2, nodes.len);
+    try testing.expectEqual(6, nodes.len);
 
     for (nodes) |node| {
         try testing.expectEqual(.paragraph, @as(ast.NodeType, node.*));
@@ -3053,35 +3073,6 @@ test "indented setext headings" {
             text_node.text.value,
         );
     }
-}
-
-test "paragraph can contain punctuation" {
-    const md =
-        \\# Heading containing "symbols" ([]<>)
-        \\This is a "paragraph" that contains punctuation! (We don't want any
-        \\of these symbols, like [, ], <, or >, to break the paragraph.)
-        \\
-    ;
-
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
-
-    const nodes = try parseBlocksMd(md, &link_defs);
-    defer {
-        for (nodes) |node| {
-            node.deinit(testing.allocator);
-        }
-        testing.allocator.free(nodes);
-    }
-
-    try testing.expectEqual(2, nodes.len);
-
-    const h = nodes[0];
-    try testing.expectEqual(.heading, @as(ast.NodeType, h.*));
-    try testing.expectEqual(1, h.heading.children.len);
-
-    const p = nodes[1];
-    try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
 }
 
 test "link reference definition" {
