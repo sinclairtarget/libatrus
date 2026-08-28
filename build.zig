@@ -117,6 +117,9 @@ pub fn build(b: *std.Build) void {
     const spec_test_step = b.step("test-spec", "Run MyST spec tests");
     spec_test_step.dependOn(&test_cmds.spec.step);
 
+    const document_test_step = b.step("test-document", "Run document tests");
+    document_test_step.dependOn(&test_cmds.document.step);
+
     const c_api_test_step = b.step("test-lib", "Run C API tests");
     c_api_test_step.dependOn(&test_cmds.c_api.step);
 
@@ -125,10 +128,11 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step(
         "test",
-        "Run all tests (unit, MyST spec, CLI, C API)",
+        "Run all tests (unit, MyST spec, document, CLI, C API)",
     );
     test_step.dependOn(&test_cmds.unit.step);
     test_step.dependOn(&test_cmds.spec.step);
+    test_step.dependOn(&test_cmds.document.step);
     test_step.dependOn(&test_cmds.cli.step);
     test_step.dependOn(&test_cmds.c_api.step);
 
@@ -254,15 +258,21 @@ fn installLibrary(
 /// We have multiple groups of tests:
 /// * Unit tests (defined alongside the source code for the library)
 /// * Spec tests (test conformance with the MyST spec)
-/// * CLI tests (runs atrus as a subprocess, functional tests)
+/// * Document tests (test for regressions in converting to different formats)
+/// * CLI tests (runs atrus as a subprocess, tests debug CLI functionality)
 /// * C API tests (makes sure the C API links and works)
 const TestCmds = struct {
     unit: *Step.Run,
     spec: *Step.Run,
+    document: *Step.Run,
     cli: *Step.Run,
     c_api: *Step.Run,
 };
 
+// TODO: Currently some of these tests are just run as regular Zig programs
+// using addRunArtifact(). It's not clear to me if this is the best way to do
+// things. Some of these test executables will also run even when their inputs
+// have not changed (they're not properly cached).
 fn addTests(
     b: *std.Build,
     atrus_module: *std.Build.Module,
@@ -299,6 +309,27 @@ fn addTests(
         spec_tests_cmd.addArg(f);
     }
 
+    // Document tests
+    const document_module = b.createModule(.{
+        .root_source_file = b.path("tests/document/main.zig"),
+        .target = b.graph.host,
+        .imports = &.{
+            .{ .name = "atrus", .module = atrus_module },
+        },
+    });
+    const document_tests_dir = b.path("tests/document");
+    const document_options = b.addOptions();
+    document_options.addOptionPath(
+        "tests_dirpath",
+        document_tests_dir,
+    );
+    document_module.addOptions("config", document_options);
+    const document_tests_exe = b.addExecutable(.{
+        .name = "document-tests",
+        .root_module = document_module,
+    });
+    const document_tests_cmd = b.addRunArtifact(document_tests_exe);
+
     // Functional CLI tests.
     // We pass the path to the atrus executable into the tests as a config
     // option.
@@ -309,9 +340,9 @@ fn addTests(
             .target = b.graph.host,
         }),
     });
-    const options = b.addOptions();
-    options.addOptionPath("exec_path", atrus_exe.getEmittedBin()); // Adds dep
-    cli_tests.root_module.addOptions("config", options);
+    const cli_options = b.addOptions();
+    cli_options.addOptionPath("exec_path", atrus_exe.getEmittedBin()); // Adds dep
+    cli_tests.root_module.addOptions("config", cli_options);
     const cli_tests_cmd = b.addRunArtifact(cli_tests);
 
     // C API tests
@@ -334,6 +365,7 @@ fn addTests(
     return .{
         .unit = unit_tests_cmd,
         .spec = spec_tests_cmd,
+        .document = document_tests_cmd,
         .cli = cli_tests_cmd,
         .c_api = c_api_tests_cmd,
     };

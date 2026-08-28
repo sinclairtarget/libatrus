@@ -1,0 +1,285 @@
+<hr />
+<h2>title: Markdown Features I Didn't Know About
+description: Explaining some less commonly used Markdown syntax.
+date: 2026-02-23</h2>
+<p>To get some experience using Zig, I thought it'd be fun to build a Markdown
+parser. I was feeling ambitious and decided I'd try my hand at making <a href="https://github.com/sinclairtarget/libatrus">my
+parser</a> spec-compliant. I'm now
+five months deep into this &quot;fun&quot; side-project and shorn of my naivetë.</p>
+<p>It turns out Markdown is complicated. And just... big. In all my years of using
+it, I never thought to lookup the official word on what Markdown
+can and cannot do. But I wish I had. In my hours and hours of staring
+at the <a href="https://spec.commonmark.org/0.30/">Commonmark
+specification</a>, I've discovered that there
+are many features I'd have found helpful had I just known about them.</p>
+<p>Markdown parsers, even the Commonmark-compliant ones, can start to diverge in
+behavior as you combine increasingly esoteric syntax in complicated
+ways. I've tested the examples below across a few different parsers and these
+particular features are broadly supported. (Though not necessarily by syntax
+highlighters, you'll notice.)</p>
+<h2>Headings</h2>
+<p>In Markdown, you can create headings using leading <code>#</code> symbols:</p>
+<pre><code class="language-markdown"># The foobar Library
+## Installation
+You can install it by running `brew install foobar`.
+
+## Documentation
+Reference documentation is available at [this link](foobar.com/docs).
+</code></pre>
+<p>What I didn't know is that this is just one of two different &quot;styles&quot; of
+headings that Markdown supports. Headings using <code>#</code> symbols are known as
+&quot;ATX-style&quot; headings, after <a href="http://www.aaronsw.com/2002/atx/intro">the markup
+format</a> proposed by Aaron Swartz. In
+Markdown, you can also use &quot;Setext-style&quot; headings derived from <a href="https://en.wikipedia.org/wiki/Setext">Structure
+Enhanced Text</a>.</p>
+<p>Setext-style headings look like this:</p>
+<pre><code class="language-markdown">The foobar Library
+===
+Installation
+---
+You can install it by running `brew install foobar`.
+
+Documentation
+---
+Reference documentation is available at [this link](foobar.com/docs).
+</code></pre>
+<p>One thing I like about Setext-style headings is that the underline can be as
+long as you want it to be. You can use this freedom to
+clearly demarcate the various sections in your document:</p>
+<pre><code class="language-markdown">The foobar Library
+================================================================================
+Installation
+--------------------------------------------------------------------------------
+You can install it by running `brew install foobar`.
+
+Documentation
+--------------------------------------------------------------------------------
+Reference documentation is available at [this link](foobar.com/docs).
+</code></pre>
+<p>A drawback of the Setext style is that it can only be used to define
+<code>h1</code> and <code>h2</code> headings. If you need deeper levels of subheadings, you have to
+use the ATX style and give up on the longer lines. Or so I thought! Because it
+turns out you can follow an ATX-style heading with an arbitrary number of
+<code>#</code> characters, so visually demarcating your sections is still possible:</p>
+<pre><code class="language-markdown"># The foobar Library ###########################################################
+## Installation ################################################################
+The library is available on Mac OS and Arch Linux.
+
+### Mac OS #####################################################################
+Mac OS users can install it by running `brew install foobar`.
+
+### Arch #######################################################################
+Arch Linux users can install it from AUR.
+
+## Documentation ###############################################################
+Reference documentation is available at [this link](foobar.com/docs).
+</code></pre>
+<p>The following is also valid if you don't like the long lines but want an
+indicator of depth as you scan down the right-hand side:</p>
+<pre><code class="language-markdown"># The foobar Library                                                           #
+## Installation                                                               ##
+The library is available on Mac OS and Arch Linux.
+
+### Mac OS                                                                   ###
+Mac OS users can install it by running `brew install foobar`.
+
+### Arch                                                                     ###
+Arch Linux users can install it from AUR.
+
+## Documentation                                                              ##
+Reference documentation is available at [this link](foobar.com/docs).
+</code></pre>
+<h2>Blockquotes</h2>
+<p>Did you know that blockquotes can be nested? I've never had occasion to
+blockquote somebody blockquoting somebody else, but I'm happy to know that
+Markdown would be there for me if I needed to:</p>
+<pre><code class="language-markdown">In her latest newsletter, Sarah explains the virtues of Zig:
+
+&gt; Zig is great and I love it. Like my friend, Bob, says, it's just a joyful
+&gt; language to program in. As he describes it:
+&gt;
+&gt; &gt; How could you not like a language called &quot;Zig&quot;? It just makes me want to
+&gt; &gt; zig-ah-zig ah.
+&gt;
+&gt; How can you argue with that?
+
+I think Sarah has a great point.
+</code></pre>
+<p>To show you what this would look like, here's the above rendered by my own
+blog:</p>
+<blockquote>
+  <p>In her latest newsletter, Sarah explains the virtues of Zig:</p>
+  <blockquote>
+    <p>Zig is great and I love it. Like my friend, Bob, says, it's just a joyful
+language to program in. As he describes it:</p>
+    <blockquote>
+      <p>How could you not like a language called &quot;Zig&quot;? It just makes me want to
+zig-ah-zig ah.</p>
+    </blockquote>
+    <p>How can you argue with that?</p>
+  </blockquote>
+  <p>I think Sarah has a great point.</p>
+</blockquote>
+<p>The leading <code>&gt;</code> character doesn't have to precede every line of the
+blockquote, provided that the blockquote is just one paragraph long:</p>
+<pre><code class="language-markdown">&gt;Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis
+nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
+Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu
+fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in
+culpa qui officia deserunt mollit anim id est laborum.
+</code></pre>
+<p>In the Commonmark spec, the
+trailing lines without the <code>&gt;</code> are called &quot;lazy continuation lines.&quot; If you
+want to blockquote multiple paragraphs, you would typically just precede every
+line with <code>&gt;</code>. But if you're really lazy, this is technically valid:</p>
+<pre><code class="language-markdown">&gt;Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis
+nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
+Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu
+fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in
+culpa qui officia deserunt mollit anim id est laborum.
+&gt;
+&gt;Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium
+doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore
+veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim
+ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia
+consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt.
+</code></pre>
+<p>Finally, any Markdown element can be contained within blockquotes. If you want
+to blockquote somebody else's code block, you can:</p>
+<pre><code class="language-markdown">Sarah shows how to write Python on her blog:
+
+&gt; ### Functions that Do Nothing
+&gt; In Python, this is an example of a function `foo()` that does nothing:
+&gt;
+&gt; ```python
+&gt; def foo():
+&gt;     pass
+&gt; ```
+&gt;
+&gt; Wasn't that exciting?
+</code></pre>
+<p>Hugo (really <a href="https://github.com/yuin/goldmark">Goldmark</a>) can parse this, but
+I expected my blog to trip up trying to style the resulting HTML. Surprisingly:</p>
+<blockquote>
+  <p>Sarah shows how to write Python on her blog:</p>
+  <blockquote>
+    <h3>Functions that Do Nothing</h3>
+    <p>In Python, this is an example of a function <code>foo()</code> that does nothing:</p>
+    <pre><code class="language-python">def foo():
+    pass
+    </code></pre>
+    <p>Wasn't that exciting?</p>
+  </blockquote>
+</blockquote>
+<h2>Code Fences</h2>
+<p>Like headings, code fences come in two styles. There's the familiar backtick
+fence (<code>```</code>), which I've already used above to delimit code blocks.
+Delightfully, code blocks can also be delimited with squigglies:</p>
+<pre><code class="language-markdown">In Python, this is an example of a function `foo()` that does nothing:
+
+~~~python
+def foo():
+    pass
+~~~
+</code></pre>
+<p>The Commonmark specfication uses the less whimsical name, &quot;tilde fence.&quot; As far
+as I can see, the tilde fence only exists to make things easier if you want to
+use lots of backticks in your code block. But you could also avoid problems
+with nested backticks by using a longer line of backticks in the fence (the
+block won't close until a fence at least as long as the opening fence is
+reached):</p>
+<pre><code class="language-markdown">This is a Markdown code block demonstrating how to use a backtick fence:
+
+````md
+In Python, this is an example of a function `foo()` that does nothing:
+
+```python
+def foo():
+    pass
+```
+````
+</code></pre>
+<p>One small thing that clearly distinguishes tilde fences from backtick fences is
+that they allow you to use backticks in what's known as the &quot;info string.&quot; The
+info string follows the opening code fence and is canonically used to specify
+the name of the programming language used in the code block. But actually
+anything after that first word should be ignored, so with a tilde fence you
+could do this:</p>
+<pre><code class="language-markdown">In Python, this is an example of a function `foo()` that does nothing:
+
+~~~python Example of a `foo()` function that does nothing
+def foo():
+    pass
+~~~
+</code></pre>
+<p>Adding info strings like the above to your code blocks could help you keep
+track of what each code block is meant to demonstrate.</p>
+<h2>Autolinks</h2>
+<p>As long as I've been using Markdown, I've been writing links like this when I
+want the link URL to appear as text:</p>
+<pre><code class="language-markdown">I found a cool site the other day.
+
+You can visit it here: [https://foobar.com](https://foobar.com).
+</code></pre>
+<p>This works, but there's an easier way: the autolink. The following Markdown is
+equivalent to the above:</p>
+<pre><code class="language-markdown">I found a cool site the other day.
+
+You can visit it here: &lt;https://foobar.com&gt;.
+</code></pre>
+<p>There's even special support for parsing email addresses as <code>mailto:</code> links:</p>
+<pre><code class="language-markdown">I found a cool site the other day.
+
+It's run by my friend Sarah. You can reach her at &lt;sarah@mail.com&gt;.
+</code></pre>
+<h2>Hard Line Breaks and HTML Character Entities</h2>
+<p>If you need to control exactly where line breaks and spacing appear in your
+text, Markdown allows you to do that too.</p>
+<p>Hard line breaks are inserted when you end a line using a backslash. They render
+as a <code>&lt;br/&gt;</code> element in HTML.</p>
+<p>HTML numeric and character entity references, like <code>&amp;amp;</code> or <code>&amp;#1234;</code>, are
+also valid in Markdown. You can use <code>&amp;nbsp;</code> to insert non-breaking spaces.</p>
+<p>As a last example, putting these tools together, here's how you can use
+Markdown to write poetry:</p>
+<pre><code class="language-markdown">In Xanadu did Kubla Khan\
+A stately pleasure-dome decree:\
+Where Alph, the sacred river, ran\
+Through caverns measureless to man\
+&amp;nbsp; &amp;nbsp; Down to a sunless sea.\
+So twice five miles of fertile ground\
+With walls and towers were girdled round;\
+And there were gardens bright with sinuous rills,\
+Where blossomed many an incense-bearing tree;\
+And here were forests ancient as the hills,\
+Enfolding sunny spots of greenery.
+</code></pre>
+<blockquote>
+  <p>In Xanadu did Kubla Khan<br />
+A stately pleasure-dome decree:<br />
+Where Alph, the sacred river, ran<br />
+Through caverns measureless to man<br />
+    Down to a sunless sea.<br />
+So twice five miles of fertile ground<br />
+With walls and towers were girdled round;<br />
+And there were gardens bright with sinuous rills,<br />
+Where blossomed many an incense-bearing tree;<br />
+And here were forests ancient as the hills,<br />
+Enfolding sunny spots of greenery.</p>
+</blockquote>
+<h2>The Future of Markdown</h2>
+<p>The parser I'm working on is meant to be a Commonmark-compliant parser, but
+only because Commonmark's syntax is a subset of the syntax I'm actually trying
+to support. If everything goes well, sometime in 2029 my parser will support
+all of the MyST Markdown spec.</p>
+<p>MyST, or <a href="https://mystmd.org/guide/quickstart-myst-markdown">Markedly Structured
+Text</a>, adds additional
+elements to Markdown that make it easier to extend. MyST also defines an
+abstract syntax tree for Markdown documents that makes it possible to parse a
+document once and potentially output it as HTML, LaTeX, or anything else later.</p>
+<p>I'm excited about MyST. It's intended primarily for scientific publishing, but I
+see no reason it couldn't be useful for blog publishing as well. I want to use
+my parser to build a static site generator based on MyST. First, though, I'll
+need to get it successfully parsing the Markdown document for this blog post,
+which believe you me is a real doozy.</p>

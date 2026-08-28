@@ -1,0 +1,12 @@
+.{
+    .{
+        .mystmd_path = "tour/tour.md",
+        .json_path = "tour/tour.json",
+        .html_path = "tour/tour.html",
+    },
+    .{
+        .mystmd_path = "surprising-features/surprising-features.md",
+        .json_path = "surprising-features/surprising-features.json",
+        .html_path = "surprising-features/surprising-features.html",
+    },
+}

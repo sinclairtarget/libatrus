@@ -1,0 +1,1016 @@
+{
+  "type": "root",
+  "children": [
+    {
+      "type": "block",
+      "children": [
+        {
+          "type": "thematicBreak"
+        },
+        {
+          "type": "heading",
+          "depth": 2,
+          "children": [
+            {
+              "type": "text",
+              "value": "title: Markdown Features I Didn't Know About\ndescription: Explaining some less commonly used Markdown syntax.\ndate: 2026-02-23"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "To get some experience using Zig, I thought it'd be fun to build a Markdown\nparser. I was feeling ambitious and decided I'd try my hand at making "
+            },
+            {
+              "type": "link",
+              "url": "https://github.com/sinclairtarget/libatrus",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "my\nparser"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "value": " spec-compliant. I'm now\nfive months deep into this \"fun\" side-project and shorn of my naivetë."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "It turns out Markdown is complicated. And just... big. In all my years of using\nit, I never thought to lookup the official word on what Markdown\ncan and cannot do. But I wish I had. In my hours and hours of staring\nat the "
+            },
+            {
+              "type": "link",
+              "url": "https://spec.commonmark.org/0.30/",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Commonmark\nspecification"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "value": ", I've discovered that there\nare many features I'd have found helpful had I just known about them."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "Markdown parsers, even the Commonmark-compliant ones, can start to diverge in\nbehavior as you combine increasingly esoteric syntax in complicated\nways. I've tested the examples below across a few different parsers and these\nparticular features are broadly supported. (Though not necessarily by syntax\nhighlighters, you'll notice.)"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "depth": 2,
+          "children": [
+            {
+              "type": "text",
+              "value": "Headings"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "In Markdown, you can create headings using leading "
+            },
+            {
+              "type": "inlineCode",
+              "value": "#"
+            },
+            {
+              "type": "text",
+              "value": " symbols:"
+            }
+          ]
+        },
+        {
+          "type": "mystDirective",
+          "name": "code",
+          "args": "markdown",
+          "options": {
+            "linenos": true
+          },
+          "value": "# The foobar Library\n## Installation\nYou can install it by running `brew install foobar`.\n\n## Documentation\nReference documentation is available at [this link](foobar.com/docs).",
+          "children": [
+            {
+              "type": "code",
+              "lang": "markdown",
+              "showLineNumbers": true,
+              "value": "# The foobar Library\n## Installation\nYou can install it by running `brew install foobar`.\n\n## Documentation\nReference documentation is available at [this link](foobar.com/docs)."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "What I didn't know is that this is just one of two different \"styles\" of\nheadings that Markdown supports. Headings using "
+            },
+            {
+              "type": "inlineCode",
+              "value": "#"
+            },
+            {
+              "type": "text",
+              "value": " symbols are known as\n\"ATX-style\" headings, after "
+            },
+            {
+              "type": "link",
+              "url": "http://www.aaronsw.com/2002/atx/intro",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "the markup\nformat"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "value": " proposed by Aaron Swartz. In\nMarkdown, you can also use \"Setext-style\" headings derived from "
+            },
+            {
+              "type": "link",
+              "url": "https://en.wikipedia.org/wiki/Setext",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Structure\nEnhanced Text"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "value": "."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "Setext-style headings look like this:"
+            }
+          ]
+        },
+        {
+          "type": "mystDirective",
+          "name": "code",
+          "args": "markdown",
+          "options": {
+            "linenos": true
+          },
+          "value": "The foobar Library\n===\nInstallation\n---\nYou can install it by running `brew install foobar`.\n\nDocumentation\n---\nReference documentation is available at [this link](foobar.com/docs).",
+          "children": [
+            {
+              "type": "code",
+              "lang": "markdown",
+              "showLineNumbers": true,
+              "value": "The foobar Library\n===\nInstallation\n---\nYou can install it by running `brew install foobar`.\n\nDocumentation\n---\nReference documentation is available at [this link](foobar.com/docs)."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "One thing I like about Setext-style headings is that the underline can be as\nlong as you want it to be. You can use this freedom to\nclearly demarcate the various sections in your document:"
+            }
+          ]
+        },
+        {
+          "type": "mystDirective",
+          "name": "code",
+          "args": "markdown",
+          "options": {
+            "linenos": true
+          },
+          "value": "The foobar Library\n================================================================================\nInstallation\n--------------------------------------------------------------------------------\nYou can install it by running `brew install foobar`.\n\nDocumentation\n--------------------------------------------------------------------------------\nReference documentation is available at [this link](foobar.com/docs).",
+          "children": [
+            {
+              "type": "code",
+              "lang": "markdown",
+              "showLineNumbers": true,
+              "value": "The foobar Library\n================================================================================\nInstallation\n--------------------------------------------------------------------------------\nYou can install it by running `brew install foobar`.\n\nDocumentation\n--------------------------------------------------------------------------------\nReference documentation is available at [this link](foobar.com/docs)."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "A drawback of the Setext style is that it can only be used to define\n"
+            },
+            {
+              "type": "inlineCode",
+              "value": "h1"
+            },
+            {
+              "type": "text",
+              "value": " and "
+            },
+            {
+              "type": "inlineCode",
+              "value": "h2"
+            },
+            {
+              "type": "text",
+              "value": " headings. If you need deeper levels of subheadings, you have to\nuse the ATX style and give up on the longer lines. Or so I thought! Because it\nturns out you can follow an ATX-style heading with an arbitrary number of\n"
+            },
+            {
+              "type": "inlineCode",
+              "value": "#"
+            },
+            {
+              "type": "text",
+              "value": " characters, so visually demarcating your sections is still possible:"
+            }
+          ]
+        },
+        {
+          "type": "mystDirective",
+          "name": "code",
+          "args": "markdown",
+          "options": {
+            "linenos": true
+          },
+          "value": "# The foobar Library ###########################################################\n## Installation ################################################################\nThe library is available on Mac OS and Arch Linux.\n\n### Mac OS #####################################################################\nMac OS users can install it by running `brew install foobar`.\n\n### Arch #######################################################################\nArch Linux users can install it from AUR.\n\n## Documentation ###############################################################\nReference documentation is available at [this link](foobar.com/docs).",
+          "children": [
+            {
+              "type": "code",
+              "lang": "markdown",
+              "showLineNumbers": true,
+              "value": "# The foobar Library ###########################################################\n## Installation ################################################################\nThe library is available on Mac OS and Arch Linux.\n\n### Mac OS #####################################################################\nMac OS users can install it by running `brew install foobar`.\n\n### Arch #######################################################################\nArch Linux users can install it from AUR.\n\n## Documentation ###############################################################\nReference documentation is available at [this link](foobar.com/docs)."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "The following is also valid if you don't like the long lines but want an\nindicator of depth as you scan down the right-hand side:"
+            }
+          ]
+        },
+        {
+          "type": "mystDirective",
+          "name": "code",
+          "args": "markdown",
+          "options": {
+            "linenos": true
+          },
+          "value": "# The foobar Library                                                           #\n## Installation                                                               ##\nThe library is available on Mac OS and Arch Linux.\n\n### Mac OS                                                                   ###\nMac OS users can install it by running `brew install foobar`.\n\n### Arch                                                                     ###\nArch Linux users can install it from AUR.\n\n## Documentation                                                              ##\nReference documentation is available at [this link](foobar.com/docs).",
+          "children": [
+            {
+              "type": "code",
+              "lang": "markdown",
+              "showLineNumbers": true,
+              "value": "# The foobar Library                                                           #\n## Installation                                                               ##\nThe library is available on Mac OS and Arch Linux.\n\n### Mac OS                                                                   ###\nMac OS users can install it by running `brew install foobar`.\n\n### Arch                                                                     ###\nArch Linux users can install it from AUR.\n\n## Documentation                                                              ##\nReference documentation is available at [this link](foobar.com/docs)."
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "depth": 2,
+          "children": [
+            {
+              "type": "text",
+              "value": "Blockquotes"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "Did you know that blockquotes can be nested? I've never had occasion to\nblockquote somebody blockquoting somebody else, but I'm happy to know that\nMarkdown would be there for me if I needed to:"
+            }
+          ]
+        },
+        {
+          "type": "mystDirective",
+          "name": "code",
+          "args": "markdown",
+          "options": {
+            "linenos": true
+          },
+          "value": "In her latest newsletter, Sarah explains the virtues of Zig:\n\n> Zig is great and I love it. Like my friend, Bob, says, it's just a joyful\n> language to program in. As he describes it:\n>\n> > How could you not like a language called \"Zig\"? It just makes me want to\n> > zig-ah-zig ah.\n>\n> How can you argue with that?\n\nI think Sarah has a great point.",
+          "children": [
+            {
+              "type": "code",
+              "lang": "markdown",
+              "showLineNumbers": true,
+              "value": "In her latest newsletter, Sarah explains the virtues of Zig:\n\n> Zig is great and I love it. Like my friend, Bob, says, it's just a joyful\n> language to program in. As he describes it:\n>\n> > How could you not like a language called \"Zig\"? It just makes me want to\n> > zig-ah-zig ah.\n>\n> How can you argue with that?\n\nI think Sarah has a great point."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "To show you what this would look like, here's the above rendered by my own\nblog:"
+            }
+          ]
+        },
+        {
+          "type": "blockquote",
+          "children": [
+            {
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "In her latest newsletter, Sarah explains the virtues of Zig:"
+                }
+              ]
+            },
+            {
+              "type": "blockquote",
+              "children": [
+                {
+                  "type": "paragraph",
+                  "children": [
+                    {
+                      "type": "text",
+                      "value": "Zig is great and I love it. Like my friend, Bob, says, it's just a joyful\nlanguage to program in. As he describes it:"
+                    }
+                  ]
+                },
+                {
+                  "type": "blockquote",
+                  "children": [
+                    {
+                      "type": "paragraph",
+                      "children": [
+                        {
+                          "type": "text",
+                          "value": "How could you not like a language called \"Zig\"? It just makes me want to\nzig-ah-zig ah."
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "paragraph",
+                  "children": [
+                    {
+                      "type": "text",
+                      "value": "How can you argue with that?"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "I think Sarah has a great point."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "The leading "
+            },
+            {
+              "type": "inlineCode",
+              "value": ">"
+            },
+            {
+              "type": "text",
+              "value": " character doesn't have to precede every line of the\nblockquote, provided that the blockquote is just one paragraph long:"
+            }
+          ]
+        },
+        {
+          "type": "mystDirective",
+          "name": "code",
+          "args": "markdown",
+          "options": {
+            "linenos": true
+          },
+          "value": ">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor\nincididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis\nnostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\nDuis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu\nfugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in\nculpa qui officia deserunt mollit anim id est laborum.",
+          "children": [
+            {
+              "type": "code",
+              "lang": "markdown",
+              "showLineNumbers": true,
+              "value": ">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor\nincididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis\nnostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\nDuis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu\nfugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in\nculpa qui officia deserunt mollit anim id est laborum."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "In the Commonmark spec, the\ntrailing lines without the "
+            },
+            {
+              "type": "inlineCode",
+              "value": ">"
+            },
+            {
+              "type": "text",
+              "value": " are called \"lazy continuation lines.\" If you\nwant to blockquote multiple paragraphs, you would typically just precede every\nline with "
+            },
+            {
+              "type": "inlineCode",
+              "value": ">"
+            },
+            {
+              "type": "text",
+              "value": ". But if you're really lazy, this is technically valid:"
+            }
+          ]
+        },
+        {
+          "type": "mystDirective",
+          "name": "code",
+          "args": "markdown",
+          "options": {
+            "linenos": true
+          },
+          "value": ">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor\nincididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis\nnostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\nDuis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu\nfugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in\nculpa qui officia deserunt mollit anim id est laborum.\n>\n>Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium\ndoloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore\nveritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim\nipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia\nconsequuntur magni dolores eos qui ratione voluptatem sequi nesciunt.",
+          "children": [
+            {
+              "type": "code",
+              "lang": "markdown",
+              "showLineNumbers": true,
+              "value": ">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor\nincididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis\nnostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\nDuis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu\nfugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in\nculpa qui officia deserunt mollit anim id est laborum.\n>\n>Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium\ndoloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore\nveritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim\nipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia\nconsequuntur magni dolores eos qui ratione voluptatem sequi nesciunt."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "Finally, any Markdown element can be contained within blockquotes. If you want\nto blockquote somebody else's code block, you can:"
+            }
+          ]
+        },
+        {
+          "type": "mystDirective",
+          "name": "code",
+          "args": "markdown",
+          "options": {
+            "linenos": true
+          },
+          "value": "Sarah shows how to write Python on her blog:\n\n> ### Functions that Do Nothing\n> In Python, this is an example of a function `foo()` that does nothing:\n>\n> ```python\n> def foo():\n>     pass\n> ```\n>\n> Wasn't that exciting?",
+          "children": [
+            {
+              "type": "code",
+              "lang": "markdown",
+              "showLineNumbers": true,
+              "value": "Sarah shows how to write Python on her blog:\n\n> ### Functions that Do Nothing\n> In Python, this is an example of a function `foo()` that does nothing:\n>\n> ```python\n> def foo():\n>     pass\n> ```\n>\n> Wasn't that exciting?"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "Hugo (really "
+            },
+            {
+              "type": "link",
+              "url": "https://github.com/yuin/goldmark",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Goldmark"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "value": ") can parse this, but\nI expected my blog to trip up trying to style the resulting HTML. Surprisingly:"
+            }
+          ]
+        },
+        {
+          "type": "blockquote",
+          "children": [
+            {
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Sarah shows how to write Python on her blog:"
+                }
+              ]
+            },
+            {
+              "type": "blockquote",
+              "children": [
+                {
+                  "type": "heading",
+                  "depth": 3,
+                  "children": [
+                    {
+                      "type": "text",
+                      "value": "Functions that Do Nothing"
+                    }
+                  ]
+                },
+                {
+                  "type": "paragraph",
+                  "children": [
+                    {
+                      "type": "text",
+                      "value": "In Python, this is an example of a function "
+                    },
+                    {
+                      "type": "inlineCode",
+                      "value": "foo()"
+                    },
+                    {
+                      "type": "text",
+                      "value": " that does nothing:"
+                    }
+                  ]
+                },
+                {
+                  "type": "code",
+                  "lang": "python",
+                  "value": "def foo():\n    pass"
+                },
+                {
+                  "type": "paragraph",
+                  "children": [
+                    {
+                      "type": "text",
+                      "value": "Wasn't that exciting?"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "depth": 2,
+          "children": [
+            {
+              "type": "text",
+              "value": "Code Fences"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "Like headings, code fences come in two styles. There's the familiar backtick\nfence ("
+            },
+            {
+              "type": "inlineCode",
+              "value": "```"
+            },
+            {
+              "type": "text",
+              "value": "), which I've already used above to delimit code blocks.\nDelightfully, code blocks can also be delimited with squigglies:"
+            }
+          ]
+        },
+        {
+          "type": "mystDirective",
+          "name": "code",
+          "args": "markdown",
+          "options": {
+            "linenos": true
+          },
+          "value": "In Python, this is an example of a function `foo()` that does nothing:\n\n~~~python\ndef foo():\n    pass\n~~~",
+          "children": [
+            {
+              "type": "code",
+              "lang": "markdown",
+              "showLineNumbers": true,
+              "value": "In Python, this is an example of a function `foo()` that does nothing:\n\n~~~python\ndef foo():\n    pass\n~~~"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "The Commonmark specfication uses the less whimsical name, \"tilde fence.\" As far\nas I can see, the tilde fence only exists to make things easier if you want to\nuse lots of backticks in your code block. But you could also avoid problems\nwith nested backticks by using a longer line of backticks in the fence (the\nblock won't close until a fence at least as long as the opening fence is\nreached):"
+            }
+          ]
+        },
+        {
+          "type": "mystDirective",
+          "name": "code",
+          "args": "markdown",
+          "options": {
+            "linenos": true
+          },
+          "value": "This is a Markdown code block demonstrating how to use a backtick fence:\n\n````md\nIn Python, this is an example of a function `foo()` that does nothing:\n\n```python\ndef foo():\n    pass\n```\n````",
+          "children": [
+            {
+              "type": "code",
+              "lang": "markdown",
+              "showLineNumbers": true,
+              "value": "This is a Markdown code block demonstrating how to use a backtick fence:\n\n````md\nIn Python, this is an example of a function `foo()` that does nothing:\n\n```python\ndef foo():\n    pass\n```\n````"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "One small thing that clearly distinguishes tilde fences from backtick fences is\nthat they allow you to use backticks in what's known as the \"info string.\" The\ninfo string follows the opening code fence and is canonically used to specify\nthe name of the programming language used in the code block. But actually\nanything after that first word should be ignored, so with a tilde fence you\ncould do this:"
+            }
+          ]
+        },
+        {
+          "type": "mystDirective",
+          "name": "code",
+          "args": "markdown",
+          "options": {
+            "linenos": true
+          },
+          "value": "In Python, this is an example of a function `foo()` that does nothing:\n\n~~~python Example of a `foo()` function that does nothing\ndef foo():\n    pass\n~~~",
+          "children": [
+            {
+              "type": "code",
+              "lang": "markdown",
+              "showLineNumbers": true,
+              "value": "In Python, this is an example of a function `foo()` that does nothing:\n\n~~~python Example of a `foo()` function that does nothing\ndef foo():\n    pass\n~~~"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "Adding info strings like the above to your code blocks could help you keep\ntrack of what each code block is meant to demonstrate."
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "depth": 2,
+          "children": [
+            {
+              "type": "text",
+              "value": "Autolinks"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "As long as I've been using Markdown, I've been writing links like this when I\nwant the link URL to appear as text:"
+            }
+          ]
+        },
+        {
+          "type": "mystDirective",
+          "name": "code",
+          "args": "markdown",
+          "options": {
+            "linenos": true
+          },
+          "value": "I found a cool site the other day.\n\nYou can visit it here: [https://foobar.com](https://foobar.com).",
+          "children": [
+            {
+              "type": "code",
+              "lang": "markdown",
+              "showLineNumbers": true,
+              "value": "I found a cool site the other day.\n\nYou can visit it here: [https://foobar.com](https://foobar.com)."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "This works, but there's an easier way: the autolink. The following Markdown is\nequivalent to the above:"
+            }
+          ]
+        },
+        {
+          "type": "mystDirective",
+          "name": "code",
+          "args": "markdown",
+          "options": {
+            "linenos": true
+          },
+          "value": "I found a cool site the other day.\n\nYou can visit it here: <https://foobar.com>.",
+          "children": [
+            {
+              "type": "code",
+              "lang": "markdown",
+              "showLineNumbers": true,
+              "value": "I found a cool site the other day.\n\nYou can visit it here: <https://foobar.com>."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "There's even special support for parsing email addresses as "
+            },
+            {
+              "type": "inlineCode",
+              "value": "mailto:"
+            },
+            {
+              "type": "text",
+              "value": " links:"
+            }
+          ]
+        },
+        {
+          "type": "mystDirective",
+          "name": "code",
+          "args": "markdown",
+          "options": {
+            "linenos": true
+          },
+          "value": "I found a cool site the other day.\n\nIt's run by my friend Sarah. You can reach her at <sarah@mail.com>.",
+          "children": [
+            {
+              "type": "code",
+              "lang": "markdown",
+              "showLineNumbers": true,
+              "value": "I found a cool site the other day.\n\nIt's run by my friend Sarah. You can reach her at <sarah@mail.com>."
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "depth": 2,
+          "children": [
+            {
+              "type": "text",
+              "value": "Hard Line Breaks and HTML Character Entities"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "If you need to control exactly where line breaks and spacing appear in your\ntext, Markdown allows you to do that too."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "Hard line breaks are inserted when you end a line using a backslash. They render\nas a "
+            },
+            {
+              "type": "inlineCode",
+              "value": "<br/>"
+            },
+            {
+              "type": "text",
+              "value": " element in HTML."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "HTML numeric and character entity references, like "
+            },
+            {
+              "type": "inlineCode",
+              "value": "&amp;"
+            },
+            {
+              "type": "text",
+              "value": " or "
+            },
+            {
+              "type": "inlineCode",
+              "value": "&#1234;"
+            },
+            {
+              "type": "text",
+              "value": ", are\nalso valid in Markdown. You can use "
+            },
+            {
+              "type": "inlineCode",
+              "value": "&nbsp;"
+            },
+            {
+              "type": "text",
+              "value": " to insert non-breaking spaces."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "As a last example, putting these tools together, here's how you can use\nMarkdown to write poetry:"
+            }
+          ]
+        },
+        {
+          "type": "mystDirective",
+          "name": "code",
+          "args": "markdown",
+          "options": {
+            "linenos": true
+          },
+          "value": "In Xanadu did Kubla Khan\\\nA stately pleasure-dome decree:\\\nWhere Alph, the sacred river, ran\\\nThrough caverns measureless to man\\\n&nbsp; &nbsp; Down to a sunless sea.\\\nSo twice five miles of fertile ground\\\nWith walls and towers were girdled round;\\\nAnd there were gardens bright with sinuous rills,\\\nWhere blossomed many an incense-bearing tree;\\\nAnd here were forests ancient as the hills,\\\nEnfolding sunny spots of greenery.",
+          "children": [
+            {
+              "type": "code",
+              "lang": "markdown",
+              "showLineNumbers": true,
+              "value": "In Xanadu did Kubla Khan\\\nA stately pleasure-dome decree:\\\nWhere Alph, the sacred river, ran\\\nThrough caverns measureless to man\\\n&nbsp; &nbsp; Down to a sunless sea.\\\nSo twice five miles of fertile ground\\\nWith walls and towers were girdled round;\\\nAnd there were gardens bright with sinuous rills,\\\nWhere blossomed many an incense-bearing tree;\\\nAnd here were forests ancient as the hills,\\\nEnfolding sunny spots of greenery."
+            }
+          ]
+        },
+        {
+          "type": "blockquote",
+          "children": [
+            {
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "In Xanadu did Kubla Khan"
+                },
+                {
+                  "type": "break"
+                },
+                {
+                  "type": "text",
+                  "value": "A stately pleasure-dome decree:"
+                },
+                {
+                  "type": "break"
+                },
+                {
+                  "type": "text",
+                  "value": "Where Alph, the sacred river, ran"
+                },
+                {
+                  "type": "break"
+                },
+                {
+                  "type": "text",
+                  "value": "Through caverns measureless to man"
+                },
+                {
+                  "type": "break"
+                },
+                {
+                  "type": "text",
+                  "value": "    Down to a sunless sea."
+                },
+                {
+                  "type": "break"
+                },
+                {
+                  "type": "text",
+                  "value": "So twice five miles of fertile ground"
+                },
+                {
+                  "type": "break"
+                },
+                {
+                  "type": "text",
+                  "value": "With walls and towers were girdled round;"
+                },
+                {
+                  "type": "break"
+                },
+                {
+                  "type": "text",
+                  "value": "And there were gardens bright with sinuous rills,"
+                },
+                {
+                  "type": "break"
+                },
+                {
+                  "type": "text",
+                  "value": "Where blossomed many an incense-bearing tree;"
+                },
+                {
+                  "type": "break"
+                },
+                {
+                  "type": "text",
+                  "value": "And here were forests ancient as the hills,"
+                },
+                {
+                  "type": "break"
+                },
+                {
+                  "type": "text",
+                  "value": "Enfolding sunny spots of greenery."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "depth": 2,
+          "children": [
+            {
+              "type": "text",
+              "value": "The Future of Markdown"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "The parser I'm working on is meant to be a Commonmark-compliant parser, but\nonly because Commonmark's syntax is a subset of the syntax I'm actually trying\nto support. If everything goes well, sometime in 2029 my parser will support\nall of the MyST Markdown spec."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "MyST, or "
+            },
+            {
+              "type": "link",
+              "url": "https://mystmd.org/guide/quickstart-myst-markdown",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Markedly Structured\nText"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "value": ", adds additional\nelements to Markdown that make it easier to extend. MyST also defines an\nabstract syntax tree for Markdown documents that makes it possible to parse a\ndocument once and potentially output it as HTML, LaTeX, or anything else later."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "I'm excited about MyST. It's intended primarily for scientific publishing, but I\nsee no reason it couldn't be useful for blog publishing as well. I want to use\nmy parser to build a static site generator based on MyST. First, though, I'll\nneed to get it successfully parsing the Markdown document for this blog post,\nwhich believe you me is a real doozy."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

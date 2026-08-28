@@ -1,0 +1,322 @@
+<p>Markdown exists because these two things are true: First, structured text is
+more useful than unstructured text, and second, structured text is harder for
+humans to read and write. Markdown is an attempt to make it possible to write
+structured text in a format that looks unstructured, so that humans can read
+and write it comfortably.</p>
+<p>What do we mean by &quot;structured text&quot;? When we process a text document with a
+computer program, there are many things we might want to do with that text that
+require understanding how different parts of the document relate to one
+another. For example, if we are rendering the document to a screen, we might
+want to show headings in a larger font size than everything else. Or, if we are
+compiling a bibliography, we might want to list out all the citations that
+appear within the main body of the document. For a computer program to do these
+things for us, it needs to know which parts of the text document are headings
+and which parts are citations.</p>
+<p>The most straightforward way to communicate this structure to a computer
+program is to &quot;mark up&quot; our text with tags. This is the approach taken by
+markup languages like HTML (Hypertext Markup Language) and XML (Extensible
+Markup Language). The nice thing about tags is that they are predictable and
+consistent; it is relatively simple to write a program that can look for an
+opening tag and then a closing tag and associate the text in between with that
+tag. But tags also clutter a text document, making it harder to read. And
+having to add tags as you write a document is a tedious chore.</p>
+<p>What if, rather than relying on explicit tags, we tried to use some of the
+existing conventions that humans already have for visually communicating
+structure in a text document? Humans already separate paragraphs from each
+other with whitespace, already distinguish headings by underlining them,
+already write lists using bullet points. Can we write a computer program smart
+enough to glean structure from these visual patterns instead, freeing humans
+to read and write more naturally?</p>
+<p>That is what Markdown tries to do. Markdown is a large set of rules governing
+how structure can be derived from these natural patterns in text and (a few
+explicit tag-like constructs for when the natural patterns aren't sufficient).
+The set of rules is large because recognizing these natural patterns in a text
+document is much more complicated than just looking for tags. This is a
+drawback of Markdown: Writing a program to read Markdown is challenging. But
+writing a Markdown document, for humans, is easy. And once you have a program
+that can read Markdown, you can convert your document to other, more
+machine-friendly formats programmatically.</p>
+<p>This document is written using Markdown. Let's explore what Markdown allows us
+to do. Markdown allows us to do more than most people probably realize.</p>
+<p>So far, this document has consisted of a series of paragraphs. Markdown knows
+they are separate paragraphs because they are separated by blank lines.
+We can
+write sentences across
+several lines like this,
+but Markdown will still consider it all part of the same paragraph if
+there is no blank line.</p>
+<p>We could also choose to write one sentence per line.
+This is something that I've heard is popular.
+The sentences could even be really long, like this one, which just goes on, and it doesn't matter.
+In Markdown, unless there's a blank line, it will all be the same paragraph.
+You can rely on the wrapping feature in your editor to manage the long lines.</p>
+<p>Note that starting a line with an indent is not sufficient to open a new
+paragraph.
+This line starts with a tab character, but is still considered the second
+sentence in this paragraph.</p>
+<p>If for some reason we include multiple blank lines between paragraphs, this is
+no different than including a single blank line. The extra blank lines are
+ignored.</p>
+<p>See?</p>
+<p>If Markdown ignores extra blank lines, then does that mean it's impossible to
+force a bunch of blank lines to appear in the output? No! If Markdown sees a
+line that ends with a backslash, it treats that as something it calls a hard
+break. Hard breaks give you control over exactly where line endings should be
+and allow you to force blank lines to appear in the output.</p>
+<p>Here<br />
+you see some lines<br />
+including some blank ones<br />
+<br />
+<br />
+ending in hard breaks.</p>
+<p>Hard breaks would be very useful if you were trying to write poetry.</p>
+<p>Okay, let's add some more structure to this document so that it's not just one
+big soup of paragraphs. Let's discuss headings.</p>
+<h1>Setext Headings</h1>
+<p>In Markdown, there are two different ways to indicate that something should be
+a heading. The first way, known as the Setext-style heading, involves what we
+might otherwise do naturally: underlining the heading.</p>
+<p>The underline can be written using &quot;=&quot; or &quot;-&quot; characters. A heading underlined
+with &quot;=&quot; characters is considered a level-one heading, while a heading
+underlined with &quot;-&quot; characters is considered a level-two heading. The underline
+must consist of three or more characters to be valid, but otherwise can include
+as many characters as you'd like.</p>
+<h1>ATX Headings</h1>
+<p>The other way to indicate headings is known as the ATX style. To create an
+ATX-style heading, you precede your heading with up to six &quot;#&quot; characters. The
+number of characters indicates the level of the heading.</p>
+<p>The ATX heading is less natural than the Setext heading but has the advantage
+that it supports headings up to level six. That's why we'll use it for the rest
+of this document.</p>
+<p>If you aren't using syntax highlighting in your editor, another disadvantage of
+ATX-style headings is that they stand out less than Setext-style headings from
+regular paragraphs. A little-known fact though is that you can include as many
+'#' characters as you want after your heading on the same line, so writing a
+heading like this is completely valid and makes scanning your document easier:</p>
+<h1>Example Heading</h1>
+<p>Okay, let's move on from headings to another useful way of splitting up your
+document.</p>
+<h1>Thematic Breaks</h1>
+<p>Sometimes you want to mark a transition in your document without categorizing
+each part under a separate heading. You can use a thematic break for this. A
+thematic break looks like:</p>
+<hr />
+<p>This is very similar to what you might see printed in a novel. But you can get
+more creative with your thematic breaks if you like. You can use &quot;*&quot;
+characters, &quot;-&quot; characters, or &quot;_&quot; characters, as long as there are at least
+three of them. You can include whitespace between the characters or on either
+side. So this is also a valid thematic break:</p>
+<hr />
+<p>For reasons we'll discuss in the next section, you can't include more than
+three spaces at the beginning of the line.</p>
+<h1>Code</h1>
+<p>Sometimes, especially in the world of software development, we want to include
+code listings in our documents. We want this to be part of the known structure
+of our document because in the final rendered version it's very helpful to
+human readers if we can show all code in a monospace font while keeping the
+main body text in a regular, variable-width font.</p>
+<p>The situation with code in Markdown is similar to the situation with headings.
+There are two ways to include code listings in a Markdown document, one of
+which is maybe more natural while the other is a little less natural but also
+more powerful.</p>
+<p>The first way to include a code listing in a Markdown document is to indent
+your code four spaces:</p>
+<pre><code>def foo():
+    print(&quot;Hello, world!&quot;)
+</code></pre>
+<p>This is easy and very natural for human authors. But it also means you have to
+be careful not to start any line with more than three spaces worth of
+indentation.</p>
+<pre><code>Even this line, which doesn't look anything like code, will be treated as
+code in Markdown because it is indented by four spaces.
+</code></pre>
+<p>It can also be easy to indent your code too far and end up with extra spaces at
+the beginning of each line in your code listing. It can be hard to spot this
+when you've done it.</p>
+<p>A more artificial but perhaps less ambiguous way of specifying a code listing
+is to write it like this:</p>
+<pre><code>def foo():
+    print(&quot;Hello, world!&quot;)
+</code></pre>
+<p>A line starting with three or more backticks is called a &quot;code fence.&quot;
+Everything between two code fences is treated as code.</p>
+<p>One nice advantage of using code fences is that you can note the language the
+code is written in by including it after the first code fence:</p>
+<pre><code class="language-python">def foo():
+    print(&quot;Hello, world!&quot;)
+</code></pre>
+<p>This would be useful if you later plan to add syntax highlighting to your code
+listings.</p>
+<h1>HTML</h1>
+<p>Markdown is often used to write documents that are later converted into HTML.
+Because of this tight link between Markdown and HTML, Markdown allows you to
+include HTML directly in your document:</p>
+<div foo="bar">
+  <p>Look, this is an HTML paragraph!</p>
+</div>
+<p>You can also put Markdown inside of an HTML element:</p>
+<div foo="bar">
+  This is a regular paragraph.
+<pre><code class="language-python">def foo():
+   print(&quot;Hello, world!&quot;)
+</code></pre>
+</div>
+<p>This might be very useful if you always plan to convert your document to HTML.
+It gives you the option of resorting to explicit mark up when you need it. But
+be aware that if you render your Markdown document into a format other than
+HTML there may not be a natural representation of HTML in your target format.</p>
+<h1>Lists</h1>
+<p>We often need to make lists of things. Markdown supports both bullet lists and
+numbered lists.</p>
+<h2>Bullet Lists</h2>
+<p>Bullet lists work pretty much exactly the way you'd expect them to:</p>
+<ul>
+  <li>First item</li>
+  <li>Second item</li>
+  <li>Third item</li>
+</ul>
+<p>If you aren't a fan of the asterisk, you can also use &quot;+&quot; or &quot;-&quot;:</p>
+<ul>
+  <li>First item</li>
+  <li>Second item</li>
+</ul>
+<ul>
+  <li>First item</li>
+  <li>Second item</li>
+</ul>
+<p>What if you want your bullet-point list items to be longer? In Markdown, you
+can include multiple paragraphs in a single list item, but you have to be
+careful to line up the indentation:</p>
+<ul>
+  <li>
+    <p>Here is a long list item. It goes on for multiple sentences. In fact the
+sentences are so many that there are even multiple paragraphs.</p>
+    <p>A blank line separates the paragraphs. But this paragraph is still part of
+the first list item, since it's indented to match the paragraph above.</p>
+  </li>
+  <li>
+    <p>This is a new paragraph in the second list item.</p>
+  </li>
+</ul>
+<p>You can even have sublists. You don't have to use a separate character for your
+bullets in the sublist, but it might make it easier to read:</p>
+<ul>
+  <li>
+    <p>This is a normal list item.</p>
+  </li>
+  <li>
+    <p>This list item contains a sublist:</p>
+    <ul>
+      <li>Juice</li>
+      <li>Milk</li>
+      <li>Eggs</li>
+      <li>Strawberries</li>
+    </ul>
+  </li>
+</ul>
+<p>As you can see, bullet lists are very natural to write in Markdown.</p>
+<h2>Numbered Lists</h2>
+<p>Numbered lists work similarly to bullet lists, but there are a few hidden
+gotchas.</p>
+<ol>
+  <li>This is the first item of a numbered list.</li>
+  <li>This is the second item.</li>
+  <li>This is the third.</li>
+</ol>
+<p>You don't have to start a numbered list with &quot;1&quot;:</p>
+<ol start="7">
+  <li>This list starts with seven for some reason.</li>
+  <li>This is the eighth list item.</li>
+</ol>
+<p>But note that you can only control the number used to start the list. The
+list items after the first are always numbered sequentially from the starting
+number, no matter what you've written:</p>
+<ol start="4">
+  <li>This is the fourth item.</li>
+  <li>This might look like the seventh item, but it will actually be numbered as
+fifth.</li>
+  <li>This will be numbered as sixth.</li>
+</ol>
+<p>If you'd like, you can also write numbered lists this way, using a &quot;)&quot; after
+the number:</p>
+<ol>
+  <li>This is the first item.</li>
+  <li>This is the second.</li>
+  <li>This is the third.</li>
+</ol>
+<p>Though it's unlikely to come up often, one thing to be careful of in Markdown
+is starting a line with a &quot;1.&quot; or &quot;1)&quot;. This will always be interpreted as the
+start of a list, even if you may not mean it that way. For example:</p>
+<p>I asked my old friend when I should come over for the party. He said to come at</p>
+<ol>
+  <li>I said that sounded good.</li>
+</ol>
+<p>The same thing will not happen if you use any number other than 1.</p>
+<h1>Blockquotes</h1>
+<p>This is a useful one! You can quote someone else at length using blockquotes.
+To create a blockquote, just precede each line with a &quot;&gt;&quot; character:</p>
+<blockquote>
+  <p>This other person said this thing. It was very wise and had great insight
+into pressing contemporary problems.</p>
+</blockquote>
+<p>You can include anything in a blockquote, including headings, code, lists, or
+even other blockquotes:</p>
+<blockquote>
+  <p>This is a quote with some nested elements.</p>
+  <blockquote>
+    <h1>Nested Blockquote</h1>
+    <pre><code class="language-python">def foo():
+    print(&quot;Hello, world!&quot;)
+    </code></pre>
+  </blockquote>
+  <p>Isn't that neat?</p>
+</blockquote>
+<h1>Inline Elements</h1>
+<p>So far, we've only talked about what are known in Markdown as &quot;block&quot; elements.
+These are structures in our document that apply to one or more lines of text.</p>
+<p>Markdown also supports many ways to add structure within paragraphs of text.
+These are known as &quot;inline&quot; elements in Markdown.</p>
+<h2>Emphasis</h2>
+<p>You can apply emphasis to some text by either surrounding it with &quot;*&quot;
+characters or surrounding it with &quot;_&quot; characters.</p>
+<p>In this <em>paragraph</em>, <em>for example</em>, we've emphasized &quot;paragraph&quot; and &quot;for
+example.&quot;</p>
+<p>If you want to emphasize only part of a word rather than the whole word, you
+can do that like this: em<em>pha</em>size. You can only do this when marking emphasis
+using asterisks rather than underlines.</p>
+<h3>Strong Emphasis</h3>
+<p>You can emphasize things even more strongly using strong emphasis. Depending on
+how you later render your Markdown document, this usually produces bolded text.</p>
+<p>To emphasize <strong>strongly</strong>, you just <strong>double up</strong> the characters.</p>
+<h2>Code</h2>
+<p>You can mark some text in a paragraph as code by surrounding it in backticks.
+You might want to mention a function <code>foo()</code> in your paragraph, or a variable
+<code>bar</code>.</p>
+<h2>Links</h2>
+<p>In Markdown, it's possible to indicate that some text should link to an
+external resource. For example, this is a link to <a href="https://google.com">Google</a>.
+You surround the text with square brackets and then include a URL in
+parentheses following the text.</p>
+<p>URLs can get very long, which could make your document harder to read if you
+have lots of links. Markdown allows you to define the URL using a shorthand
+name that you can then reference when you apply the link to some text in your
+document. So instead of linking to Google like we did above, we could do this:</p>
+<p>This is a <a href="https://google.com">link to Google</a>.</p>
+<p>This time, the URL in parentheses is replaced by the shorthand name in square
+brackets.</p>
+<p>Note that the definition of the shorthand name does not have to come before the
+link. You could put it at the bottom of your document if you wanted to, which
+is probably tidiest!</p>
+<h3>Autolinks</h3>
+<p>If you ever want to include a link in your document where the text of the link
+is just the URL, Markdown has a special syntax for that: <a href="https://google.com">https://google.com</a>.</p>
+<h2>Images</h2>
+<p>You can include images in your document using a syntax very similar to the
+syntax for links. The following includes the image at <code>https://foo.com/bar.jpg</code>
+in the document:</p>
+<p><img src="https://foo.com/bar.jpg" alt="an exemplary bar" /></p>
+<p>The text between the square brackets is used as the alt text for the image.</p>
+<h2>HTML</h2>
+<p>Finally, if you need to, you can include <span class="bim">inline html</span>
+within paragraphs. This has all the advantages and disadvantages of block-level
+HTML.</p>
