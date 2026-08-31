@@ -1,5 +1,7 @@
 //! This is a little utility that creates a ZON file containing the full list
-//! of HTML named character references (AKA HTML entities).
+//! of HTML named character references (AKA HTML entities). Each entry in the
+//! list maps a named character entity to the UTF-8 encoding of its Unicode
+//! codepoint sequence.
 //!
 //! The ZON file is created from a list that is read from an input JSON file.
 //! This input JSON file can be retrieved from

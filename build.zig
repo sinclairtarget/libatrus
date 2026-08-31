@@ -25,6 +25,11 @@ pub fn build(b: *std.Build) void {
         "entities-json-path",
         "Path to JSON file with named character entities table",
     );
+    const casefold_txt_path = b.option(
+        []const u8,
+        "casefold-txt-path",
+        "Path to TXT file with unicode case fold mappings",
+    );
 
     // data module
     const data_module = b.createModule(.{
@@ -69,6 +74,7 @@ pub fn build(b: *std.Build) void {
 
     // tools
     const entities_tool = addUpdateEntitiesTool(b, entities_json_path);
+    const casefold_tool = addUpdateCaseFoldTool(b, casefold_txt_path);
 
     // docs
     const docs = installDocs(b, exe_artifact.artifact);
@@ -138,6 +144,13 @@ pub fn build(b: *std.Build) void {
     );
     generate_entities_step.dependOn(&entities_tool.cmd.step);
     generate_entities_step.dependOn(&entities_tool.update.step);
+
+    const generate_casefold_step = b.step(
+        "update-casefold",
+        "Update casefold mapping table",
+    );
+    generate_casefold_step.dependOn(&casefold_tool.cmd.step);
+    generate_casefold_step.dependOn(&casefold_tool.update.step);
 
     // docs
     const docs_step = b.step("docs", "Install documentation");
@@ -368,7 +381,7 @@ fn addBenchmarks(
     };
 }
 
-const EntitiesTool = struct {
+const Tool = struct {
     cmd: *Step.Run,
     update: *Step.UpdateSourceFiles,
 };
@@ -376,7 +389,7 @@ const EntitiesTool = struct {
 fn addUpdateEntitiesTool(
     b: *std.Build,
     maybe_json_path: ?[]const u8,
-) EntitiesTool {
+) Tool {
     const exe = b.addExecutable(.{
         .name = "generate-entities",
         .root_module = b.createModule(.{
@@ -396,6 +409,36 @@ fn addUpdateEntitiesTool(
 
     const update_src = b.addUpdateSourceFiles();
     update_src.addCopyFileToSource(output_path, "data/entities.zon");
+
+    return .{
+        .cmd = cmd,
+        .update = update_src,
+    };
+}
+
+fn addUpdateCaseFoldTool(
+    b: *std.Build,
+    maybe_case_fold_path: ?[]const u8,
+) Tool {
+    const exe = b.addExecutable(.{
+        .name = "generate-casefold",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/generate_casefold.zig"),
+            .target = b.graph.host,
+        }),
+    });
+    const cmd = b.addRunArtifact(exe);
+
+    if (maybe_case_fold_path) |case_fold_path| {
+        cmd.addFileArg(b.path(case_fold_path));
+    } else {
+        cmd.step.dependOn(&b.addFail("missing input file path").step);
+    }
+
+    const output_path = cmd.addOutputFileArg("data/case_fold.zon");
+
+    const update_src = b.addUpdateSourceFiles();
+    update_src.addCopyFileToSource(output_path, "data/case_fold.zon");
 
     return .{
         .cmd = cmd,
