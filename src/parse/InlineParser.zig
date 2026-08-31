@@ -51,13 +51,10 @@ const NodeList = @import("NodeList.zig");
 const alttext = @import("alttext.zig");
 const escape = @import("escape.zig");
 
-// zig fmt: off
-pub const Error = (
-    Io.Writer.Error ||
+pub const Error = Io.Writer.Error ||
     Allocator.Error ||
-    cmark.character_refs.CharacterReferenceError
-);
-// zig fmt: on
+    cmark.character_refs.CharacterReferenceError ||
+    util.unicode.CaseFoldError;
 
 tokenizer: *InlineTokenizer,
 line: ArrayList(InlineToken),

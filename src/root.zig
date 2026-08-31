@@ -274,7 +274,7 @@ test {
     _ = @import("render/json.zig");
     _ = @import("transform/pre/roles.zig");
     _ = @import("transform/pre/directives.zig");
-    _ = @import("util/util.zig");
+    _ = @import("util/unicode.zig");
 }
 
 test parse {

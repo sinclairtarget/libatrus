@@ -47,7 +47,10 @@ const Error = error{
     LineTooLong,
     ReadFailed,
     WriteFailed,
-} || Allocator.Error || cmark.character_refs.CharacterReferenceError;
+} ||
+    Allocator.Error ||
+    cmark.character_refs.CharacterReferenceError ||
+    util.unicode.CaseFoldError;
 
 const close_token_panic_msg = "encountered unexpected CLOSE token";
 

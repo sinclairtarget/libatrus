@@ -8,10 +8,11 @@ const StringHashMapUnmanaged = std.hash_map.StringHashMapUnmanaged;
 
 const ast = @import("../ast.zig");
 const logger = @import("../logging.zig").logger(.link_defs);
+const util = @import("../util/util.zig");
 
 pub const label_max_chars = 999; // Unicode code points
 
-pub const Error = Allocator.Error;
+pub const Error = Allocator.Error || util.unicode.CaseFoldError;
 
 /// A hashmap mapping link labels to link definitions. Lookup by label is
 /// case-insensitive.
@@ -128,15 +129,13 @@ fn normalize(alloc: Allocator, link_label: []const u8) Error![]const u8 {
         skippping_whitespace = false;
     }
 
-    // TODO: Unicode case fold
-    return try std.ascii.allocLowerString(alloc, buf[0..buf_i]);
+    return try util.unicode.utf8.allocCaseFoldFull(alloc, buf[0..buf_i]);
 }
 
 // ----------------------------------------------------------------------------
 // Unit Tests
 // ----------------------------------------------------------------------------
 const testing = std.testing;
-const util = @import("../util/util.zig");
 
 test "can map single link def" {
     var def: ast.LinkDefinition = .{

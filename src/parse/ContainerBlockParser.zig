@@ -44,7 +44,10 @@ const Error = error{
     LineTooLong,
     ReadFailed,
     WriteFailed,
-} || Allocator.Error || cmark.character_refs.CharacterReferenceError;
+} ||
+Allocator.Error ||
+cmark.character_refs.CharacterReferenceError ||
+util.unicode.CaseFoldError;
 
 const TokenError = error{
     LineTooLong,
