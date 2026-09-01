@@ -74,10 +74,11 @@ Much more work remains:
 - [x] Set up MyST spec test suite
 - [x] Get basic C API working
 - [x] Expose AST via C API
-- [ ] Finish implementing commonmark spec
+- [x] Finish implementing commonmark spec
 - [ ] Finish implementing MyST extensions
 - [ ] Implement JSON AST parser
 - [ ] Add benchmarks
+- [ ] Add fuzzing tests
 - [ ] Make if faaast. Ditch recursive descent? Data-oriented design?
 
 [aweigh gh]: https://github.com/sinclairtarget/aweigh
