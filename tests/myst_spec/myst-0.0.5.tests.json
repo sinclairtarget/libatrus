@@ -4780,7 +4780,6 @@
   },
   {
     "title": "cmark_spec_0.30: Link reference definitions - example 206",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -15187,7 +15186,6 @@
   },
   {
     "title": "cmark_spec_0.30: Links - example 539",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
