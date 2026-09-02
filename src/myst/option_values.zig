@@ -4,6 +4,10 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 
+pub fn parseNumber(s: []const u8) !i32 {
+    return try std.fmt.parseInt(i32, s, 10);
+}
+
 /// Parses one or more integer ranges separated by commas.
 ///
 /// E.g. 1-4, 9, 20-40

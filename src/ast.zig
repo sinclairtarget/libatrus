@@ -249,8 +249,12 @@ pub const Code = struct {
     value: [:0]const u8,
     lang: [:0]const u8,
     show_line_numbers: bool = false,
+    starting_line_number: ?u32 = null,
     filename: ?[:0]const u8 = null,
     emphasize_lines: ?[]u16 = null,
+    class: ?[:0]const u8 = null,      // user-defined class for code block
+    label: ?[:0]const u8 = null,
+    identifier: ?[:0]const u8 = null,
 
     pub fn deinit(self: *Code, alloc: Allocator) void {
         alloc.free(self.value);
@@ -260,6 +264,15 @@ pub const Code = struct {
         }
         if (self.emphasize_lines) |l| {
             alloc.free(l);
+        }
+        if (self.class) |c| {
+            alloc.free(c);
+        }
+        if (self.label) |l| {
+            alloc.free(l);
+        }
+        if (self.identifier) |i| {
+            alloc.free(i);
         }
     }
 };

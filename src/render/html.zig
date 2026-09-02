@@ -143,12 +143,24 @@ fn renderNode(
             if (f.begin_line) {
                 try printIndent(out, options, f.depth);
             }
-            const lang = n.lang;
-            if (lang.len > 0) {
-                try out.print("<pre><code class=\"language-{s}\">", .{lang});
-            } else {
-                try out.print("<pre><code>", .{});
+
+            _ = try out.writeAll("<pre><code");
+
+            if (n.identifier) |identifier| {
+                try out.print(" id=\"{s}\"", .{identifier});
             }
+
+            if (n.lang.len > 0) {
+                try out.print(" class=\"language-{s}", .{n.lang});
+                if (n.class) |class| {
+                    try out.print(" {s}", .{class});
+                }
+                _ = try out.writeAll("\"");
+            } else if (n.class) |class| {
+                try out.print(" class=\"{s}\"", .{class});
+            }
+
+            _ = try out.writeAll(">");
 
             const value = n.value;
             try printHTMLEscapedContent(out, value);

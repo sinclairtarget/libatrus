@@ -133,7 +133,7 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
                     for (n.options) |option| {
                         try stringify.objectField(option.name);
                         if (option.value) |v| {
-                            try stringify.write(v);
+                            try writeMaybeNumber(stringify, v);
                         } else {
                             try stringify.write(true);
                         }
@@ -183,13 +183,33 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
             .code => |n| {
                 try stringify.objectField("lang");
                 try stringify.write(n.lang);
-                try stringify.objectField("value");
-                try stringify.write(n.value);
+
+                if (n.identifier) |f| {
+                    try stringify.objectField("identifier");
+                    try stringify.write(f);
+                }
+                if (n.label) |f| {
+                    try stringify.objectField("label");
+                    try stringify.write(f);
+                }
+                if (n.class) |f| {
+                    try stringify.objectField("class");
+                    try stringify.write(f);
+                }
 
                 if (n.show_line_numbers) {
                     try stringify.objectField("showLineNumbers");
                     try stringify.write(n.show_line_numbers);
                 }
+
+                if (n.starting_line_number) |line_num| {
+                    try stringify.objectField("startingLineNumber");
+                    try stringify.write(line_num);
+                }
+
+                try stringify.objectField("value");
+                try stringify.write(n.value);
+
                 if (n.filename) |f| {
                     try stringify.objectField("filename");
                     try stringify.write(f);
@@ -241,6 +261,17 @@ fn renderChildren(
     try stringify.endArray();
 }
 
+fn writeMaybeNumber(
+    stringify: *Stringify,
+    value: []const u8,
+) Io.Writer.Error!void {
+    if (std.fmt.parseInt(i32, value, 10)) |parsed| {
+        try stringify.write(parsed);
+    } else |_| {
+        try stringify.write(value);
+    }
+}
+
 //-----------------------------------------------------------------------------
 // Unit Tests
 //-----------------------------------------------------------------------------
@@ -259,6 +290,10 @@ test "myst directive" {
                     .name = "fop",
                     .value = "1,2",
                 },
+                .{
+                    .name = "number",
+                    .value = "4",
+                },
             },
             .value = "def foo():\n    pass",
             .children = &.{},
@@ -276,7 +311,8 @@ test "myst directive" {
         \\  "args": "python",
         \\  "options": {
         \\    "foo": true,
-        \\    "fop": "1,2"
+        \\    "fop": "1,2",
+        \\    "number": 4
         \\  },
         \\  "value": "def foo():\n    pass"
         \\}

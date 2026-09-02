@@ -58,8 +58,6 @@ fn transformBuiltin(
     options: []const ast.MySTDirective.Option,
     value: []const u8,
 ) !*ast.Node {
-    _ = scratch;
-
     if (std.mem.eql(u8, name, "admonition") or
         std.mem.eql(u8, name, "attention") or
         std.mem.eql(u8, name, "caution") or
@@ -80,7 +78,7 @@ fn transformBuiltin(
     }
 
     if (std.mem.eql(u8, name, "code")) {
-        return try transformCode(alloc, node, args, options, value);
+        return try transformCode(alloc, scratch, node, args, options, value);
     }
 
     return try transformUnknown(alloc, node);
@@ -242,6 +240,7 @@ fn transformFigure(
 
 fn transformCode(
     alloc: Allocator,
+    scratch: Allocator,
     node: *ast.Node,
     args: []const u8,
     options: []const ast.MySTDirective.Option,
@@ -265,6 +264,20 @@ fn transformCode(
     for (options) |opt| {
         if (std.mem.eql(u8, opt.name, "linenos")) {
             code_node.code.show_line_numbers = true;
+        } else if (std.mem.eql(u8, opt.name, "number-lines")) {
+            code_node.code.show_line_numbers = true;
+            if (opt.value) |v| {
+                if (myst.option_values.parseNumber(v)) |num| {
+                    if (num > 1) {
+                        code_node.code.starting_line_number = @intCast(num);
+                    }
+                } else |_| {
+                    logger.warn(
+                        "Invalid value for option \"number-lines\": {s}",
+                        .{v},
+                    );
+                }
+            }
         } else if (std.mem.eql(u8, opt.name, "filename")) {
             if (opt.value) |v| {
                 code_node.code.filename = try alloc.dupeZ(u8, v);
@@ -276,6 +289,19 @@ fn transformCode(
                     v,
                 );
                 code_node.code.emphasize_lines = lines;
+            }
+        } else if (std.mem.eql(u8, opt.name, "class")) {
+            if (opt.value) |v| {
+                code_node.code.class = try alloc.dupeZ(u8, v);
+            }
+        } else if (std.mem.eql(u8, opt.name, "name")) {
+            if (opt.value) |v| {
+                code_node.code.label = try alloc.dupeZ(u8, v);
+                const normalized = try myst.references.normalizeIdentifier(
+                    scratch,
+                    v,
+                );
+                code_node.code.identifier = try alloc.dupeZ(u8, normalized);
             }
         } else {
             logger.warn("Unknown code option \"{s}\"", .{opt.name});

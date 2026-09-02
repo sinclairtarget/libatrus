@@ -1,4 +1,5 @@
 pub const option_values = @import("option_values.zig");
+pub const references = @import("references.zig");
 
 pub fn isValidRoleName(name: []const u8) bool {
     for (name) |c| {

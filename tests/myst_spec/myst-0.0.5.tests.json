@@ -18983,7 +18983,6 @@
   },
   {
     "title": "directives.code: Code directive",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -19011,7 +19010,6 @@
   },
   {
     "title": "directives.code: Code directive, starting line",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
