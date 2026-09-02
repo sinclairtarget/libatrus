@@ -19428,7 +19428,6 @@
   },
   {
     "title": "directives.generic: Unknown directive",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -19440,11 +19439,11 @@
       ]
     },
     "myst": "```{abc}\n:a: one\n:b: two\n\nABC directive\n```",
+    "html_indented": true,
     "html": "<div class=\"directive unhandled\">\n  <p><code class=\"kind\">{abc}</code></p>\n  <pre><code>:a: one\n:b: two\n\nABC directive</code></pre>\n</div>\n"
   },
   {
     "title": "directives.generic: Unknown directive with args",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -19457,6 +19456,7 @@
       ]
     },
     "myst": "```{abc} foo bar\n:a: one\n:b: two\n\nABC directive\n```",
+    "html_indented": true,
     "html": "<div class=\"directive unhandled\">\n  <p><code class=\"kind\">{abc}</code><code class=\"args\">foo bar</code></p>\n  <pre><code>:a: one\n:b: two\n\nABC directive</code></pre>\n</div>\n"
   },
   {

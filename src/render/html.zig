@@ -315,7 +315,7 @@ fn renderNode(
                 // unknown directive
                 _ = try out.writeAll("<div class=\"directive unhandled\">\n");
 
-                try printIndent(out, options, f.depth);
+                try printIndent(out, options, f.depth + 1);
                 _ = try out.writeAll("<p>");
                 _ = try out.writeAll("<code class=\"kind\">{");
                 try printHTMLEscapedContent(out, n.name);
@@ -330,7 +330,7 @@ fn renderNode(
 
                 _ = try out.writeAll("</p>\n");
 
-                try printIndent(out, options, f.depth);
+                try printIndent(out, options, f.depth + 1);
                 _ = try out.writeAll("<pre><code>");
                 try printHTMLEscapedContent(out, n.value);
                 _ = try out.writeAll("</code></pre>\n");

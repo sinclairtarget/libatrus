@@ -83,7 +83,7 @@ fn transformBuiltin(
         return try transformCode(alloc, node, args, options, value);
     }
 
-    return node;
+    return try transformUnknown(alloc, node);
 }
 
 fn transformAdmonition(
@@ -285,6 +285,57 @@ fn transformCode(
     std.debug.assert(node.myst_directive.children.len == 0);
     try node.appendChild(alloc, code_node);
     return node;
+}
+
+/// For directives we don't recognize, we have to partially "de-parse" the node
+/// to conform with the MyST spec. The spec says that options should not be
+/// parsed for directives we don't recognize.
+///
+/// Doing this here seems better than having to check a list of directive names
+/// we support in the leaf block parser. The parser right now has the nice
+/// property that it parses directives on a purely syntactic basis and leaves
+/// interpreting the directive based on the directive name to subsequent
+/// transforms.
+fn transformUnknown(alloc: Allocator, node: *ast.Node) !*ast.Node {
+    std.debug.assert(node.myst_directive.children.len == 0);
+
+    var buf = Io.Writer.Allocating.init(alloc);
+    defer buf.deinit();
+
+    for (node.myst_directive.options) |opt| {
+        _ = try buf.writer.print(":{s}:", .{opt.name});
+        if (opt.value) |v| {
+            _ = try buf.writer.print(" {s}", .{v});
+        }
+        _ = try buf.writer.write("\n");
+
+        opt.deinit(alloc);
+    }
+
+    if (node.myst_directive.options.len > 0) {
+        _ = try buf.writer.write("\n");
+    }
+
+    _ = try buf.writer.write(node.myst_directive.value);
+
+    alloc.free(node.myst_directive.options);
+    alloc.free(node.myst_directive.value);
+    defer alloc.destroy(node);
+
+    const replacement_value = try alloc.dupeZ(u8, buf.written());
+    errdefer alloc.free(replacement_value);
+
+    const replacement_node = try alloc.create(ast.Node);
+    replacement_node.* = .{
+        .myst_directive = .{
+            .children = &.{},
+            .name = node.myst_directive.name,
+            .args = node.myst_directive.args,
+            .options = &.{},
+            .value = replacement_value,
+        },
+    };
+    return replacement_node;
 }
 
 // ----------------------------------------------------------------------------
@@ -499,5 +550,27 @@ test "code block with options" {
         u16,
         &.{ 1, 3, 4, 5, 7 },
         code_node.code.emphasize_lines.?,
+    );
+}
+
+test "unknown directive with options" {
+    const node = try handleDirective(
+        "foobar",
+        "",
+        &.{
+            .{ .name = "bim", .value = "zam" },
+        },
+        "squiggle",
+    );
+    defer node.deinit(testing.allocator);
+
+    try testing.expectEqual(.myst_directive, @as(ast.NodeType, node.*));
+    try testing.expectEqual(0, node.myst_directive.children.len);
+
+    try testing.expectEqualStrings("foobar", node.myst_directive.name);
+    try testing.expectEqual(0, node.myst_directive.options.len);
+    try testing.expectEqualStrings(
+        ":bim: zam\n\nsquiggle",
+        node.myst_directive.value,
     );
 }
