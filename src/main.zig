@@ -114,7 +114,11 @@ pub fn main() !void {
             logger.info("Rendering...", .{});
             switch (options.output_choice) {
                 .json => {
-                    try atrus.renderJSON(ast, stdout, .{});
+                    try atrus.renderJSON(
+                        ast,
+                        stdout,
+                        .{ .whitespace = .indent_2 },
+                    );
                     try stdout.print("\n", .{});
                 },
                 .html => {
