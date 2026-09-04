@@ -130,7 +130,6 @@ fn renderNode(
                     },
                 );
             }
-            try printIndent(out, options, f.depth);
             try out.print("</h{d}>", .{n.depth});
         },
         .thematic_break => {
