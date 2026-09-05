@@ -19456,7 +19456,6 @@
   },
   {
     "title": "directives.image: Standard markdown image",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -19473,6 +19472,7 @@
       ]
     },
     "myst": "![fishy](fun-fish.png)",
+    "skip_html": true,
     "html": "<p>\n  <img src=\"fun-fish.png\" alt=\"fishy\">\n</p>\n"
   },
   {
