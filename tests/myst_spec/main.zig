@@ -188,7 +188,7 @@ pub fn main() !void {
         defer _ = per_test_arena.reset(.retain_capacity);
         t.run(
             per_test_arena.allocator(),
-            .{ .verbose = config.verbose },
+            .{ .verbose = false },
         ) catch |err| {
             // show error in red
             std.debug.print(
