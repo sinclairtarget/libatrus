@@ -47,6 +47,7 @@ pub const NodeType = enum(c_uint) {
     myst_directive_error = 22,
     admonition = 23,
     admonition_title = 24,
+    math = 31,
 
     pub fn name(self: NodeType) [:0]const u8 {
         return switch (self) {
@@ -98,6 +99,7 @@ pub const Node = union(NodeType) {
     myst_directive_error: MySTDirectiveError,
     admonition: Admonition,
     admonition_title: Wrapper,
+    math: Math,
 
     /// Returns a union bisecting nodes into those that have children and those
     /// that don't.
@@ -436,6 +438,18 @@ pub const Admonition = struct {
     }
 };
 
+pub const Math = struct {
+    value: [:0]const u8,
+    identifier: ?[:0]const u8 = null,
+    label: ?[:0]const u8 = null,
+
+    pub fn deinit(self: *Math, alloc: Allocator) void {
+        alloc.free(self.value);
+        if (self.identifier) |identifier| alloc.free(identifier);
+        if (self.label) |label| alloc.free(label);
+    }
+};
+
 fn freeChildren(alloc: Allocator, children: []*Node) void {
     for (children) |child| {
         child.deinit(alloc);
@@ -487,6 +501,7 @@ pub const AllowedChildren = enum {
             .myst_role_error,
             .comment,
             .inline_math,
+            .math,
             => .no,
         };
     }

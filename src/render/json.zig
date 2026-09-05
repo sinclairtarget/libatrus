@@ -235,6 +235,19 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
                     try stringify.write(title);
                 }
             },
+            .math => |n| {
+                if (n.identifier) |f| {
+                    try stringify.objectField("identifier");
+                    try stringify.write(f);
+                }
+                if (n.label) |f| {
+                    try stringify.objectField("label");
+                    try stringify.write(f);
+                }
+
+                try stringify.objectField("value");
+                try stringify.write(n.value);
+            },
             .@"break", .thematic_break => {},
             .definition => unreachable, // See above
             .myst_role_error => |n| {

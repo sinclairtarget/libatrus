@@ -677,6 +677,21 @@ fn renderNode(
             try printHTMLEscapedContent(out, n.value);
             try out.print("</span>", .{});
         },
+        .math => |n| {
+            if (f.begin_line) {
+                try printIndent(out, options, f.depth);
+            }
+
+            _ = try out.writeAll("<div");
+
+            if (n.identifier) |identifier| {
+                try out.print(" id=\"{s}\"", .{identifier});
+            }
+
+            _ = try out.writeAll(" class=\"math-display\">");
+            try printHTMLEscapedContent(out, n.value);
+            _ = try out.writeAll("</div>");
+        },
     }
 
     return true;

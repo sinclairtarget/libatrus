@@ -19537,7 +19537,6 @@
   },
   {
     "title": "directives.math: Math directive",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -19559,7 +19558,6 @@
   },
   {
     "title": "directives.math: Math directive with label",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [

@@ -24,6 +24,7 @@ pub fn write(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
             .inline_code,
             .html,
             .myst_role_error,
+            .math,
             .inline_math,
             => |n| {
                 _ = try out.write(n.value);

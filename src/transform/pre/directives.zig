@@ -81,6 +81,10 @@ fn transformBuiltin(
         return try transformCode(alloc, scratch, node, args, options, value);
     }
 
+    if (std.mem.eql(u8, name, "math")) {
+        return try transformMath(alloc, scratch, node, options, value);
+    }
+
     return try transformUnknown(alloc, node);
 }
 
@@ -312,6 +316,48 @@ fn transformCode(
 
     std.debug.assert(node.myst_directive.children.len == 0);
     try node.appendChild(alloc, code_node);
+    return node;
+}
+
+/// Implements the {math} directive.
+fn transformMath(
+    alloc: Allocator,
+    scratch: Allocator,
+    node: *ast.Node,
+    options:  []const ast.MySTDirective.Option,
+    value: []const u8,
+) !*ast.Node {
+    const owned_value = try alloc.dupeZ(u8, value);
+    errdefer alloc.free(owned_value);
+
+    const math_node = try alloc.create(ast.Node);
+    errdefer math_node.deinit(alloc);
+    math_node.* = .{
+        .math = .{
+            .value = owned_value,
+        },
+    };
+
+    for (options) |opt| {
+        if (std.mem.eql(u8, opt.name, "label")) {
+            if (opt.value) |v| {
+                math_node.math.label = try alloc.dupeZ(u8, v);
+                const normalized = try myst.references.normalizeIdentifier(
+                    scratch,
+                    v,
+                );
+                math_node.math.identifier = try alloc.dupeZ(u8, normalized);
+            }
+        } else {
+            logger.warn(
+                "Unknown code option \"{s}\" on math node",
+                .{opt.name},
+            );
+        }
+    }
+
+    std.debug.assert(node.myst_directive.children.len == 0);
+    try node.appendChild(alloc, math_node);
     return node;
 }
 
