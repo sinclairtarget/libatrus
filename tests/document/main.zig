@@ -24,7 +24,7 @@ pub fn main() !void {
     var num_skipped: u32 = 0;
     for (test_cases, 1..) |test_case, i| {
         if (test_case.skip) {
-            std.debug.print(
+            print(
                 "{d}/{d} {s}: skipped\n",
                 .{ i, test_cases.len, test_case.name() },
             );
@@ -44,18 +44,24 @@ pub fn main() !void {
         };
 
         // show success in green
-        std.debug.print(
+        print(
             "{d}/{d} \x1b[32m{s}\x1b[0m\n",
             .{ i, test_cases.len, test_case.name() },
         );
         num_succeeded += 1;
     }
 
-    std.debug.print(
+    print(
         "{d} cases succeeded. {d} cases failed. {d} cases skipped.\n",
         .{ num_succeeded, num_failed, num_skipped },
     );
     if (num_failed > 0) {
         std.process.exit(1);
+    }
+}
+
+fn print(comptime fmt: []const u8, args: anytype) void {
+    if (config.verbose) {
+        std.debug.print(fmt, args);
     }
 }

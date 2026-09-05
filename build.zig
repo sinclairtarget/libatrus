@@ -20,6 +20,11 @@ pub fn build(b: *std.Build) void {
         "test-filter",
         "Filter for test cases",
     );
+    const test_verbose = b.option(
+        bool,
+        "test-verbose",
+        "Enable test output",
+    ) orelse false;
     const entities_json_path = b.option(
         []const u8,
         "entities-json-path",
@@ -69,6 +74,7 @@ pub fn build(b: *std.Build) void {
         exe_artifact.artifact,
         lib_artifacts.shared_lib.artifact,
         test_case_filter,
+        test_verbose,
     );
     const benchmark_cmds = addBenchmarks(b, exe_artifact.artifact, optimize);
 
@@ -279,6 +285,7 @@ fn addTests(
     atrus_exe: *Step.Compile,
     static_lib: *Step.Compile,
     test_filter: ?[]const u8,
+    test_verbose: bool,
 ) TestCmds {
     // Unit tests
     const unit_tests = b.addTest(.{
@@ -292,15 +299,19 @@ fn addTests(
     const unit_tests_cmd = b.addRunArtifact(unit_tests);
 
     // MyST Spec tests
+    const spec_module = b.createModule(.{
+        .root_source_file = b.path("tests/myst_spec/main.zig"),
+        .target = b.graph.host,
+        .imports = &.{
+            .{ .name = "atrus", .module = atrus_module },
+        },
+    });
+    const spec_options = b.addOptions();
+    spec_options.addOption(bool, "verbose", test_verbose);
+    spec_module.addOptions("config", spec_options);
     const spec_tests_exe = b.addExecutable(.{
         .name = "spec-tests",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("tests/myst_spec/main.zig"),
-            .target = b.graph.host,
-            .imports = &.{
-                .{ .name = "atrus", .module = atrus_module },
-            },
-        }),
+        .root_module = spec_module,
     });
     const spec_tests_cmd = b.addRunArtifact(spec_tests_exe);
     const spec_cases_path = b.path("tests/myst_spec/myst-0.0.5.tests.json");
@@ -319,10 +330,8 @@ fn addTests(
     });
     const document_tests_dir = b.path("tests/document");
     const document_options = b.addOptions();
-    document_options.addOptionPath(
-        "tests_dirpath",
-        document_tests_dir,
-    );
+    document_options.addOption(bool, "verbose", test_verbose);
+    document_options.addOptionPath("tests_dirpath", document_tests_dir);
     document_module.addOptions("config", document_options);
     const document_tests_exe = b.addExecutable(.{
         .name = "document-tests",

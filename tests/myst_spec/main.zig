@@ -18,6 +18,7 @@ const AutoHashMap = std.AutoHashMap;
 const Io = std.Io;
 
 const atrus = @import("atrus");
+const config = @import("config");
 const spec = @import("spec.zig");
 
 const Test = struct {
@@ -172,16 +173,23 @@ pub fn main() !void {
     var num_skipped: u32 = 0;
     for (tests, 1..) |t, i| {
         if (t.case.skip) {
-            std.debug.print(
+            print(
                 "{d}/{d} {s}: skipped\n",
-                .{ i, tests.len, t.case.title,  },
+                .{
+                    i,
+                    tests.len,
+                    t.case.title,
+                },
             );
             num_skipped += 1;
             continue;
         }
 
         defer _ = per_test_arena.reset(.retain_capacity);
-        t.run(per_test_arena.allocator(), .{}) catch |err| {
+        t.run(
+            per_test_arena.allocator(),
+            .{ .verbose = config.verbose },
+        ) catch |err| {
             // show error in red
             std.debug.print(
                 "{d}/{d} \x1b[31m{any}: {s}\x1b[0m\n",
@@ -201,26 +209,32 @@ pub fn main() !void {
 
         // show success in green
         const extra = if (t.case.skip_html) " (skipped html)" else "";
-        std.debug.print(
+        print(
             "{d}/{d} \x1b[32m{s}\x1b[0m{s}\n",
             .{ i, tests.len, t.case.title, extra },
         );
         num_succeeded += 1;
     }
 
-    std.debug.print(
+    print(
         "{d} cases succeeded. {d} cases failed. {d} cases skipped.\n",
         .{ num_succeeded, num_failed, num_skipped },
     );
     if (num_failed > 0) {
         var it = map.iterator();
         while (it.next()) |entry| {
-            std.debug.print(
+            print(
                 "{any}: {d}\n",
                 .{ entry.key_ptr.*, entry.value_ptr.* },
             );
         }
 
         std.process.exit(1);
+    }
+}
+
+fn print(comptime fmt: []const u8, args: anytype) void {
+    if (config.verbose) {
+        std.debug.print(fmt, args);
     }
 }
