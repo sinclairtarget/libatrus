@@ -85,6 +85,10 @@ fn transformBuiltin(
         return try transformMath(alloc, scratch, node, options, value);
     }
 
+    if (std.mem.eql(u8, name, "image")) {
+        return try transformImage(alloc, node, args, options);
+    }
+
     return try transformUnknown(alloc, node);
 }
 
@@ -324,7 +328,7 @@ fn transformMath(
     alloc: Allocator,
     scratch: Allocator,
     node: *ast.Node,
-    options:  []const ast.MySTDirective.Option,
+    options: []const ast.MySTDirective.Option,
     value: []const u8,
 ) !*ast.Node {
     const owned_value = try alloc.dupeZ(u8, value);
@@ -358,6 +362,51 @@ fn transformMath(
 
     std.debug.assert(node.myst_directive.children.len == 0);
     try node.appendChild(alloc, math_node);
+    return node;
+}
+
+/// Implements the {image} directive.
+fn transformImage(
+    alloc: Allocator,
+    node: *ast.Node,
+    args: []const u8,
+    options: []const ast.MySTDirective.Option,
+) !*ast.Node {
+    const owned_url = try alloc.dupeZ(u8, args);
+    errdefer alloc.free(owned_url);
+
+    const image_node = try alloc.create(ast.Node);
+    errdefer image_node.deinit(alloc);
+    image_node.* = .{
+        .image = .{
+            .url = owned_url,
+            .alt = "",
+            .title = "",
+        },
+    };
+
+    for (options) |opt| {
+        if (std.mem.eql(u8, opt.name, "alt")) {
+            if (opt.value) |v| {
+                image_node.image.alt = try alloc.dupeZ(u8, v);
+            }
+        } else if (std.mem.eql(u8, opt.name, "align")) {
+            if (opt.value) |v| {
+                image_node.image.@"align" = try alloc.dupeZ(u8, v);
+            }
+        } else if (std.mem.eql(u8, opt.name, "width")) {
+            if (opt.value) |v| {
+                image_node.image.width = try alloc.dupeZ(u8, v);
+            }
+        } else if (std.mem.eql(u8, opt.name, "class")) {
+            if (opt.value) |v| {
+                image_node.image.class = try alloc.dupeZ(u8, v);
+            }
+        }
+    }
+
+    std.debug.assert(node.myst_directive.children.len == 0);
+    try node.appendChild(alloc, image_node);
     return node;
 }
 

@@ -19477,7 +19477,6 @@
   },
   {
     "title": "directives.image: Image directive",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -19505,11 +19504,11 @@
       ]
     },
     "myst": "```{image} fun-fish.png\n:alt: fishy\n:class: bg-primary mb-1\n:width: 200px\n:align: center\n```",
+    "skip_html": true,
     "html": "<img src=\"fun-fish.png\" alt=\"fishy\" class=\"align-center bg-primary mb-1\" width=\"200px\">\n"
   },
   {
     "title": "directives.image: Image directive, left",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -19533,6 +19532,7 @@
       ]
     },
     "myst": "```{image} fun-fish.png\n:alt: fishy\n:align: left\n```",
+    "skip_html": true,
     "html": "<img src=\"fun-fish.png\" alt=\"fishy\" class=\"align-left\">\n"
   },
   {

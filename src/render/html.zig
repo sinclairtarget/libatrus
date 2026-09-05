@@ -547,11 +547,34 @@ fn renderNode(
             try printHTMLEscapedAttrValue(out, n.alt);
             try out.print("\" ", .{});
 
+            if (n.@"align" != null or n.class != null) {
+                _ = try out.writeAll("class=\"");
+                if (n.@"align") |a| {
+                    _ = try out.writeAll("align-");
+                    try printHTMLEscapedAttrValue(out, a);
+
+                    if (n.class) |_| {
+                        _ = try out.writeAll(" ");
+                    }
+                }
+
+                if (n.class) |class| {
+                    try printHTMLEscapedAttrValue(out, class);
+                }
+                _ = try out.writeAll("\" ");
+            }
+
             const title = n.title;
             if (title.len > 0) {
                 try out.print("title=\"", .{});
                 try printHTMLEscapedAttrValue(out, title);
                 try out.print("\" ", .{});
+            }
+
+            if (n.width) |width| {
+                _ = try out.writeAll("width=\"");
+                try printHTMLEscapedAttrValue(out, width);
+                _ = try out.writeAll("\" ");
             }
 
             try out.print("/>", .{});
@@ -685,6 +708,7 @@ fn renderNode(
             _ = try out.writeAll("<div");
 
             if (n.identifier) |identifier| {
+                // TODO: Escape attr value!
                 try out.print(" id=\"{s}\"", .{identifier});
             }
 

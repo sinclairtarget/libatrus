@@ -234,6 +234,21 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
                     try stringify.objectField("title");
                     try stringify.write(title);
                 }
+
+                if (n.class) |class| {
+                    try stringify.objectField("class");
+                    try stringify.write(class);
+                }
+
+                if (n.width) |width| {
+                    try stringify.objectField("width");
+                    try stringify.write(width);
+                }
+
+                if (n.@"align") |a| {
+                    try stringify.objectField("align");
+                    try stringify.write(a);
+                }
             },
             .math => |n| {
                 if (n.identifier) |f| {

@@ -311,11 +311,17 @@ pub const Image = struct {
     url: [:0]const u8,
     title: [:0]const u8,
     alt: [:0]const u8,
+    class: ?[:0]const u8 = null,
+    @"align": ?[:0]const u8 = null,
+    width: ?[:0]const u8 = null,
 
     pub fn deinit(self: *Image, alloc: Allocator) void {
         alloc.free(self.url);
         alloc.free(self.title);
         alloc.free(self.alt);
+        if (self.class) |class| alloc.free(class);
+        if (self.@"align") |a| alloc.free(a);
+        if (self.width) |width| alloc.free(width);
     }
 };
 
