@@ -65,6 +65,7 @@ const Test = struct {
 
         if (!std.mem.eql(u8, expected, actual)) {
             if (options.verbose) {
+                std.debug.print("myst:\n{s}\n", .{self.case.myst});
                 std.debug.print("expected json:\n{s}\n", .{expected});
                 std.debug.print("actual json:\n{s}\n", .{actual});
             }
