@@ -207,16 +207,16 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
                     try stringify.write(line_num);
                 }
 
+                if (n.emphasize_lines) |l| {
+                    try stringify.objectField("emphasizeLines");
+                    try stringify.write(l);
+                }
                 try stringify.objectField("value");
                 try stringify.write(n.value);
 
                 if (n.filename) |f| {
                     try stringify.objectField("filename");
                     try stringify.write(f);
-                }
-                if (n.emphasize_lines) |l| {
-                    try stringify.objectField("emphasizeLines");
-                    try stringify.write(l);
                 }
             },
             .image => |n| {

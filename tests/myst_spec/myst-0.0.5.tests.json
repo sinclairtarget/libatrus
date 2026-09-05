@@ -19043,7 +19043,6 @@
   },
   {
     "title": "directives.code: Code-block starting line",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -19078,7 +19077,6 @@
   },
   {
     "title": "directives.code: Code-block directive shows line numbers without explicit linenos flag",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -19107,7 +19105,6 @@
   },
   {
     "title": "directives.code: Code-block directive - emphasize lines",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [

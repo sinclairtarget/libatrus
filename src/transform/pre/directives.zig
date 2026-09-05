@@ -77,7 +77,7 @@ fn transformBuiltin(
         return try transformFigure(alloc, node, args, value);
     }
 
-    if (std.mem.eql(u8, name, "code")) {
+    if (std.mem.eql(u8, name, "code") or std.mem.eql(u8, name, "code-block")) {
         return try transformCode(alloc, scratch, node, args, options, value);
     }
 
@@ -264,7 +264,9 @@ fn transformCode(
     for (options) |opt| {
         if (std.mem.eql(u8, opt.name, "linenos")) {
             code_node.code.show_line_numbers = true;
-        } else if (std.mem.eql(u8, opt.name, "number-lines")) {
+        } else if (std.mem.eql(u8, opt.name, "number-lines") or
+            std.mem.eql(u8, opt.name, "lineno-start"))
+        {
             code_node.code.show_line_numbers = true;
             if (opt.value) |v| {
                 if (myst.option_values.parseNumber(v)) |num| {
