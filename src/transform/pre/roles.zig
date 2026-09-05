@@ -57,6 +57,8 @@ fn transformBuiltin(
         return try transformSuperscript(alloc, node, value);
     } else if (std.mem.eql(u8, name, "abbr")) {
         return try transformAbbreviation(alloc, node, value);
+    } else if (std.mem.eql(u8, name, "math")) {
+        return try transformInlineMath(alloc, node, value);
     }
 
     return node;
@@ -185,6 +187,31 @@ fn transformAbbreviation(
     std.debug.assert(@as(ast.NodeType, node.*) == .myst_role);
     std.debug.assert(node.myst_role.children.len == 0);
     try node.appendChild(alloc, abbr_node);
+
+    return node;
+}
+
+/// Implements the {math} role for inline math.
+fn transformInlineMath(
+    alloc: Allocator,
+    node: *ast.Node,
+    value: []const u8,
+) !*ast.Node {
+    const math_value = try alloc.dupeZ(u8, value);
+    errdefer alloc.free(math_value);
+
+    const math_node = try alloc.create(ast.Node);
+    errdefer math_node.deinit(alloc);
+
+    math_node.* = .{
+        .inline_math = .{
+            .value = math_value,
+        },
+    };
+
+    std.debug.assert(@as(ast.NodeType, node.*) == .myst_role);
+    std.debug.assert(node.myst_role.children.len == 0);
+    try node.appendChild(alloc, math_node);
 
     return node;
 }

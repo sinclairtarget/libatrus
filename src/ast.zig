@@ -41,6 +41,7 @@ pub const NodeType = enum(c_uint) {
     subscript = 18,
     superscript = 19,
     abbreviation = 20,
+    inline_math = 30,
     // built-in directives
     myst_directive = 21,
     myst_directive_error = 22,
@@ -53,6 +54,7 @@ pub const NodeType = enum(c_uint) {
             .inline_code => "inlineCode",
             .myst_role => "mystRole",
             .myst_role_error => "mystRoleError",
+            .inline_math => "inlineMath",
             .myst_directive => "mystDirective",
             .myst_directive_error => "mystDirectiveError",
             .admonition_title => "admonitionTitle",
@@ -91,6 +93,7 @@ pub const Node = union(NodeType) {
     subscript: Wrapper,
     superscript: Wrapper,
     abbreviation: Abbreviation,
+    inline_math: Text,
     myst_directive: MySTDirective,
     myst_directive_error: MySTDirectiveError,
     admonition: Admonition,
@@ -483,6 +486,7 @@ pub const AllowedChildren = enum {
             .html,
             .myst_role_error,
             .comment,
+            .inline_math,
             => .no,
         };
     }

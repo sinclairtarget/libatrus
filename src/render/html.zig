@@ -669,6 +669,14 @@ fn renderNode(
 
             _ = try out.writeAll("</abbr>");
         },
+        .inline_math => |n| {
+            if (f.begin_line) {
+                try printIndent(out, options, f.depth);
+            }
+            try out.print("<span class=\"math-inline\">", .{});
+            try printHTMLEscapedContent(out, n.value);
+            try out.print("</span>", .{});
+        },
     }
 
     return true;

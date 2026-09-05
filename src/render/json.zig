@@ -176,7 +176,7 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
             },
         },
         .no => |leaf_node| switch (leaf_node) {
-            inline .text, .inline_code, .html, .comment => |n| {
+            inline .text, .inline_code, .html, .comment, .inline_math => |n| {
                 try stringify.objectField("value");
                 try stringify.write(n.value);
             },

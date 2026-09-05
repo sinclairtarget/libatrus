@@ -21779,7 +21779,6 @@
   },
   {
     "title": "roles.math: Math role",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
