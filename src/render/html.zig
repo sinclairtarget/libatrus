@@ -178,11 +178,12 @@ fn renderNode(
                 @panic("no HTML rendering implementation for container kind");
             }
         },
-        .caption => |n| {
+        .caption => try renderCaption(node, out, options, f, null),
+        .legend => |n| {
             if (f.begin_line) {
                 try printIndent(out, options, f.depth);
             }
-            _ = try out.writeAll("<figcaption>\n");
+            _ = try out.writeAll("<div class=\"legend\">\n");
             for (n.children) |child| {
                 _ = try renderNode(
                     child,
@@ -196,7 +197,7 @@ fn renderNode(
                 _ = try out.writeAll("\n");
             }
             try printIndent(out, options, f.depth);
-            _ = try out.writeAll("</figcaption>");
+            _ = try out.writeAll("</div>");
         },
         .list => |n| {
             if (f.begin_line) {
@@ -765,21 +766,118 @@ fn renderFigure(
     if (f.begin_line) {
         try printIndent(out, options, f.depth);
     }
-    _ = try out.writeAll("<figure class=\"numbered\">\n");
 
     const n = node.container;
-    for (n.children) |child| {
-        _ = try renderNode(
-            child,
-            out,
-            options,
-            .{
-                .depth = f.depth,
-                .begin_line = false,
-            },
-        );
+    _ = try out.writeAll("<figure ");
+    if (n.identifier) |identifier| {
+        _ = try out.writeAll("id=\"");
+        try printHTMLEscapedAttrValue(out, identifier);
+        _ = try out.writeAll("\" ");
     }
+    if (n.enumerator) |_| {
+    _ = try out.writeAll("class=\"numbered\"");
+    }
+    _ = try out.writeAll(">\n");
+
+    for (n.children) |child| {
+        switch (child.*) {
+            .caption => try renderCaption(
+                child,
+                out,
+                options,
+                .{
+                    .depth = f.depth + 1,
+                    .begin_line = true,
+                },
+                n,
+            ),
+            else => _ = try renderNode(
+                child,
+                out,
+                options,
+                .{
+                    .depth = f.depth + 1,
+                    .begin_line = true,
+                },
+            ),
+        }
+        _ = try out.writeAll("\n");
+    }
+
+    try printIndent(out, options, f.depth);
     _ = try out.writeAll("</figure>");
+}
+
+fn renderCaption(
+    node: *ast.Node,
+    out: *Io.Writer,
+    options: Options,
+    f: FormattingState,
+    container: ?ast.Container,
+) !void {
+    if (f.begin_line) {
+        try printIndent(out, options, f.depth);
+    }
+
+    const n = node.caption;
+    _ = try out.writeAll("<figcaption>\n");
+
+    const shouldRenderEnumerated = container != null and
+        container.?.enumerator != null and
+        n.children.len > 0 and
+        @as(ast.NodeType, n.children[0].*) == .paragraph;
+    if (shouldRenderEnumerated) {
+        try printIndent(out, options, f.depth + 1);
+
+        const paragraph = n.children[0].paragraph;
+
+        _ = try out.writeAll("<p><span class=\"caption-number\">Figure ");
+        try printHTMLEscapedContent(out, container.?.enumerator.?);
+        _ = try out.writeAll("</span>");
+
+        for (paragraph.children) |child| {
+            _ = try renderNode(
+                child,
+                out,
+                options,
+                .{
+                    .depth = f.depth,
+                    .begin_line = false,
+                },
+            );
+        }
+        _ = try out.writeAll("</p>");
+        _ = try out.writeAll("\n");
+
+        for (n.children[1..]) |child| {
+            _ = try renderNode(
+                child,
+                out,
+                options,
+                .{
+                    .depth = f.depth + 1,
+                    .begin_line = true,
+                },
+            );
+            _ = try out.writeAll("\n");
+        }
+    } else {
+        for (n.children) |child| {
+            _ = try renderNode(
+                child,
+                out,
+                options,
+                .{
+                    .depth = f.depth + 1,
+                    .begin_line = true,
+                },
+            );
+            _ = try out.writeAll("\n");
+        }
+    }
+
+    try printIndent(out, options, f.depth);
+    _ = try out.writeAll("</figcaption>");
 }
 
 fn willRenderAnything(node: *const ast.Node) bool {

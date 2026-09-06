@@ -19135,7 +19135,6 @@
   },
   {
     "title": "directives.figure: Simple figure",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -19188,11 +19187,12 @@
       ]
     },
     "myst": "```{figure} https://via.placeholder.com/150\nThis is the figure caption!\n\nSomething! A legend!?\n```",
+    "html_indented": true,
+    "skip_html": true,
     "html": "<figure class=\"numbered\">\n  <img src=\"https://via.placeholder.com/150\">\n  <figcaption>\n    <p>This is the figure caption!</p>\n  </figcaption>\n  <div class=\"legend\">\n    <p>Something! A legend!?</p>\n  </div>\n</figure>\n"
   },
   {
     "title": "directives.figure: Named figure with a caption in a paragraph",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -19238,11 +19238,12 @@
       ]
     },
     "myst": "```{figure} https://via.placeholder.com/150\n:name: myFigure\n:alt: Placeholder\n\nThis is the figure caption!\n```",
+    "html_indented": true,
+    "skip_html": true,
     "html": "<figure id=\"myfigure\" class=\"numbered\">\n  <img src=\"https://via.placeholder.com/150\" alt=\"Placeholder\">\n  <figcaption>\n    <p><span class=\"caption-number\">Figure 1</span>This is the figure caption!</p>\n  </figcaption>\n</figure>\n"
   },
   {
     "title": "directives.figure: Named figure with a caption in a no alt",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -19286,11 +19287,12 @@
       ]
     },
     "myst": "```{figure} https://via.placeholder.com/150\n:name: myFigure\n\nThis is the figure caption!\n```",
+    "html_indented": true,
+    "skip_html": true,
     "html": "<figure id=\"myfigure\" class=\"numbered\">\n  <img src=\"https://via.placeholder.com/150\">\n  <figcaption>\n    <p><span class=\"caption-number\">Figure 1</span>This is the figure caption!</p>\n  </figcaption>\n</figure>\n"
   },
   {
     "title": "directives.figure: Named figure with no space between options in directive",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -19334,11 +19336,12 @@
       ]
     },
     "myst": "```{figure} https://via.placeholder.com/150\n:name: myFigure\nThis is the figure caption!\n```",
+    "html_indented": true,
+    "skip_html": true,
     "html": "<figure id=\"myfigure\" class=\"numbered\">\n  <img src=\"https://via.placeholder.com/150\">\n  <figcaption>\n    <p><span class=\"caption-number\">Figure 1</span>This is the figure caption!</p>\n  </figcaption>\n</figure>\n"
   },
   {
     "title": "directives.figure: Two figures",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -19419,6 +19422,8 @@
       ]
     },
     "myst": "```{figure} https://via.placeholder.com/150\n:name: myFigure\n\nThis is the figure caption!\n```\n```{figure} https://via.placeholder.com/151\n:name: myOtherFigure\n\nThis is another caption!\n```",
+    "html_indented": true,
+    "skip_html": true,
     "html": "<figure id=\"myfigure\" class=\"numbered\">\n  <img src=\"https://via.placeholder.com/150\">\n  <figcaption>\n    <p><span class=\"caption-number\">Figure 1</span>This is the figure caption!</p>\n  </figcaption>\n</figure>\n<figure id=\"myotherfigure\" class=\"numbered\">\n  <img src=\"https://via.placeholder.com/151\">\n  <figcaption>\n    <p><span class=\"caption-number\">Figure 2</span>This is another caption!</p>\n  </figcaption>\n</figure>\n"
   },
   {

@@ -74,7 +74,7 @@ fn transformBuiltin(
     }
 
     if (std.mem.eql(u8, name, "figure")) {
-        return try transformFigure(alloc, node, args, value);
+        return try transformFigure(alloc, scratch, node, args, options, value);
     }
 
     if (std.mem.eql(u8, name, "code") or std.mem.eql(u8, name, "code-block")) {
@@ -183,8 +183,10 @@ fn transformAdmonition(
 
 fn transformFigure(
     alloc: Allocator,
+    scratch: Allocator,
     node: *ast.Node,
     args: []const u8,
+    options: []const ast.MySTDirective.Option,
     value: []const u8,
 ) !*ast.Node {
     var children: ArrayList(*ast.Node) = .empty;
@@ -196,7 +198,13 @@ fn transformFigure(
         const owned_title = try alloc.dupeZ(u8, "");
         errdefer alloc.free(owned_title);
 
-        const owned_alt = try alloc.dupeZ(u8, "");
+        const owned_alt = for (options) |opt| {
+            if (std.mem.eql(u8, opt.name, "alt")) {
+                if (opt.value) |v| {
+                    break try alloc.dupeZ(u8, v);
+                }
+            }
+        } else try alloc.dupeZ(u8, "");
         errdefer alloc.free(owned_alt);
 
         const img_node = try alloc.create(ast.Node);
@@ -221,8 +229,36 @@ fn transformFigure(
         alloc.destroy(root); // we don't need the root node
     }
 
-    for (root.root.children) |child| {
-        try children.append(alloc, child);
+    if (root.root.children.len > 0) {
+        const caption_node = try alloc.create(ast.Node);
+        errdefer alloc.destroy(caption_node);
+
+        caption_node.* = .{
+            .caption = .{
+                .children = try alloc.dupe(
+                    *ast.Node,
+                    &.{root.root.children[0]},
+                ),
+            },
+        };
+
+        try children.append(alloc, caption_node);
+
+        if (root.root.children.len > 1) {
+            const legend_node = try alloc.create(ast.Node);
+            errdefer alloc.destroy(legend_node);
+
+            legend_node.* = .{
+                .legend = .{
+                    .children = try alloc.dupe(
+                        *ast.Node,
+                        root.root.children[1..],
+                    ),
+                },
+            };
+
+            try children.append(alloc, legend_node);
+        }
     }
 
     const owned_kind = try alloc.dupeZ(u8, "figure");
@@ -240,6 +276,23 @@ fn transformFigure(
             .kind = owned_kind,
         },
     };
+
+    for (options) |opt| {
+        if (std.mem.eql(u8, opt.name, "name")) {
+            if (opt.value) |v| {
+                container_node.container.label = try alloc.dupeZ(u8, v);
+                const normalized = try myst.references.normalizeIdentifier(
+                    scratch,
+                    v,
+                );
+                container_node.container.identifier = try alloc.dupeZ(
+                    u8,
+                    normalized,
+                );
+                container_node.container.enumerated = true;
+            }
+        }
+    }
 
     std.debug.assert(node.myst_directive.children.len == 0);
     try node.appendChild(alloc, container_node);

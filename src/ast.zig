@@ -35,6 +35,7 @@ pub const NodeType = enum(c_uint) {
     list = 27,
     list_item = 28,
     comment = 29,
+    legend = 32,
     // built-in roles
     myst_role = 16,
     myst_role_error = 17,
@@ -89,6 +90,7 @@ pub const Node = union(NodeType) {
     list: List,
     list_item: ListItem,
     comment: Text,
+    legend: Wrapper,
     myst_role: MySTRole,
     myst_role_error: MySTRoleError,
     subscript: Wrapper,
@@ -328,11 +330,18 @@ pub const Image = struct {
 pub const Container = struct {
     children: []*Node,
     kind: [:0]const u8,
+    label: ?[:0]const u8 = null,
+    identifier: ?[:0]const u8 = null,
+    enumerated: bool = false,
+    enumerator: ?[:0]const u8 = null,
 
     pub fn deinit(self: *Container, alloc: Allocator) void {
         freeChildren(alloc, self.children);
 
         alloc.free(self.kind);
+        if (self.label) |label| alloc.free(label);
+        if (self.identifier) |identifier| alloc.free(identifier);
+        if (self.enumerator) |enumerator| alloc.free(enumerator);
     }
 };
 
@@ -495,6 +504,7 @@ pub const AllowedChildren = enum {
             .myst_directive_error,
             .admonition,
             .admonition_title,
+            .legend,
             => .yes,
             .text,
             .code,

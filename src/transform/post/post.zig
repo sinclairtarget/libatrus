@@ -6,37 +6,75 @@ const Allocator = std.mem.Allocator;
 
 const ast = @import("../../ast.zig");
 
+const State = struct {
+    container_number: u32 = 1,
+};
+
 /// Apply all "post" stage transformations.
 pub fn transform(
     alloc: Allocator,
     scratch: Allocator,
     original_node: *ast.Node,
 ) !*ast.Node {
-    switch (original_node.*) {
-        inline .block, .heading, .paragraph, .emphasis, .strong, .link, .blockquote, .myst_directive => |n| {
-            for (0..n.children.len) |i| {
-                n.children[i] = try transform(alloc, scratch, n.children[i]);
-            }
-            return original_node;
-        },
-        .root => |n| {
-            for (0..n.children.len) |i| {
-                n.children[i] = try transform(alloc, scratch, n.children[i]);
-            }
-            return try transformRoot(alloc, scratch, original_node);
-        },
-        .container => |n| {
-            for (0..n.children.len) |i| {
-                n.children[i] = try transform(alloc, scratch, n.children[i]);
-            }
+    var state: State = .{};
+    return try transformInternal(alloc, scratch, original_node, &state);
+}
 
-            if (std.mem.eql(u8, "figure", n.kind)) {
-                return try transformFigure(alloc, scratch, original_node);
-            }
+fn transformInternal(
+    alloc: Allocator,
+    scratch: Allocator,
+    original_node: *ast.Node,
+    state: *State,
+) !*ast.Node {
+    switch (original_node.allowedChildren()) {
+        .yes => |branch_node| switch (branch_node) {
+            .root => |n| {
+                for (0..n.children.len) |i| {
+                    n.children[i] = try transformInternal(
+                        alloc,
+                        scratch,
+                        n.children[i],
+                        state,
+                    );
+                }
+                return try transformRoot(alloc, scratch, original_node);
+            },
+            .container => |n| { // TODO: Do this in separate transformation.
+                // Enumeration for containers
+                // Want to do this in pre-order
+                if (n.enumerated) {
+                    n.enumerator = try std.fmt.allocPrintSentinel(
+                        alloc,
+                        "{d}",
+                        .{state.container_number},
+                        0,
+                    );
+                    state.container_number += 1;
+                }
 
-            return original_node;
+                for (0..n.children.len) |i| {
+                    n.children[i] = try transformInternal(
+                        alloc,
+                        scratch,
+                        n.children[i],
+                        state,
+                    );
+                }
+                return original_node;
+            },
+            inline else => |n| {
+                for (0..n.children.len) |i| {
+                    n.children[i] = try transformInternal(
+                        alloc,
+                        scratch,
+                        n.children[i],
+                        state,
+                    );
+                }
+                return original_node;
+            },
         },
-        else => return original_node,
+        .no => return original_node,
     }
 }
 
@@ -60,39 +98,5 @@ fn transformRoot(
     var root_children = try alloc.alloc(*ast.Node, 1);
     root_children[0] = block;
     node.root.children = root_children;
-    return node;
-}
-
-/// Applies a caption to figures.
-///
-/// Takes the first non-image child of the figure, if one exists, and wraps it
-/// in a caption node.
-fn transformFigure(
-    alloc: Allocator,
-    scratch: Allocator,
-    node: *ast.Node,
-) !*ast.Node {
-    _ = scratch;
-
-    const n = node.container;
-    const caption_child, const index = for (n.children, 0..) |child, i| {
-        if (@as(ast.NodeType, child.*) != .image) {
-            break .{ child, i };
-        }
-    } else return node; // nothing to do
-
-    const caption_node = try alloc.create(ast.Node);
-    errdefer caption_node.deinit(alloc);
-
-    const owned_children = try alloc.dupe(*ast.Node, &.{caption_child});
-    errdefer alloc.free(owned_children);
-
-    caption_node.* = .{
-        .caption = .{
-            .children = owned_children,
-        },
-    };
-
-    n.children[index] = caption_node;
     return node;
 }
