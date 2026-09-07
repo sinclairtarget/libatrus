@@ -72,7 +72,7 @@ pub const NodeType = enum(c_uint) {
 /// A MyST AST node.
 pub const Node = union(NodeType) {
     root: Root,
-    block: Wrapper,
+    block: Block,
     heading: Heading,
     paragraph: Wrapper,
     text: Text,
@@ -227,6 +227,17 @@ pub const Root = struct {
 
     pub fn deinit(self: *Root, alloc: Allocator) void {
         freeChildren(alloc, self.children);
+    }
+};
+
+pub const Block = struct {
+    children: []*Node,
+    meta: [:0]const u8,
+
+    pub fn deinit(self: *Block, alloc: Allocator) void {
+        freeChildren(alloc, self.children);
+
+        alloc.free(self.meta);
     }
 };
 

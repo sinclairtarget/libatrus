@@ -267,9 +267,11 @@ export fn atrus_node_root_create(out: **atrus.ast.Node) c_int {
 // --- Block ------------------------------------------------------------------
 export fn atrus_node_block_create(out: **atrus.ast.Node) c_int {
     const block = c_alloc.create(atrus.ast.Node) catch return -1;
+    const meta = c_alloc.dupeZ(u8, "") catch return -1;
     block.* = .{
         .block = .{
             .children = &.{},
+            .meta = meta,
         },
     };
     out.* = block;

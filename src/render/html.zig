@@ -991,7 +991,10 @@ test "emtpy ast" {
     try renderAndCompare(&root_node, .{}, "");
 
     var block_node: ast.Node = .{
-        .block = .{ .children = &.{} },
+        .block = .{
+            .children = &.{},
+            .meta = "",
+        },
     };
     var children = [_]*ast.Node{&block_node};
     root_node = .{
