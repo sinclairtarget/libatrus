@@ -661,7 +661,11 @@ test "simple figure" {
         img_node.image.url,
     );
 
-    const p_node = container_node.container.children[1];
+    const caption_node = container_node.container.children[1];
+    try testing.expectEqual(.caption, @as(ast.NodeType, caption_node.*));
+    try testing.expectEqual(1, caption_node.caption.children.len);
+
+    const p_node = caption_node.caption.children[0];
     try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node.*));
     try testing.expectEqual(1, p_node.paragraph.children.len);
 
