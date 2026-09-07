@@ -164,6 +164,11 @@ pub fn parse(
             continue;
         }
 
+        if (try self.parseMySTBlockBreak(alloc, scratch)) |block_break| {
+            try children.append(block_break);
+            continue;
+        }
+
         if (try self.parseLinkReferenceDefinition(alloc, scratch)) |def| {
             try link_defs.add(alloc, &def.definition);
             try children.append(def);
@@ -395,6 +400,65 @@ fn parseThematicBreak(
 
     const node = try alloc.create(ast.Node);
     node.* = .{ .thematic_break = {} };
+    did_parse = true;
+    return node;
+}
+
+/// Parses MyST block breaks.
+fn parseMySTBlockBreak(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) !?*ast.Node {
+    var did_parse = false;
+    const checkpoint_index = self.it.checkpoint();
+    defer if (!did_parse) {
+        self.it.backtrack(checkpoint_index);
+    };
+
+    _ = try self.it.consumeWhitespaceUpTo(scratch, 3);
+
+    var count: u8 = 0;
+    while (try self.it.peek(scratch)) |token| {
+        switch (token.token_type) {
+            .plus => {
+                count += 1;
+                _ = try self.it.consume(scratch, &.{.plus});
+            },
+            .space, .tab => |t| {
+                _ = try self.it.consume(scratch, &.{t});
+            },
+            else => break,
+        }
+    }
+
+    if (count < 3) {
+        return null;
+    }
+
+    // Everything else on the line counts as the "meta"
+    var running_text = Io.Writer.Allocating.init(scratch);
+    while (try self.it.peek(scratch)) |token| {
+        switch (token.token_type) {
+            .newline => break,
+            else => {
+                _ = try running_text.writer.write(token.lexeme);
+                _ = try self.it.consume(scratch, &.{token.token_type});
+            },
+        }
+    }
+
+    _ = try self.it.consume(scratch, &.{.newline}) orelse return null;
+
+    const trimmed = std.mem.trim(u8, running_text.written(), " \t");
+
+    const meta = try alloc.dupeZ(u8, trimmed);
+    errdefer alloc.free(meta);
+
+    const node = try alloc.create(ast.Node);
+    node.* = .{
+        .block_break = .{ .meta = meta },
+    };
     did_parse = true;
     return node;
 }
@@ -4791,4 +4855,38 @@ test "MyST comment" {
 
     const code_node = nodes[3];
     try testing.expectEqual(.code, @as(ast.NodeType, code_node.*));
+}
+
+test "block break with spaces and meta" {
+    const md =
+        \\+ +  ++foobar bim
+        \\+++            bimbam foo
+        \\   +++
+        \\
+    ;
+
+    var link_defs: LinkDefMap = .empty;
+    defer link_defs.deinit(testing.allocator);
+
+    const nodes = try parseBlocksMd(md, &link_defs);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(3, nodes.len);
+
+    const bb_1_node = nodes[0];
+    try testing.expectEqual(.block_break, @as(ast.NodeType, bb_1_node.*));
+    try testing.expectEqualStrings("foobar bim", bb_1_node.block_break.meta);
+
+    const bb_2_node = nodes[1];
+    try testing.expectEqual(.block_break, @as(ast.NodeType, bb_2_node.*));
+    try testing.expectEqualStrings("bimbam foo", bb_2_node.block_break.meta);
+
+    const bb_3_node = nodes[2];
+    try testing.expectEqual(.block_break, @as(ast.NodeType, bb_3_node.*));
+    try testing.expectEqualStrings("", bb_3_node.block_break.meta);
 }

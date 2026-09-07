@@ -179,12 +179,14 @@ const ContainerBlock = struct {
         in_paragraph: bool,
         line_num: usize,
     ) !?ContainerBlock {
-        // Thematic breaks take precedence over container structures.
+        // Thematic breaks and block breaks take precedence over container
+        // structures.
         //
-        // This is a little ugly, but we check here to see if we have a
-        // thematic break. If we do, then we must let the leaf block parser
-        // parse it.
-        if (try peekThematicBreak(scratch, it)) {
+        // This is a little ugly, but we check here to see if we have a break.
+        // If we do, then we must let the leaf block parser parse it.
+        if (try peekThematicBreak(scratch, it) or
+            try peekBlockBreak(scratch, it))
+        {
             return null;
         }
 
@@ -1080,6 +1082,34 @@ fn peekThematicBreak(
     }
 
     return true;
+}
+
+fn peekBlockBreak(
+    scratch: Allocator,
+    it: *TokenIterator(BlockTokenType),
+) !bool {
+    const checkpoint_index = it.checkpoint();
+    defer it.backtrack(checkpoint_index); // always backtrack
+
+    _ = try it.consumeWhitespaceUpTo(scratch, 3);
+
+    var count: u8 = 0;
+    while (try it.peek(scratch)) |token| {
+        switch (token.token_type) {
+            .plus => {
+                count += 1;
+                _ = try it.consume(scratch, &.{.plus});
+            },
+            .space, .tab => |t| {
+                _ = try it.consume(scratch, &.{t});
+            },
+            else => break,
+        }
+    }
+
+    // Block breaks can be followed on the same line by anything
+
+    return count >= 3;
 }
 
 fn peekBlankLine(

@@ -272,6 +272,12 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
                 try stringify.write(n.value);
             },
             .@"break", .thematic_break => {},
+            .block_break => |n| {
+                if (n.meta.len > 0) {
+                    try stringify.objectField("meta");
+                    try stringify.write(n.meta);
+                }
+            },
             .definition => unreachable, // See above
             .myst_role_error => |n| {
                 try stringify.objectField("value");

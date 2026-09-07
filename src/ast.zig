@@ -36,6 +36,7 @@ pub const NodeType = enum(c_uint) {
     list_item = 28,
     comment = 29,
     legend = 32,
+    block_break = 33,
     // built-in roles
     myst_role = 16,
     myst_role_error = 17,
@@ -62,6 +63,7 @@ pub const NodeType = enum(c_uint) {
             .admonition_title => "admonitionTitle",
             .list_item => "listItem",
             .comment => "mystComment",
+            .block_break => "blockBreak",
             else => @tagName(self),
         };
     }
@@ -91,6 +93,7 @@ pub const Node = union(NodeType) {
     list_item: ListItem,
     comment: Text,
     legend: Wrapper,
+    block_break: BlockBreak,
     myst_role: MySTRole,
     myst_role_error: MySTRoleError,
     subscript: Wrapper,
@@ -365,6 +368,14 @@ pub const ListItem = struct {
     }
 };
 
+pub const BlockBreak = struct {
+    meta: [:0]const u8,
+
+    pub fn deinit(self: *BlockBreak, alloc: Allocator) void {
+        alloc.free(self.meta);
+    }
+};
+
 pub const MySTRole = struct {
     children: []*Node,
     name: [:0]const u8,
@@ -509,6 +520,7 @@ pub const AllowedChildren = enum {
             .text,
             .code,
             .thematic_break,
+            .block_break,
             .@"break",
             .inline_code,
             .definition,

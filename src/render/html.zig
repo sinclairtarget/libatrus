@@ -587,7 +587,6 @@ fn renderNode(
             // Rendered verbatim, unescaped!
             try out.print("{s}", .{n.value});
         },
-        .definition => {}, // Doesn't get rendered
         .myst_role => |n| {
             if (f.begin_line) {
                 try printIndent(out, options, f.depth);
@@ -717,6 +716,14 @@ fn renderNode(
             try printHTMLEscapedContent(out, n.value);
             _ = try out.writeAll("</div>");
         },
+        .block_break => {
+            if (f.begin_line) {
+                try printIndent(out, options, f.depth);
+            }
+
+            _ = try out.writeAll("<div></div>");
+        },
+        .definition => {}, // Doesn't get rendered
     }
 
     return true;
@@ -1170,6 +1177,30 @@ test "render comment escaping" {
 
     const expected =
         \\<!--&lt;!- -&gt; <script> --&gt; --!&gt;-->
+        \\
+    ;
+
+    try renderAndCompare(&root_node, .{}, expected);
+}
+
+// Typically block breaks would not be in an AST sent to the HTML renderer
+// (because they are stripped out in the POST transform stage). But if for some
+// reason they are in the AST, we render them as empty divs.
+test "render block break" {
+    var block_break_node: ast.Node = .{
+        .block_break = .{
+            .meta = "foobar",
+        },
+    };
+    var root_node: ast.Node = blk: {
+        var children = [_]*ast.Node{&block_break_node};
+        break :blk .{
+            .root = .{ .children = &children },
+        };
+    };
+
+    const expected =
+        \\<div></div>
         \\
     ;
 
