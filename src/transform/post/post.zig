@@ -61,6 +61,9 @@ fn groupByBlock(
                 }
 
                 current_block = try createBlockNode(alloc, n.meta);
+
+                // This block break has served its purpose.
+                child.deinit(alloc);
             },
             else => {
                 current_block = current_block orelse
@@ -160,9 +163,10 @@ const testing = std.testing;
 const util = @import("../../util/util.zig");
 
 test "group by block, no block breaks" {
+    var alloc = testing.allocator;
+
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
-    var alloc = arena.allocator();
 
     const p_node_1: *ast.Node = blk: {
         const text_node = try alloc.create(ast.Node);
@@ -218,7 +222,8 @@ test "group by block, no block breaks" {
         break :blk node;
     };
 
-    const post_node = try transform(alloc, alloc, root_node);
+    const post_node = try transform(alloc, arena.allocator(), root_node);
+    defer post_node.deinit(alloc);
 
     try testing.expectEqual(.root, @as(ast.NodeType, post_node.*));
     try testing.expectEqual(1, post_node.root.children.len);
@@ -229,9 +234,10 @@ test "group by block, no block breaks" {
 }
 
 test "group by block" {
+    var alloc = testing.allocator;
+
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
-    var alloc = arena.allocator();
 
     const p_node_1: *ast.Node = blk: {
         const text_node = try alloc.create(ast.Node);
@@ -293,7 +299,8 @@ test "group by block" {
         break :blk node;
     };
 
-    const post_node = try transform(alloc, alloc, root_node);
+    const post_node = try transform(alloc, arena.allocator(), root_node);
+    defer post_node.deinit(alloc);
 
     try testing.expectEqual(.root, @as(ast.NodeType, post_node.*));
     try testing.expectEqual(2, post_node.root.children.len);
@@ -308,9 +315,10 @@ test "group by block" {
 }
 
 test "enumerate figures" {
+    var alloc = testing.allocator;
+
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
-    var alloc = arena.allocator();
 
     const container_node_1 = try alloc.create(ast.Node);
     container_node_1.* = .{
@@ -352,7 +360,8 @@ test "enumerate figures" {
         break :blk node;
     };
 
-    const post_node = try transform(alloc, alloc, root_node);
+    const post_node = try transform(alloc, arena.allocator(), root_node);
+    defer post_node.deinit(alloc);
 
     try testing.expectEqual(.root, @as(ast.NodeType, post_node.*));
     try testing.expectEqual(1, post_node.root.children.len);

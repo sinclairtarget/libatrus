@@ -66,6 +66,14 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
 
                 try renderChildren(stringify, n);
             },
+            .block => |n| {
+                if (n.meta.len > 0) {
+                    try stringify.objectField("meta");
+                    try stringify.write(n.meta);
+                }
+
+                try renderChildren(stringify, n);
+            },
             .container => |n| {
                 try stringify.objectField("kind");
                 try stringify.write(n.kind);

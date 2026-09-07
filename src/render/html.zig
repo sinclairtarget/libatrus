@@ -24,6 +24,10 @@ const FormattingState = struct {
     const start: FormattingState = .{ .depth = 0, .begin_line = true };
 };
 
+const RenderState = struct {
+    have_seen_block: bool = false,
+};
+
 /// Renders the given AST as HTML.
 ///
 /// The given AST node might be the root, but it might not. We support
@@ -33,7 +37,8 @@ pub fn render(
     out: *Io.Writer,
     options: Options,
 ) Io.Writer.Error!void {
-    if (try renderNode(node, out, options, .start)) {
+    var render_state: RenderState = .{};
+    if (try renderNode(node, out, options, .start, &render_state)) {
         _ = try out.print("\n", .{}); // add trailing newline
     }
     try out.flush();
@@ -48,14 +53,15 @@ fn renderNode(
     out: *Io.Writer,
     options: Options,
     f: FormattingState,
+    r: *RenderState,
 ) Io.Writer.Error!bool {
-    if (!willRenderAnything(node)) {
+    if (!willRenderAnything(node, r)) {
         return false;
     }
 
     switch (node.*) {
         // --- Blocks ---
-        inline .root, .block => |n| {
+        .root => |n| {
             var rendered_anything = false;
             for (n.children, 0..) |child, i| {
                 const rendered = try renderNode(
@@ -66,14 +72,71 @@ fn renderNode(
                         .depth = f.depth,
                         .begin_line = true,
                     },
+                    r,
                 );
                 rendered_anything = rendered_anything or rendered;
                 if (rendered_anything and (i < n.children.len - 1 and
-                    willRenderAnything(n.children[i + 1])))
+                    willRenderAnything(n.children[i + 1], r)))
                 {
                     try out.print("\n", .{});
                 }
             }
+        },
+        .block => |n| {
+            // The first block in the AST doesn't get rendered, only its
+            // children do.
+            if (r.have_seen_block) {
+                if (f.begin_line) {
+                    try printIndent(out, options, f.depth);
+                }
+
+                try out.writeAll("<div class=\"block\"");
+                if (n.meta.len > 0) {
+                    try out.writeAll(" data-block=\"");
+                    try printHTMLEscapedAttrValue(out, n.meta);
+                    try out.writeAll("\"");
+                }
+                try out.writeAll(">\n");
+
+                for (n.children) |child| {
+                    if (try renderNode(
+                        child,
+                        out,
+                        options,
+                        .{
+                            .depth = f.depth + 1,
+                            .begin_line = true,
+                        },
+                        r,
+                    )) {
+                        try out.print("\n", .{});
+                    }
+                }
+                try printIndent(out, options, f.depth);
+                try out.print("</div>", .{});
+            } else {
+                var rendered_anything = false;
+                for (n.children, 0..) |child, i| {
+                    const rendered = try renderNode(
+                        child,
+                        out,
+                        options,
+                        .{
+                            .depth = f.depth,
+                            .begin_line = true,
+                        },
+                        r,
+                    );
+                    rendered_anything = rendered_anything or rendered;
+                    if (rendered_anything and (i < n.children.len - 1 and
+                        willRenderAnything(n.children[i + 1], r)))
+                    {
+                        try out.print("\n", .{});
+                    }
+                }
+            }
+
+            r.have_seen_block = true;
         },
         .blockquote => |n| {
             if (f.begin_line) {
@@ -89,6 +152,7 @@ fn renderNode(
                         .depth = f.depth + 1,
                         .begin_line = true,
                     },
+                    r,
                 )) {
                     try out.print("\n", .{});
                 }
@@ -110,6 +174,7 @@ fn renderNode(
                         .depth = f.depth,
                         .begin_line = false,
                     },
+                    r,
                 );
             }
             try out.print("</p>", .{});
@@ -128,6 +193,7 @@ fn renderNode(
                         .depth = f.depth,
                         .begin_line = false,
                     },
+                    r,
                 );
             }
             try out.print("</h{d}>", .{n.depth});
@@ -173,12 +239,12 @@ fn renderNode(
         .container => |n| {
             const kind = n.kind;
             if (std.mem.eql(u8, kind, "figure")) {
-                try renderFigure(node, out, options, f);
+                try renderFigure(node, out, options, f, r);
             } else {
                 @panic("no HTML rendering implementation for container kind");
             }
         },
-        .caption => try renderCaption(node, out, options, f, null),
+        .caption => try renderCaption(node, out, options, f, r, null),
         .legend => |n| {
             if (f.begin_line) {
                 try printIndent(out, options, f.depth);
@@ -193,6 +259,7 @@ fn renderNode(
                         .depth = f.depth + 1,
                         .begin_line = true,
                     },
+                    r,
                 );
                 _ = try out.writeAll("\n");
             }
@@ -222,6 +289,7 @@ fn renderNode(
                         .depth = f.depth + 1,
                         .begin_line = true,
                     },
+                    r,
                 );
                 _ = try out.writeAll("\n");
             }
@@ -262,6 +330,7 @@ fn renderNode(
                                 .depth = f.depth,
                                 .begin_line = false,
                             },
+                            r,
                         );
                     }
                 } else {
@@ -276,6 +345,7 @@ fn renderNode(
                                 .depth = f.depth,
                                 .begin_line = false,
                             },
+                            r,
                         );
                     } else {
                         _ = try out.writeAll("\n");
@@ -287,6 +357,7 @@ fn renderNode(
                                 .depth = f.depth + 1,
                                 .begin_line = true,
                             },
+                            r,
                         );
                     }
                     _ = try out.writeAll("\n");
@@ -301,6 +372,7 @@ fn renderNode(
                                 .depth = f.depth + 1,
                                 .begin_line = true,
                             },
+                            r,
                         );
 
                         // Add newline as long as this isn't a last text child
@@ -360,6 +432,7 @@ fn renderNode(
                             .depth = f.depth,
                             .begin_line = true,
                         },
+                        r,
                     );
                 }
             }
@@ -378,6 +451,7 @@ fn renderNode(
                         .depth = f.depth + 1,
                         .begin_line = true,
                     },
+                    r,
                 );
                 _ = try out.writeAll("\n");
             }
@@ -415,6 +489,7 @@ fn renderNode(
                         .depth = f.depth + 1,
                         .begin_line = true,
                     },
+                    r,
                 );
                 _ = try out.writeAll("\n");
             }
@@ -435,6 +510,7 @@ fn renderNode(
                         .depth = f.depth,
                         .begin_line = false,
                     },
+                    r,
                 );
             }
             _ = try out.writeAll("</p>");
@@ -468,6 +544,7 @@ fn renderNode(
                         .depth = f.depth,
                         .begin_line = false,
                     },
+                    r,
                 );
             }
             try out.print("</em>", .{});
@@ -486,6 +563,7 @@ fn renderNode(
                         .depth = f.depth,
                         .begin_line = false,
                     },
+                    r,
                 );
             }
             try out.print("</strong>", .{});
@@ -531,6 +609,7 @@ fn renderNode(
                         .depth = f.depth,
                         .begin_line = false,
                     },
+                    r,
                 );
             }
 
@@ -615,6 +694,7 @@ fn renderNode(
                             .depth = f.depth,
                             .begin_line = false,
                         },
+                        r,
                     );
                 }
             }
@@ -640,6 +720,7 @@ fn renderNode(
                         .depth = f.depth,
                         .begin_line = false,
                     },
+                    r,
                 );
             }
 
@@ -660,6 +741,7 @@ fn renderNode(
                         .depth = f.depth,
                         .begin_line = false,
                     },
+                    r,
                 );
             }
 
@@ -687,6 +769,7 @@ fn renderNode(
                         .depth = f.depth,
                         .begin_line = false,
                     },
+                    r,
                 );
             }
 
@@ -769,6 +852,7 @@ fn renderFigure(
     out: *Io.Writer,
     options: Options,
     f: FormattingState,
+    r: *RenderState,
 ) !void {
     if (f.begin_line) {
         try printIndent(out, options, f.depth);
@@ -796,6 +880,7 @@ fn renderFigure(
                     .depth = f.depth + 1,
                     .begin_line = true,
                 },
+                r,
                 n,
             ),
             else => _ = try renderNode(
@@ -806,6 +891,7 @@ fn renderFigure(
                     .depth = f.depth + 1,
                     .begin_line = true,
                 },
+                r,
             ),
         }
         _ = try out.writeAll("\n");
@@ -820,6 +906,7 @@ fn renderCaption(
     out: *Io.Writer,
     options: Options,
     f: FormattingState,
+    r: *RenderState,
     container: ?ast.Container,
 ) !void {
     if (f.begin_line) {
@@ -851,6 +938,7 @@ fn renderCaption(
                     .depth = f.depth,
                     .begin_line = false,
                 },
+                r,
             );
         }
         _ = try out.writeAll("</p>");
@@ -865,6 +953,7 @@ fn renderCaption(
                     .depth = f.depth + 1,
                     .begin_line = true,
                 },
+                r,
             );
             _ = try out.writeAll("\n");
         }
@@ -878,6 +967,7 @@ fn renderCaption(
                     .depth = f.depth + 1,
                     .begin_line = true,
                 },
+                r,
             );
             _ = try out.writeAll("\n");
         }
@@ -887,11 +977,22 @@ fn renderCaption(
     _ = try out.writeAll("</figcaption>");
 }
 
-fn willRenderAnything(node: *const ast.Node) bool {
+fn willRenderAnything(node: *const ast.Node, r: *RenderState) bool {
     return switch (node.*) {
         .definition => false,
-        inline .root, .block => |n| for (n.children) |child| {
-            if (willRenderAnything(child)) {
+        .block => |n| blk: {
+            if (r.have_seen_block) {
+                break :blk true;
+            } else {
+                break :blk for (n.children) |child| {
+                    if (willRenderAnything(child, r)) {
+                        break true;
+                    }
+                } else false;
+            }
+        },
+        .root => |n| for (n.children) |child| {
+            if (willRenderAnything(child, r)) {
                 break true;
             }
         } else false,
