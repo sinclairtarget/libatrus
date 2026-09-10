@@ -267,11 +267,12 @@ test {
     _ = @import("lex/InlineTokenizer.zig");
     _ = @import("myst/myst.zig");
     _ = @import("myst/option_values.zig");
+    _ = @import("parse/definitions/footnotes.zig");
     _ = @import("parse/definitions/links.zig");
-    _ = @import("parse/LeafBlockParser.zig");
     _ = @import("parse/ContainerBlockParser.zig");
     _ = @import("parse/escape.zig");
     _ = @import("parse/InlineParser.zig");
+    _ = @import("parse/LeafBlockParser.zig");
     _ = @import("render/json.zig");
     _ = @import("transform/pre/roles.zig");
     _ = @import("transform/pre/directives.zig");
