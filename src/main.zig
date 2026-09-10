@@ -22,7 +22,6 @@ pub const std_options: std.Options = .{
         // messages have the `.libatrus` scope.
         .{ .scope = .libatrus, .level = .info },
         .{ .scope = .root, .level = .warn },
-        .{ .scope = .link_defs, .level = .warn },
         .{ .scope = .directives, .level = .warn },
         .{ .scope = .container, .level = .warn },
         .{ .scope = .character_refs, .level = .warn },

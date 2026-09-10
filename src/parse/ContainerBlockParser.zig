@@ -34,7 +34,7 @@ const BlockToken = @import("../lex/tokens.zig").BlockToken;
 const BlockTokenType = @import("../lex/tokens.zig").BlockTokenType;
 const whitespaceLen = @import("../lex/tokens.zig").whitespaceLen;
 const LeafBlockParser = @import("LeafBlockParser.zig");
-const LinkDefMap = @import("link_defs.zig").LinkDefMap;
+const DefStore = @import("definitions/DefStore.zig");
 const TokenIterator = @import("../lex/iterator.zig").TokenIterator;
 const util = @import("../util/util.zig");
 
@@ -375,7 +375,7 @@ pub fn parse(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
-    link_defs: *LinkDefMap,
+    def_store: *DefStore,
 ) Error!*ast.Node {
     try self.container_stack.append(scratch, .{
         .variant = .{ .root = {} },
@@ -416,7 +416,7 @@ pub fn parse(
         const loop_start_stack_len = self.container_stack.items.len;
 
         // Internal iterator logic runs, potentially pushing onto stack
-        const nodes = try self.leaf_parser.?.parse(alloc, scratch, link_defs);
+        const nodes = try self.leaf_parser.?.parse(alloc, scratch, def_store);
         errdefer {
             for (nodes) |node| {
                 node.deinit(alloc);
@@ -1230,10 +1230,10 @@ fn parseBlocks(md: []const u8) !*ast.Node {
     defer arena.deinit();
     const scratch = arena.allocator();
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const root = try parser.parse(testing.allocator, scratch, &link_defs);
+    const root = try parser.parse(testing.allocator, scratch, &def_store);
     return root;
 }
 

@@ -6,14 +6,14 @@ const ArrayList = std.ArrayList;
 const ast = @import("../ast.zig");
 const InlineTokenizer = @import("../lex/InlineTokenizer.zig");
 const InlineParser = @import("../parse/InlineParser.zig");
-const LinkDefMap = @import("../parse/link_defs.zig").LinkDefMap;
+const DefStore = @import("../parse/definitions/DefStore.zig");
 
 /// Recursively transform AST nodes by parsing inline content.
 pub fn transform(
     alloc: Allocator,
     scratch_arena: *ArenaAllocator,
     original_node: *ast.Node,
-    link_defs: LinkDefMap,
+    def_store: DefStore,
 ) !*ast.Node {
     switch (original_node.*) {
         inline .root, .block, .blockquote, .list => |n| {
@@ -22,7 +22,7 @@ pub fn transform(
                     alloc,
                     scratch_arena,
                     n.children[i],
-                    link_defs,
+                    def_store,
                 );
             }
             return original_node;
@@ -33,7 +33,7 @@ pub fn transform(
                     alloc,
                     scratch_arena,
                     n.children[i],
-                    link_defs,
+                    def_store,
                 );
             }
 
@@ -41,7 +41,7 @@ pub fn transform(
                 alloc,
                 scratch_arena,
                 n.children,
-                link_defs,
+                def_store,
             );
             if (new_children.ptr == n.children.ptr) {
                 return original_node; // nothing was changed
@@ -64,7 +64,7 @@ pub fn transform(
                     alloc,
                     scratch_arena,
                     n.children[i],
-                    link_defs,
+                    def_store,
                 );
             }
 
@@ -72,7 +72,7 @@ pub fn transform(
                 alloc,
                 scratch_arena,
                 n.children,
-                link_defs,
+                def_store,
             );
             if (new_children.ptr == n.children.ptr) {
                 return original_node; // nothing was changed
@@ -94,7 +94,7 @@ pub fn transform(
                     alloc,
                     scratch_arena,
                     n.children[i],
-                    link_defs,
+                    def_store,
                 );
             }
 
@@ -102,7 +102,7 @@ pub fn transform(
                 alloc,
                 scratch_arena,
                 n.children,
-                link_defs,
+                def_store,
             );
             if (new_children.ptr == n.children.ptr) {
                 return original_node; // nothing was changed
@@ -133,7 +133,7 @@ fn parseInline(
     alloc: Allocator,
     scratch_arena: *ArenaAllocator,
     original_nodes: []*ast.Node,
-    link_defs: LinkDefMap,
+    def_store: DefStore,
 ) ![]*ast.Node {
     // This function resets the arena after it parses inline content within
     // each block. The arena should be empty when passed to this function.
@@ -147,7 +147,7 @@ fn parseInline(
         switch (node.*) {
             .text => |n| {
                 var tokenizer = InlineTokenizer.init(n.value);
-                var parser = InlineParser.init(&tokenizer, link_defs);
+                var parser = InlineParser.init(&tokenizer, def_store);
                 const replacement_nodes = try parser.parse(
                     alloc,
                     scratch_arena.allocator(),

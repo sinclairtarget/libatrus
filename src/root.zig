@@ -17,7 +17,7 @@ const time = std.time;
 const LineReader = @import("lex/LineReader.zig");
 const BlockTokenizer = @import("lex/BlockTokenizer.zig");
 const ContainerBlockParser = @import("parse/ContainerBlockParser.zig");
-const LinkDefMap = @import("parse/link_defs.zig").LinkDefMap;
+const DefStore = @import("parse/definitions/DefStore.zig");
 const InlineParser = @import("parse/InlineParser.zig");
 const transform_ = @import("transform/transform.zig");
 const json = @import("render/json.zig");
@@ -92,8 +92,8 @@ pub fn parse(
     var line_buf: [max_line_len]u8 = undefined;
     const line_reader: LineReader = .{ .in = in, .buf = &line_buf };
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(alloc);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(alloc);
 
     // first pass; parse into blocks
     var timer = time.Timer.start() catch {
@@ -106,7 +106,7 @@ pub fn parse(
         &iterator,
         .{ .override_spread = true }, // MyST 0.0.5 spec compatability
     );
-    var root = try block_parser.parse(alloc, scratch, &link_defs);
+    var root = try block_parser.parse(alloc, scratch, &def_store);
     logger.debug("Done in {D}.", .{timer.read()});
 
     if (options.parse_level == .block) {
@@ -119,7 +119,7 @@ pub fn parse(
     // second pass; parse inline elements
     timer.reset();
     logger.debug("Beginning inline parsing...", .{});
-    root = try transform_.inlines.transform(alloc, &arena, root, link_defs);
+    root = try transform_.inlines.transform(alloc, &arena, root, def_store);
     logger.debug("Done in {D}.", .{timer.read()});
 
     if (options.parse_level == .raw) {
@@ -267,6 +267,7 @@ test {
     _ = @import("lex/InlineTokenizer.zig");
     _ = @import("myst/myst.zig");
     _ = @import("myst/option_values.zig");
+    _ = @import("parse/definitions/links.zig");
     _ = @import("parse/LeafBlockParser.zig");
     _ = @import("parse/ContainerBlockParser.zig");
     _ = @import("parse/escape.zig");

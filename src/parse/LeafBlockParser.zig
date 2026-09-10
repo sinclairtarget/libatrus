@@ -36,8 +36,8 @@ const BlockTokenType = @import("../lex/tokens.zig").BlockTokenType;
 const whitespaceLen = @import("../lex/tokens.zig").whitespaceLen;
 const cmark = @import("../cmark/cmark.zig");
 const escape = @import("escape.zig");
-const LinkDefMap = @import("link_defs.zig").LinkDefMap;
-const link_label_max_chars = @import("link_defs.zig").label_max_chars;
+const DefStore = @import("definitions/DefStore.zig");
+const link_label_max_len = @import("definitions/links.zig").label_max_len;
 const NodeList = @import("NodeList.zig");
 const myst = @import("../myst/myst.zig");
 const TokenIterator = @import("../lex/iterator.zig").TokenIterator;
@@ -75,7 +75,7 @@ pub fn parse(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
-    link_defs: *LinkDefMap,
+    def_store: *DefStore,
 ) Error![]*ast.Node {
     var children = NodeList.init(
         alloc,
@@ -170,7 +170,11 @@ pub fn parse(
         }
 
         if (try self.parseLinkReferenceDefinition(alloc, scratch)) |def| {
-            try link_defs.add(alloc, &def.definition);
+            try def_store.links.add(alloc, .{
+                .url = def.definition.url,
+                .title = def.definition.title,
+                .label = def.definition.label,
+            });
             try children.append(def);
             continue;
         }
@@ -981,9 +985,7 @@ fn scanLinkDefLabel(self: *Self, scratch: Allocator) !?[]const u8 {
         return null;
     }
 
-    // TODO: Technically this should be the length in unicode code points, not
-    // bytes.
-    if (running_text.written().len > link_label_max_chars) {
+    if (running_text.written().len > link_label_max_len) {
         return null;
     }
     did_parse = true;
@@ -2903,7 +2905,7 @@ const LineReader = @import("../lex/LineReader.zig");
 const BlockTokenizer = @import("../lex/BlockTokenizer.zig");
 const TokenSliceStream = @import("../lex/iterator.zig").TokenSliceStream;
 
-fn parseBlocksMd(md: []const u8, link_defs: *LinkDefMap) ![]*ast.Node {
+fn parseBlocksMd(md: []const u8, def_store: *DefStore) ![]*ast.Node {
     var reader: Io.Reader = .fixed(md);
     var line_buf: [512]u8 = undefined;
     const line_reader: LineReader = .{ .in = &reader, .buf = &line_buf };
@@ -2915,17 +2917,17 @@ fn parseBlocksMd(md: []const u8, link_defs: *LinkDefMap) ![]*ast.Node {
     defer arena.deinit();
     const scratch = arena.allocator();
 
-    const nodes = try parser.parse(testing.allocator, scratch, link_defs);
+    const nodes = try parser.parse(testing.allocator, scratch, def_store);
     return nodes;
 }
 
 test "blank lines" {
     const md = "  \nfoo\n  \n";
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -2946,10 +2948,10 @@ test "blank lines" {
 test "interior blank lines" {
     const md = "foo\n  \nfoo\n    \nfoo\n      \nfoo\n\t\nfoo\n\t\t\nfoo\n";
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -2978,10 +2980,10 @@ test "thematic breaks" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -3008,10 +3010,10 @@ test "ATX heading and paragraphs" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -3048,10 +3050,10 @@ test "ATX heading with leading whitespace" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -3073,10 +3075,10 @@ test "ATX heading with leading whitespace" {
 test "ATX heading with trailing pounds" {
     const md = "## foo ##    \n";
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -3107,10 +3109,10 @@ test "setext headings" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -3157,10 +3159,10 @@ test "indented setext headings" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -3203,10 +3205,10 @@ test "link reference definition" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -3223,10 +3225,11 @@ test "link reference definition" {
     const p = nodes[0];
     try testing.expectEqual(.paragraph, @as(ast.NodeType, p.*));
 
-    try testing.expectEqual(1, link_defs.count());
+    try testing.expectEqual(1, def_store.links.count());
 
-    const maybe_definition = try link_defs.get(testing.allocator, "foo");
-    const definition = try util.testing.expectNonNull(maybe_definition);
+    const definition = try util.testing.expectNonNull(
+        try def_store.links.get("foo"),
+    );
     try testing.expectEqualStrings("foo", definition.label);
     try testing.expectEqualStrings("/bar", definition.url);
     try testing.expectEqualStrings("baz bot", definition.title);
@@ -3239,10 +3242,10 @@ test "indented code block" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -3264,10 +3267,10 @@ test "indented code block" {
 test "indented code block with tab" {
     const md = "  \t\tdef foo():\n  \t\t    pass\n";
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -3292,10 +3295,10 @@ test "empty code fence" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -3323,10 +3326,10 @@ test "code fence with info string" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -3357,10 +3360,10 @@ test "code fence with indentation" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -3388,10 +3391,10 @@ test "code fence with tab indentation" {
     // get split such that `bar()` is preceded by a single space.
     const md = "   ```python\n   foo()\n\tbar()\n   ```\n";
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -3418,10 +3421,10 @@ test "tilde code fence" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -3452,10 +3455,10 @@ test "code fence with trailing blank line" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -3481,10 +3484,10 @@ test "backtick MyST directive" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -3514,10 +3517,10 @@ test "colon MyST directive" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -3548,10 +3551,10 @@ test "MyST directive with indentation" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -3594,10 +3597,10 @@ test "MyST directive with nested blocks" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -3638,10 +3641,10 @@ test "MyST directive with invalid name" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -3664,10 +3667,10 @@ test "MyST directive with whitespace around name" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -3697,10 +3700,10 @@ test "MyST directive with args" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -3732,10 +3735,10 @@ test "MyST directive with closing backtick fence on same line not allowed" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -3759,10 +3762,10 @@ test "MyST directive with options" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -3797,7 +3800,7 @@ test "MyST directive with options" {
 
 fn parseBlocksTokens(
     tokens: []const BlockToken,
-    link_defs: *LinkDefMap,
+    def_store: *DefStore,
 ) ![]*ast.Node {
     var stream = TokenSliceStream(BlockTokenType).init(tokens);
     var it = stream.iterator();
@@ -3807,15 +3810,15 @@ fn parseBlocksTokens(
     defer arena.deinit();
     const scratch = arena.allocator();
 
-    const nodes = try parser.parse(testing.allocator, scratch, link_defs);
+    const nodes = try parser.parse(testing.allocator, scratch, def_store);
     return nodes;
 }
 
 // This is a case where the CLOSE token gets consumed as the paragraph is
 // parsed.
 test "close token in paragraph" {
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
     const nodes = try parseBlocksTokens(&.{
         .{
@@ -3835,7 +3838,7 @@ test "close token in paragraph" {
         .{
             .token_type = .newline,
         },
-    }, &link_defs);
+    }, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -3858,8 +3861,8 @@ test "close token in paragraph" {
 }
 
 test "close token before thematic break" {
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
     const nodes = try parseBlocksTokens(&.{
         .{
@@ -3878,7 +3881,7 @@ test "close token before thematic break" {
         .{
             .token_type = .newline,
         },
-    }, &link_defs);
+    }, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -3898,8 +3901,8 @@ test "close token before thematic break" {
 }
 
 test "close token in setext heading" {
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
     const nodes = try parseBlocksTokens(&.{
         .{
@@ -3927,7 +3930,7 @@ test "close token in setext heading" {
         .{
             .token_type = .newline,
         },
-    }, &link_defs);
+    }, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -3952,8 +3955,8 @@ test "close token in setext heading" {
 // > # foo
 // bar
 test "close token after atx heading" {
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
     const nodes = try parseBlocksTokens(&.{
         .{
@@ -3977,7 +3980,7 @@ test "close token after atx heading" {
         .{
             .token_type = .newline,
         },
-    }, &link_defs);
+    }, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -3997,8 +4000,8 @@ test "close token after atx heading" {
 }
 
 test "close token in MyST directive" {
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
     const nodes = try parseBlocksTokens(&.{
         .{
@@ -4023,7 +4026,7 @@ test "close token in MyST directive" {
             .lexeme = "baz",
         },
         .{ .token_type = .newline },
-    }, &link_defs);
+    }, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -4056,10 +4059,10 @@ test "HTML literal content tag" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -4104,10 +4107,10 @@ test "HTML comment" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -4140,10 +4143,10 @@ test "HTML comment with trailing text" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -4162,8 +4165,8 @@ test "HTML comment with trailing text" {
 }
 
 test "HTML comment at container close" {
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
     const nodes = try parseBlocksTokens(&.{
         .{ .token_type = .l_angle_bracket },
@@ -4175,7 +4178,7 @@ test "HTML comment at container close" {
             .lexeme = "foo",
         },
         .{ .token_type = .close },
-    }, &link_defs);
+    }, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -4201,10 +4204,10 @@ test "HTML comment interrupts paragraphs" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -4234,10 +4237,10 @@ test "HTML processing instruction" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -4270,10 +4273,10 @@ test "HTML processing instruction with trailing text" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -4292,8 +4295,8 @@ test "HTML processing instruction with trailing text" {
 }
 
 test "HTML processing instruction at container close" {
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
     const nodes = try parseBlocksTokens(&.{
         .{ .token_type = .l_angle_bracket },
@@ -4303,7 +4306,7 @@ test "HTML processing instruction at container close" {
             .lexeme = "foo",
         },
         .{ .token_type = .close },
-    }, &link_defs);
+    }, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -4328,10 +4331,10 @@ test "HTML processing instruction interrupts paragraphs" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -4361,10 +4364,10 @@ test "HTML declaration" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -4394,10 +4397,10 @@ test "HTML declaration with trailing text" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -4416,8 +4419,8 @@ test "HTML declaration with trailing text" {
 }
 
 test "HTML declaration at container close" {
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
     const nodes = try parseBlocksTokens(&.{
         .{ .token_type = .l_angle_bracket },
@@ -4427,7 +4430,7 @@ test "HTML declaration at container close" {
             .lexeme = "foo",
         },
         .{ .token_type = .close },
-    }, &link_defs);
+    }, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -4452,10 +4455,10 @@ test "HTML declaration interrupts paragraphs" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -4485,10 +4488,10 @@ test "HTML CDATA" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -4521,10 +4524,10 @@ test "HTML CDATA with trailing text" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -4543,8 +4546,8 @@ test "HTML CDATA with trailing text" {
 }
 
 test "HTML CDATA at container close" {
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
     const nodes = try parseBlocksTokens(&.{
         .{ .token_type = .l_angle_bracket },
@@ -4560,7 +4563,7 @@ test "HTML CDATA at container close" {
             .lexeme = "foo",
         },
         .{ .token_type = .close },
-    }, &link_defs);
+    }, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -4585,10 +4588,10 @@ test "HTML CDATA interrupts paragraphs" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -4625,10 +4628,10 @@ test "HTML known-tag" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -4668,8 +4671,8 @@ test "HTML known-tag" {
 }
 
 test "HTML known-tag at container close" {
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
     const nodes = try parseBlocksTokens(&.{
         .{
@@ -4685,7 +4688,7 @@ test "HTML known-tag at container close" {
             .lexeme = ">",
         },
         .{ .token_type = .close },
-    }, &link_defs);
+    }, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -4713,10 +4716,10 @@ test "HTML unknown tag" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -4747,10 +4750,10 @@ test "HTML unknown tag with attribute" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -4785,10 +4788,10 @@ test "HTML unknown tag cannot interrupt paragraph" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -4827,10 +4830,10 @@ test "MyST comment" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);
@@ -4865,10 +4868,10 @@ test "block break with spaces and meta" {
         \\
     ;
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    const nodes = try parseBlocksMd(md, &link_defs);
+    const nodes = try parseBlocksMd(md, &def_store);
     defer {
         for (nodes) |node| {
             node.deinit(testing.allocator);

@@ -43,8 +43,8 @@ const InlineTokenType = tokens.InlineTokenType;
 const InlineTokenizer = @import("../lex/InlineTokenizer.zig");
 const cmark = @import("../cmark/cmark.zig");
 const myst = @import("../myst/myst.zig");
-const LinkDefMap = @import("../parse/link_defs.zig").LinkDefMap;
-const link_label_max_chars = @import("link_defs.zig").label_max_chars;
+const DefStore = @import("definitions/DefStore.zig");
+const link_label_max_len = @import("definitions/links.zig").label_max_len;
 const util = @import("../util/util.zig");
 const ast = @import("../ast.zig");
 const NodeList = @import("NodeList.zig");
@@ -59,16 +59,16 @@ pub const Error = Io.Writer.Error ||
 tokenizer: *InlineTokenizer,
 line: ArrayList(InlineToken),
 token_index: usize,
-link_defs: LinkDefMap,
+def_store: DefStore,
 
 const Self = @This();
 
-pub fn init(tokenizer: *InlineTokenizer, link_defs: LinkDefMap) Self {
+pub fn init(tokenizer: *InlineTokenizer, def_store: DefStore) Self {
     return .{
         .tokenizer = tokenizer,
         .line = .empty,
         .token_index = 0,
-        .link_defs = link_defs,
+        .def_store = def_store,
     };
 }
 
@@ -1815,8 +1815,7 @@ fn parseFullReferenceLink(
         return null;
 
     // lookup link def
-    const link_def = try self.link_defs.get(
-        scratch,
+    const link_def = try self.def_store.links.get(
         scanned_link_label,
     ) orelse return null; // no matching def means parse failure
 
@@ -1863,8 +1862,7 @@ fn parseCollapsedReferenceLink(
     _ = try self.consume(scratch, &.{.r_square_bracket}) orelse return null;
 
     // lookup link def
-    const link_def = try self.link_defs.get(
-        scratch,
+    const link_def = try self.def_store.links.get(
         scanned_link_label,
     ) orelse return null; // no matching def means parse failure
 
@@ -1949,8 +1947,7 @@ fn parseShortcutReferenceLink(
     }
 
     // lookup link def
-    const link_def = try self.link_defs.get(
-        scratch,
+    const link_def = try self.def_store.links.get(
         scanned_link_label,
     ) orelse return null; // no matching def means parse failure
 
@@ -2022,7 +2019,7 @@ fn scanLinkLabel(self: *Self, scratch: Allocator) Error!?[]const u8 {
 
     // TODO: Technically this should be the length in unicode code points, not
     // bytes.
-    if (running_text.written().len > link_label_max_chars) {
+    if (running_text.written().len > link_label_max_len) {
         return null;
     }
 
@@ -2329,8 +2326,7 @@ fn parseFullReferenceImage(
         return null;
 
     // lookup link def
-    const link_def = try self.link_defs.get(
-        scratch,
+    const link_def = try self.def_store.links.get(
         scanned_link_label,
     ) orelse return null; // no matching def means parse failure
 
@@ -2384,8 +2380,7 @@ fn parseCollapsedReferenceImage(
     _ = try self.consume(scratch, &.{.r_square_bracket}) orelse return null;
 
     // lookup link def
-    const link_def = try self.link_defs.get(
-        scratch,
+    const link_def = try self.def_store.links.get(
         scanned_link_label,
     ) orelse return null; // no matching def means parse failure
 
@@ -2455,8 +2450,7 @@ fn parseShortcutReferenceImage(
         return null;
 
     // lookup link def
-    const link_def = try self.link_defs.get(
-        scratch,
+    const link_def = try self.def_store.links.get(
         scanned_link_label,
     ) orelse return null; // no matching def means parse failure
 
@@ -3915,14 +3909,15 @@ fn backtrack(self: *Self, checkpoint_index: usize) void {
 // Unit Tests
 // ----------------------------------------------------------------------------
 const testing = std.testing;
+const LinkDefinition = @import("definitions/links.zig").Definition;
 
-fn parseIntoNodes(value: []const u8, link_defs: LinkDefMap) ![]*ast.Node {
+fn parseIntoNodes(value: []const u8, def_store: DefStore) ![]*ast.Node {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const scratch = arena.allocator();
 
     var tokenizer = InlineTokenizer.init(value);
-    var parser = Self.init(&tokenizer, link_defs);
+    var parser = Self.init(&tokenizer, def_store);
     return try parser.parse(testing.allocator, scratch);
 }
 
@@ -5232,16 +5227,16 @@ test "link inside image" {
 test "full reference link" {
     const value = "[my text][foo]";
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
-    var def: ast.LinkDefinition = .{
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
+    const def: LinkDefinition = .{
         .url = "/bar",
         .title = "bim",
         .label = "foo",
     };
-    try link_defs.add(testing.allocator, &def);
+    try def_store.links.add(testing.allocator, def);
 
-    const nodes = try parseIntoNodes(value, link_defs);
+    const nodes = try parseIntoNodes(value, def_store);
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
@@ -5269,16 +5264,16 @@ test "full reference link" {
 test "collapsed reference link" {
     const value = "[my *text*][]";
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
-    var def: ast.LinkDefinition = .{
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
+    const def: LinkDefinition = .{
         .url = "/bar",
         .title = "bim",
         .label = "my *text*",
     };
-    try link_defs.add(testing.allocator, &def);
+    try def_store.links.add(testing.allocator, def);
 
-    const nodes = try parseIntoNodes(value, link_defs);
+    const nodes = try parseIntoNodes(value, def_store);
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
@@ -5317,16 +5312,16 @@ test "collapsed reference link" {
 test "shortcut reference link" {
     const value = "[my *text*]";
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
-    var def: ast.LinkDefinition = .{
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
+    const def: LinkDefinition = .{
         .url = "/bar",
         .title = "bim",
         .label = "my *text*",
     };
-    try link_defs.add(testing.allocator, &def);
+    try def_store.links.add(testing.allocator, def);
 
-    const nodes = try parseIntoNodes(value, link_defs);
+    const nodes = try parseIntoNodes(value, def_store);
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
@@ -5365,16 +5360,16 @@ test "shortcut reference link" {
 test "full reference image" {
     const value = "![my image description][foo]";
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
-    var def: ast.LinkDefinition = .{
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
+    const def: LinkDefinition = .{
         .url = "/image.jpg",
         .title = "bim",
         .label = "foo",
     };
-    try link_defs.add(testing.allocator, &def);
+    try def_store.links.add(testing.allocator, def);
 
-    const nodes = try parseIntoNodes(value, link_defs);
+    const nodes = try parseIntoNodes(value, def_store);
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
@@ -5398,16 +5393,16 @@ test "full reference image" {
 test "collapsed reference image" {
     const value = "![foo][]";
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
-    var def: ast.LinkDefinition = .{
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
+    const def: LinkDefinition = .{
         .url = "/image.jpg",
         .title = "bim",
         .label = "foo",
     };
-    try link_defs.add(testing.allocator, &def);
+    try def_store.links.add(testing.allocator, def);
 
-    const nodes = try parseIntoNodes(value, link_defs);
+    const nodes = try parseIntoNodes(value, def_store);
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
@@ -5431,16 +5426,16 @@ test "collapsed reference image" {
 test "shortcut reference image" {
     const value = "![foo]";
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
-    var def: ast.LinkDefinition = .{
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
+    const def: LinkDefinition = .{
         .url = "/image.jpg",
         .title = "bim",
         .label = "foo",
     };
-    try link_defs.add(testing.allocator, &def);
+    try def_store.links.add(testing.allocator, def);
 
-    const nodes = try parseIntoNodes(value, link_defs);
+    const nodes = try parseIntoNodes(value, def_store);
     defer freeNodes(nodes);
 
     try testing.expectEqual(1, nodes.len);
@@ -5465,24 +5460,24 @@ test "reference image precedence" {
     // This is CommonMark spec example 570 but for images
     const value = "![foo][bar][baz]";
 
-    var link_defs: LinkDefMap = .empty;
-    defer link_defs.deinit(testing.allocator);
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
 
-    var def1: ast.LinkDefinition = .{
+    const def1: LinkDefinition = .{
         .url = "/url1",
         .label = "baz",
         .title = "",
     };
-    try link_defs.add(testing.allocator, &def1);
+    try def_store.links.add(testing.allocator, def1);
 
-    var def2: ast.LinkDefinition = .{
+    const def2: LinkDefinition = .{
         .url = "/url2",
         .label = "foo",
         .title = "",
     };
-    try link_defs.add(testing.allocator, &def2);
+    try def_store.links.add(testing.allocator, def2);
 
-    const nodes = try parseIntoNodes(value, link_defs);
+    const nodes = try parseIntoNodes(value, def_store);
     defer freeNodes(nodes);
 
     try testing.expectEqual(2, nodes.len);
