@@ -10,7 +10,7 @@ const ast = @import("../ast.zig");
 const logger = @import("../logging.zig").logger(.link_defs);
 const util = @import("../util/util.zig");
 
-pub const label_max_chars = 999; // Unicode code points
+pub const label_max_chars = 999; // TODO: Unicode code points
 
 pub const Error = Allocator.Error || util.unicode.CaseFoldError;
 
