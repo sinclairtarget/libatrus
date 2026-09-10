@@ -182,6 +182,11 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
                     try stringify.write(kind);
                 }
 
+                if (n.class) |class| {
+                    try stringify.objectField("class");
+                    try stringify.write(class);
+                }
+
                 if (n.children.len > 0) {
                     try renderChildren(stringify, n);
                 }

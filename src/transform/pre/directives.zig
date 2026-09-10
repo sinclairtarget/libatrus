@@ -70,7 +70,14 @@ fn transformBuiltin(
         std.mem.eql(u8, name, "tip") or
         std.mem.eql(u8, name, "warning"))
     {
-        return try transformAdmonition(alloc, node, name, args, value);
+        return try transformAdmonition(
+            alloc,
+            node,
+            name,
+            args,
+            options,
+            value,
+        );
     }
 
     if (std.mem.eql(u8, name, "figure")) {
@@ -97,6 +104,7 @@ fn transformAdmonition(
     node: *ast.Node,
     name: []const u8,
     args: []const u8,
+    options: []const ast.MySTDirective.Option,
     value: []const u8,
 ) !*ast.Node {
     var children: ArrayList(*ast.Node) = .empty;
@@ -175,6 +183,14 @@ fn transformAdmonition(
             .kind = owned_kind,
         },
     };
+
+    for (options) |opt| {
+        if (std.mem.eql(u8, opt.name, "class")) {
+            if (opt.value) |v| {
+                admonition_node.admonition.class = try alloc.dupeZ(u8, v);
+            }
+        }
+    }
 
     std.debug.assert(node.myst_directive.children.len == 0);
     try node.appendChild(alloc, admonition_node);

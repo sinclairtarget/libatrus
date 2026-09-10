@@ -462,7 +462,13 @@ fn renderNode(
             if (f.begin_line) {
                 try printIndent(out, options, f.depth);
             }
-            _ = try out.writeAll("<aside class=\"admonition");
+            _ = try out.writeAll("<aside class=\"");
+            if (n.class) |class| {
+                try printHTMLEscapedAttrValue(out, class);
+                _ = try out.writeAll(" ");
+            }
+
+            _ = try out.writeAll("admonition");
 
             const kind = n.kind;
             if (kind.len > 0) {

@@ -467,11 +467,13 @@ pub const MySTDirectiveError = struct {
 pub const Admonition = struct {
     children: []*Node,
     kind: [:0]const u8,
+    class: ?[:0]const u8 = null,
 
     pub fn deinit(self: *Admonition, alloc: Allocator) void {
         freeChildren(alloc, self.children);
 
         alloc.free(self.kind);
+        if (self.class) |class| alloc.free(class);
     }
 };
 
