@@ -8,7 +8,7 @@ pub const CaseFoldError = error{
     InvalidUtf8,
     Utf8CannotEncodeSurrogateHalf,
     CodepointTooLarge,
-} || Allocator.Error;
+};
 
 pub const utf8 = struct {
     /// Takes a UTF-8 string and returns the full case-folded version of that
@@ -18,9 +18,21 @@ pub const utf8 = struct {
     pub fn allocCaseFoldFull(
         alloc: Allocator,
         s: []const u8,
-    ) CaseFoldError![]const u8 {
-        var buf = try alloc.alloc(u8, s.len * 3); // worse case length
+    ) (CaseFoldError || Allocator.Error)![]const u8 {
+        const buf = try alloc.alloc(u8, caseFoldLenWorstCase(s.len));
         errdefer alloc.free(buf);
+
+        const foldedS = try caseFoldFull(s, buf);
+        return try alloc.realloc(buf, foldedS.len);
+    }
+
+    /// Takes a UTF-8 string and returns the full case-folded version of that
+    /// string re-encoded into UTF-8.
+    ///
+    /// Asserts that the given buffer is large enough to hold the case-folded
+    /// string.
+    pub fn caseFoldFull(s: []const u8, buf: []u8) CaseFoldError![]u8 {
+        std.debug.assert(buf.len >= caseFoldLenWorstCase(s.len));
 
         var num_chars: usize = 0;
         var view = (try std.unicode.Utf8View.init(s)).iterator();
@@ -37,7 +49,16 @@ pub const utf8 = struct {
             num_chars += chars_written;
         }
 
-        return try alloc.realloc(buf, num_chars);
+        return buf[0..num_chars];
+    }
+
+    /// Max len of the case-folded string given len of the input string.
+    ///
+    /// TODO: This is a bit of a fudge. In the worst case, one codepoint can
+    /// map to three codepoints, but that's not the same thing as one byte
+    /// mapping to three bytes.
+    pub fn caseFoldLenWorstCase(num_chars: usize) usize {
+        return num_chars * 3;
     }
 };
 
