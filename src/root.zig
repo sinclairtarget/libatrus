@@ -274,6 +274,7 @@ test {
     _ = @import("parse/InlineParser.zig");
     _ = @import("parse/LeafBlockParser.zig");
     _ = @import("render/json.zig");
+    _ = @import("transform/pre/pre.zig");
     _ = @import("transform/pre/roles.zig");
     _ = @import("transform/pre/directives.zig");
     _ = @import("util/unicode.zig");
