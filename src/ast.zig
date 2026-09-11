@@ -37,6 +37,7 @@ pub const NodeType = enum(c_uint) {
     comment = 29,
     legend = 32,
     block_break = 33,
+    footnote_definition = 34,
     // built-in roles
     myst_role = 16,
     myst_role_error = 17,
@@ -64,6 +65,7 @@ pub const NodeType = enum(c_uint) {
             .list_item => "listItem",
             .comment => "mystComment",
             .block_break => "blockBreak",
+            .footnote_definition => "footnoteDefinition",
             else => @tagName(self),
         };
     }
@@ -94,6 +96,7 @@ pub const Node = union(NodeType) {
     comment: Text,
     legend: Wrapper,
     block_break: BlockBreak,
+    footnote_definition: FootnoteDefinition,
     myst_role: MySTRole,
     myst_role_error: MySTRoleError,
     subscript: Wrapper,
@@ -387,6 +390,19 @@ pub const BlockBreak = struct {
     }
 };
 
+pub const FootnoteDefinition = struct {
+    children: []*Node,
+    identifier: [:0]const u8,
+    label: [:0]const u8,
+
+    pub fn deinit(self: *FootnoteDefinition, alloc: Allocator) void {
+        freeChildren(alloc, self.children);
+
+        alloc.free(self.identifier);
+        alloc.free(self.label);
+    }
+};
+
 pub const MySTRole = struct {
     children: []*Node,
     name: [:0]const u8,
@@ -529,6 +545,7 @@ pub const AllowedChildren = enum {
             .admonition,
             .admonition_title,
             .legend,
+            .footnote_definition,
             => .yes,
             .text,
             .code,

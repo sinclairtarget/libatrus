@@ -45,9 +45,9 @@ const Error = error{
     ReadFailed,
     WriteFailed,
 } ||
-Allocator.Error ||
-cmark.character_refs.CharacterReferenceError ||
-util.unicode.CaseFoldError;
+    Allocator.Error ||
+    cmark.character_refs.CharacterReferenceError ||
+    util.unicode.CaseFoldError;
 
 const TokenError = error{
     LineTooLong,
@@ -90,6 +90,10 @@ const ContainerBlock = struct {
             last_blank_line_num: ?usize = null,
             soft_closed: bool = false,
         },
+        footnote: struct {
+            identifier: []const u8,
+            label: []const u8,
+        },
     },
 
     fn name(self: ContainerBlock) []const u8 {
@@ -99,7 +103,12 @@ const ContainerBlock = struct {
     fn isList(self: ContainerBlock) bool {
         return switch (self.variant) {
             .bullet_list, .ordered_list => true,
-            .root, .blockquote, .bullet_list_item, .ordered_list_item => false,
+            .root,
+            .blockquote,
+            .bullet_list_item,
+            .ordered_list_item,
+            .footnote,
+            => false,
         };
     }
 
@@ -167,6 +176,23 @@ const ContainerBlock = struct {
 
                 break :blk false;
             },
+            .footnote => blk: {
+                // Footnote is established if we have four spaces of indent or
+                // a blank line.
+                const ws_tokens = try it.consumeWhitespaceUpTo(scratch, 4);
+                if (whitespaceLen(ws_tokens) == 4) {
+                    break :blk true;
+                }
+
+                _ = try it.consumeWhitespace(scratch);
+                if (try it.peek(scratch)) |next_token| {
+                    if (next_token.token_type == .newline) {
+                        break :blk true;
+                    }
+                }
+
+                break :blk false;
+            },
         };
 
         return did_establish;
@@ -191,13 +217,63 @@ const ContainerBlock = struct {
         }
 
         switch (self.variant) {
-            .root, .blockquote, .bullet_list_item, .ordered_list_item => {
-                return try parseAnyContainerOpen(
+            .root => {
+                if (try parseBlockquoteOpen(
+                    scratch,
+                    it,
+                    line_num,
+                )) |container| {
+                    return container;
+                }
+
+                if (try parseBulletListOpen(
                     scratch,
                     it,
                     in_paragraph,
                     line_num,
-                );
+                )) |container| {
+                    return container;
+                }
+
+                if (try parseOrderedListOpen(
+                    scratch,
+                    it,
+                    in_paragraph,
+                    line_num,
+                )) |container| {
+                    return container;
+                }
+
+                if (try parseFootnoteOpen(scratch, it, line_num)) |container| {
+                    return container;
+                }
+            },
+            .blockquote, .bullet_list_item, .ordered_list_item, .footnote => {
+                if (try parseBlockquoteOpen(
+                    scratch,
+                    it,
+                    line_num,
+                )) |container| {
+                    return container;
+                }
+
+                if (try parseBulletListOpen(
+                    scratch,
+                    it,
+                    in_paragraph,
+                    line_num,
+                )) |container| {
+                    return container;
+                }
+
+                if (try parseOrderedListOpen(
+                    scratch,
+                    it,
+                    in_paragraph,
+                    line_num,
+                )) |container| {
+                    return container;
+                }
             },
             .bullet_list => |payload| {
                 if (try parseBulletListItemOpen(
@@ -331,6 +407,23 @@ const ContainerBlock = struct {
                         .ordered = true,
                         .spread = spread,
                         .start = payload.start,
+                    },
+                };
+            },
+            .footnote => |payload| {
+                const owned_identifier = try alloc.dupeZ(
+                    u8,
+                    payload.identifier,
+                );
+                errdefer alloc.free(owned_identifier);
+                const owned_label = try alloc.dupeZ(u8, payload.label);
+                errdefer alloc.free(owned_label);
+
+                node.* = .{
+                    .footnote_definition = .{
+                        .children = owned_children,
+                        .identifier = owned_identifier,
+                        .label = owned_label,
                     },
                 };
             },
@@ -495,7 +588,7 @@ fn next(self: *Self, scratch: Allocator) TokenError!?BlockToken {
             // Top container has not been established. It needs to be closed.
             const top_container = self.top();
             switch (top_container.variant) {
-                .root, .bullet_list, .ordered_list => {
+                .root, .bullet_list, .ordered_list, .footnote => {
                     return null;
                 },
                 inline .blockquote,
@@ -527,7 +620,7 @@ fn next(self: *Self, scratch: Allocator) TokenError!?BlockToken {
             const checkpoint_index = self.it.checkpoint();
             const maybe_container = blk: {
                 switch (top_container.variant) {
-                    .root, .bullet_list, .ordered_list => {
+                    .root, .bullet_list, .ordered_list, .footnote => {
                         break :blk try top_container.openChildContainer(
                             scratch,
                             self.it,
@@ -604,7 +697,7 @@ fn next(self: *Self, scratch: Allocator) TokenError!?BlockToken {
 
             if (maybe_container) |container| {
                 switch (top_container.variant) {
-                    .root, .bullet_list, .ordered_list => {},
+                    .root, .bullet_list, .ordered_list, .footnote => {},
                     inline .blockquote,
                     .bullet_list_item,
                     .ordered_list_item,
@@ -641,8 +734,11 @@ fn next(self: *Self, scratch: Allocator) TokenError!?BlockToken {
         for (0..self.container_stack.items.len) |i| {
             const container = &self.container_stack.items[i];
             switch (container.variant) {
-                .root, .bullet_list, .ordered_list => {},
-                inline else => |*payload| {
+                .root, .bullet_list, .ordered_list, .footnote => {},
+                inline .blockquote,
+                .bullet_list_item,
+                .ordered_list_item,
+                => |*payload| {
                     payload.soft_closed = false;
                 },
             }
@@ -1010,35 +1106,39 @@ fn parseOrderedListItemOpen(
     };
 }
 
-fn parseAnyContainerOpen(
+fn parseFootnoteOpen(
     scratch: Allocator,
     it: *TokenIterator(BlockTokenType),
-    in_paragraph: bool,
     line_num: usize,
 ) !?ContainerBlock {
-    if (try parseBlockquoteOpen(scratch, it, line_num)) |container| {
-        return container;
-    }
+    const checkpoint_index = it.checkpoint();
+    var did_parse = false;
+    defer if (!did_parse) {
+        it.backtrack(checkpoint_index);
+    };
 
-    if (try parseBulletListOpen(
-        scratch,
-        it,
-        in_paragraph,
-        line_num,
-    )) |container| {
-        return container;
-    }
+    // Up to 3 leading spaces allowed
+    _ = try it.consumeWhitespaceUpTo(scratch, 3);
 
-    if (try parseOrderedListOpen(
-        scratch,
-        it,
-        in_paragraph,
-        line_num,
-    )) |container| {
-        return container;
-    }
+    _ = try it.consume(scratch, &.{.l_square_bracket}) orelse return null;
+    _ = try it.consume(scratch, &.{.caret}) orelse return null;
 
-    return null;
+    // TODO: Can we just take a single text token like this?
+    const text_token = try it.consume(scratch, &.{.text}) orelse return null;
+
+    _ = try it.consume(scratch, &.{.r_square_bracket}) orelse return null;
+    _ = try it.consume(scratch, &.{.colon}) orelse return null;
+
+    did_parse = true;
+    return .{
+        .variant = .{
+            .footnote = .{
+                .identifier = try scratch.dupe(u8, text_token.lexeme),
+                .label = try scratch.dupe(u8, text_token.lexeme),
+            },
+        },
+        .start_line_num = line_num,
+    };
 }
 
 fn peekThematicBreak(
@@ -2318,4 +2418,96 @@ test "hyphens after blockquote" {
     try testing.expectEqual(.blockquote, @as(ast.NodeType, bq3_node.*));
     const break_node = root_node.root.children[4];
     try testing.expectEqual(.thematic_break, @as(ast.NodeType, break_node.*));
+}
+
+test "simple footnote definition" {
+    const md =
+        \\[^foobar-bim]: bim bam
+        \\
+    ;
+
+    const root_node = try parseBlocks(md);
+    defer root_node.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
+    try testing.expectEqual(1, root_node.root.children.len);
+
+    const def_node = root_node.root.children[0];
+    try testing.expectEqual(
+        .footnote_definition,
+        @as(ast.NodeType, def_node.*),
+    );
+    try testing.expectEqualStrings(
+        "foobar-bim",
+        def_node.footnote_definition.identifier,
+    );
+    try testing.expectEqualStrings(
+        "foobar-bim",
+        def_node.footnote_definition.label,
+    );
+    try testing.expectEqual(1, def_node.footnote_definition.children.len);
+
+    const p_node = def_node.footnote_definition.children[0];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node.*));
+    try testing.expectEqual(1, p_node.paragraph.children.len);
+
+    const txt_node = p_node.paragraph.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, txt_node.*));
+    try testing.expectEqualStrings("bim bam", txt_node.text.value);
+}
+
+test "long footnote definition" {
+    const md =
+        \\[^3]: bim bam
+        \\
+        \\    This is a long footnote that goes on and on for
+        \\    multiple lines.
+        \\
+        \\    ```python
+        \\    def code_block():
+        \\        pass
+        \\    ```
+        \\
+        \\        def indented_code_block():
+        \\            pass
+        \\
+        \\    > It even contains a blockquote? Complicated!
+        \\
+    ;
+
+    const root_node = try parseBlocks(md);
+    defer root_node.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
+    try testing.expectEqual(1, root_node.root.children.len);
+
+    const def_node = root_node.root.children[0];
+    try testing.expectEqual(
+        .footnote_definition,
+        @as(ast.NodeType, def_node.*),
+    );
+    try testing.expectEqualStrings(
+        "3",
+        def_node.footnote_definition.identifier,
+    );
+    try testing.expectEqualStrings(
+        "3",
+        def_node.footnote_definition.label,
+    );
+    try testing.expectEqual(5, def_node.footnote_definition.children.len);
+
+    const p_node_1 = def_node.footnote_definition.children[0];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node_1.*));
+
+    const p_node_2 = def_node.footnote_definition.children[1];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node_2.*));
+
+    const code_node_1 = def_node.footnote_definition.children[2];
+    try testing.expectEqual(.code, @as(ast.NodeType, code_node_1.*));
+
+    const code_node_2 = def_node.footnote_definition.children[3];
+    try testing.expectEqual(.code, @as(ast.NodeType, code_node_2.*));
+
+    const bq_node = def_node.footnote_definition.children[4];
+    try testing.expectEqual(.blockquote, @as(ast.NodeType, bq_node.*));
 }

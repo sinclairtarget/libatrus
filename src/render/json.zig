@@ -186,6 +186,15 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
                     try renderChildren(stringify, n);
                 }
             },
+            .footnote_definition => |n| {
+                try stringify.objectField("identifier");
+                try stringify.write(n.identifier);
+
+                try stringify.objectField("label");
+                try stringify.write(n.label);
+
+                try renderChildren(stringify, n);
+            },
             inline else => |n| {
                 // Other nodes with children handled here.
                 try renderChildren(stringify, n);

@@ -16,7 +16,7 @@ pub fn transform(
     def_store: DefStore,
 ) !*ast.Node {
     switch (original_node.*) {
-        inline .root, .block, .blockquote, .list => |n| {
+        inline .root, .block, .blockquote, .list, .footnote_definition => |n| {
             for (0..n.children.len) |i| {
                 n.children[i] = try transform(
                     alloc,

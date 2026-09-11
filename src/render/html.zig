@@ -529,6 +529,9 @@ fn renderNode(
             _ = try printEscapedComment(out, n.value);
             _ = try out.writeAll("-->");
         },
+        .footnote_definition => {
+            @panic("footnote definition rendering not yet implemented");
+        },
         // --- Inlines ---
         .text => |n| {
             if (f.begin_line) {
