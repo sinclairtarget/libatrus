@@ -150,6 +150,7 @@ fn matchSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
         '.' => .period,
         '=' => .equals,
         '%' => .percent,
+        '^' => .caret,
         ' ' => .space,
         '\t' => .tab,
         else => return null,
