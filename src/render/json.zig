@@ -38,11 +38,6 @@ pub fn render(
 }
 
 fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
-    // These nodes don't get rendered
-    if (@as(ast.NodeType, node.*) == .definition) {
-        return;
-    }
-
     try stringify.beginObject();
     try stringify.objectField("type");
     try stringify.write(node.name());
@@ -291,7 +286,18 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
                     try stringify.write(n.meta);
                 }
             },
-            .definition => unreachable, // See above
+            .definition => |n| {
+                try stringify.objectField("url");
+                try stringify.write(n.url);
+
+                if (n.title.len > 0) {
+                    try stringify.objectField("title");
+                    try stringify.write(n.title);
+                }
+
+                try stringify.objectField("label");
+                try stringify.write(n.label);
+            },
             .myst_role_error => |n| {
                 try stringify.objectField("value");
                 try stringify.write(n.value);
