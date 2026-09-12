@@ -18,7 +18,7 @@ const BlockTokenizer = @import("lex/BlockTokenizer.zig");
 const ContainerBlockParser = @import("parse/ContainerBlockParser.zig");
 const DefStore = @import("parse/definitions/DefStore.zig");
 const InlineParser = @import("parse/InlineParser.zig");
-const transform_ = @import("transform/transform.zig");
+const transforms = @import("transforms/transforms.zig");
 const json = @import("render/json.zig");
 const html = @import("render/html.zig");
 const typst = @import("render/typst.zig");
@@ -116,7 +116,12 @@ pub fn parse(
 
     // second pass; parse inline elements
     timer.step("inline parsing");
-    root = try transform_.inlines.transform(alloc, &arena, root, def_store);
+    root = try transforms.inlines.transform(
+        alloc,
+        &arena,
+        root,
+        def_store,
+    );
     if (options.parse_level == .raw) {
         return root;
     }
@@ -125,7 +130,7 @@ pub fn parse(
 
     // run pre stage transforms (built-in roles and directives)
     timer.step("pre transforms");
-    root = try transform_.pre.transform(alloc, scratch, root);
+    root = try transforms.pre.transform(alloc, scratch, root);
     if (options.parse_level == .pre) {
         return root;
     }
@@ -134,7 +139,7 @@ pub fn parse(
 
     // run post stage transforms (resolution phase)
     timer.step("post transforms");
-    root = try transform_.post.transform(alloc, scratch, root);
+    root = try transforms.post.transform(alloc, scratch, root);
     return root;
 }
 
@@ -168,7 +173,11 @@ pub fn transform(
     defer timer.stop();
 
     timer.step("post transforms");
-    const transformed = try transform_.post.transform(alloc, scratch, root);
+    const transformed = try transforms.post.transform(
+        alloc,
+        scratch,
+        root,
+    );
     return transformed;
 }
 
@@ -261,9 +270,7 @@ test {
     _ = @import("parse/InlineParser.zig");
     _ = @import("parse/LeafBlockParser.zig");
     _ = @import("render/json.zig");
-    _ = @import("transform/pre/pre.zig");
-    _ = @import("transform/pre/roles.zig");
-    _ = @import("transform/pre/directives.zig");
+    _ = @import("transforms/transforms.zig");
     _ = @import("util/unicode.zig");
 }
 
