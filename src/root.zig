@@ -12,7 +12,6 @@ const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
 const Io = std.Io;
 const ArrayList = std.ArrayList;
-const time = std.time;
 
 const LineReader = @import("lex/LineReader.zig");
 const BlockTokenizer = @import("lex/BlockTokenizer.zig");
@@ -23,6 +22,7 @@ const transform_ = @import("transform/transform.zig");
 const json = @import("render/json.zig");
 const html = @import("render/html.zig");
 const typst = @import("render/typst.zig");
+const util = @import("util/util.zig");
 
 const logger = @import("logging.zig").logger(.root);
 
@@ -95,11 +95,11 @@ pub fn parse(
     var def_store: DefStore = .empty;
     defer def_store.deinit(alloc);
 
+    var timer: util.debug.ComputationTimer(logger) = .init(.{});
+    defer timer.stop();
+
     // first pass; parse into blocks
-    var timer = time.Timer.start() catch {
-        @panic("timer unsupported");
-    };
-    logger.debug("Beginning block parsing...", .{});
+    timer.step("block parsing");
     var block_tokenizer = BlockTokenizer.init(line_reader);
     var iterator = block_tokenizer.iterator();
     var block_parser = ContainerBlockParser.init(
@@ -107,8 +107,6 @@ pub fn parse(
         .{ .override_spread = true }, // MyST 0.0.5 spec compatability
     );
     var root = try block_parser.parse(alloc, scratch, &def_store);
-    logger.debug("Done in {D}.", .{timer.read()});
-
     if (options.parse_level == .block) {
         return root;
     }
@@ -117,11 +115,8 @@ pub fn parse(
     _ = arena.reset(.retain_capacity);
 
     // second pass; parse inline elements
-    timer.reset();
-    logger.debug("Beginning inline parsing...", .{});
+    timer.step("inline parsing");
     root = try transform_.inlines.transform(alloc, &arena, root, def_store);
-    logger.debug("Done in {D}.", .{timer.read()});
-
     if (options.parse_level == .raw) {
         return root;
     }
@@ -129,11 +124,8 @@ pub fn parse(
     _ = arena.reset(.retain_capacity);
 
     // run pre stage transforms (built-in roles and directives)
-    timer.reset();
-    logger.debug("Beginning pre transforms...", .{});
+    timer.step("pre transforms");
     root = try transform_.pre.transform(alloc, scratch, root);
-    logger.debug("Done in {D}.", .{timer.read()});
-
     if (options.parse_level == .pre) {
         return root;
     }
@@ -141,11 +133,8 @@ pub fn parse(
     _ = arena.reset(.retain_capacity);
 
     // run post stage transforms (resolution phase)
-    timer.reset();
-    logger.debug("Beginning post transforms...", .{});
+    timer.step("post transforms");
     root = try transform_.post.transform(alloc, scratch, root);
-    logger.debug("Done in {D}.", .{timer.read()});
-
     return root;
 }
 
@@ -175,13 +164,11 @@ pub fn transform(
     defer arena.deinit();
     const scratch = arena.allocator();
 
-    var timer = time.Timer.start() catch {
-        @panic("timer unsupported");
-    };
-    logger.debug("Beginning post transforms...", .{});
-    const transformed = try transform_.post.transform(alloc, scratch, root);
-    logger.debug("Done in {D}.", .{timer.read()});
+    var timer: util.debug.ComputationTimer(logger) = .init(.{});
+    defer timer.stop();
 
+    timer.step("post transforms");
+    const transformed = try transform_.post.transform(alloc, scratch, root);
     return transformed;
 }
 
