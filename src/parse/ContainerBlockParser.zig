@@ -497,7 +497,7 @@ pub fn parse(
                 "Popping list container because of buffered tokens",
                 .{},
             );
-            try self.pop(alloc, scratch);
+            try self.pop(alloc, scratch, def_store);
             continue;
         }
 
@@ -534,7 +534,7 @@ pub fn parse(
             break; // reached root
         }
 
-        try self.pop(alloc, scratch);
+        try self.pop(alloc, scratch, def_store);
     } else @panic(util.safety.loop_bound_panic_msg);
 
     const root = try self.top().toNode(alloc, self.line_num);
@@ -783,10 +783,17 @@ fn push(self: *Self, scratch: Allocator, container: ContainerBlock) !void {
     self.unestablished_container_i += 1;
 }
 
-fn pop(self: *Self, alloc: Allocator, scratch: Allocator) !void {
+fn pop(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+    def_store: *DefStore,
+) !void {
     const popped = self.container_stack.pop() orelse unreachable;
 
     const top_container = self.top();
+
+    // Propagate trailing blank line to the new top container.
     switch (top_container.variant) {
         inline .bullet_list, .ordered_list => {
             switch (popped.variant) {
@@ -817,6 +824,23 @@ fn pop(self: *Self, alloc: Allocator, scratch: Allocator) !void {
 
     const node = try popped.toNode(alloc, self.line_num);
     errdefer node.deinit(alloc);
+
+    // Add footnote definitions to def store
+    if (@as(ast.NodeType, node.*) == .footnote_definition) {
+        def_store.footnotes.add(alloc, node) catch |err| {
+            switch (err) {
+                error.InvalidIdentifier => {
+                    logger.warn(
+                        "Skipped adding footnote \"{s}\"; identifier was " ++
+                        "invalid.",
+                        .{node.footnote_definition.identifier},
+                    );
+                },
+                else => |e| return e,
+            }
+        };
+    }
+
     try top_container.addChild(scratch, node);
 }
 
