@@ -32,14 +32,6 @@ const normalization_buf_size = util.unicode.utf8.caseFoldLenWorstCase(
     max_identifier_chars,
 );
 
-const StoredDefinition = struct {
-    /// Pointer to definition node in the AST.
-    node: *ast.Node,
-    /// This is set to true if the footnote has been retrieved from the map at
-    /// least once.
-    has_been_referenced: bool,
-};
-
 /// A hash map that associates footnote identifiers with footnote definitions.
 ///
 /// Entries can only ever be added to the map, never removed.
@@ -48,7 +40,7 @@ const StoredDefinition = struct {
 /// to definition AST nodes may be invalid if the nodes have been removed from
 /// the tree.
 pub const DefMap = struct {
-    backing_map: StringArrayHashMapUnmanaged(StoredDefinition),
+    backing_map: StringArrayHashMapUnmanaged(*ast.Node),
 
     const Self = @This();
 
@@ -92,79 +84,42 @@ pub const DefMap = struct {
         // value or invalidate the index.
         result.key_ptr.* = try alloc.dupe(u8, key);
 
-        // Allocate storage for the value.
-        result.value_ptr.* = .{
-            .node = def_node,
-            .has_been_referenced = false,
-        };
+        result.value_ptr.* = def_node;
     }
 
     pub fn get(self: Self, identifier: []const u8) Error!?*ast.Node {
         var buf: [normalization_buf_size]u8 = undefined;
         const key = try normalizeIdentifier(identifier, &buf);
-
-        const stored = self.backing_map.getPtr(key) orelse return null;
-        stored.has_been_referenced = true;
-        return stored.node;
+        return self.backing_map.get(key);
     }
 
     /// Returns an iterator over stored footnotes.
     ///
+    /// The iterator iterates over the footnotes in the order they were
+    /// inserted.
+    ///
     /// Iterator is invalidated if the map is modified during iteration.
-    pub fn iterator(self: Self, options: Iterator.Options) Iterator {
-        return Iterator.init(self.backing_map.values(), options);
+    pub fn iterator(self: Self) Iterator {
+        return Iterator.init(self.backing_map.values());
     }
 
     pub const Iterator = struct {
-        slice: []StoredDefinition,
-        options: Options,
+        slice: []*ast.Node,
         index: usize,
-        counter: u32,
 
-        pub const Options = struct {
-            /// Iterator skips footnotes that have never been retrieved from
-            /// the map.
-            skip_unreferenced: bool = false,
-        };
-
-        fn init(slice: []StoredDefinition, options: Options) Iterator {
+        fn init(slice: []*ast.Node) Iterator {
             return .{
                 .slice = slice,
-                .options = options,
                 .index = 0,
-                .counter = 1,
             };
         }
 
-        /// Returns a tuple of (footnote number, footnote definition) or null
-        /// if the iterator is exhausted.
-        pub fn next(self: *Iterator) ?struct { u32, *ast.Node } {
-            const stored = while (self.index < self.slice.len) {
-                if (!self.options.skip_unreferenced or
-                    self.slice[self.index].has_been_referenced)
-                {
-                    break self.slice[self.index];
-                }
+        pub fn next(self: *Iterator) ?*ast.Node {
+            if (self.index >= self.slice.len)
+                return null;
 
-                self.index += 1;
-            } else return null;
-
-            const number = blk: {
-                const n = std.fmt.parseInt(
-                    u32,
-                    stored.node.footnote_definition.identifier,
-                    10,
-                ) catch 0;
-                if (n > 0) { // need positive number even if parse successful
-                    break :blk n;
-                } else {
-                    defer self.counter += 1;
-                    break :blk self.counter;
-                }
-            };
-
-            self.index += 1;
-            return .{ number, stored.node };
+            defer self.index += 1;
+            return self.slice[self.index];
         }
     };
 };
@@ -253,10 +208,9 @@ test "iterate" {
     try def_map.add(testing.allocator, &def_node_2);
 
     // Iterate
-    var it = def_map.iterator(.{}); // Default behavior
+    var it = def_map.iterator();
 
-    var number, var def_node = try util.testing.expectNonNull(it.next());
-    try testing.expectEqual(1, number);
+    var def_node = try util.testing.expectNonNull(it.next());
     try testing.expectEqualStrings(
         "my-footnote",
         def_node.footnote_definition.identifier,
@@ -266,166 +220,13 @@ test "iterate" {
         def_node.footnote_definition.label,
     );
 
-    number, def_node = try util.testing.expectNonNull(it.next());
-    try testing.expectEqual(2, number);
+    def_node = try util.testing.expectNonNull(it.next());
     try testing.expectEqualStrings(
         "my-other-footnote",
         def_node.footnote_definition.identifier,
     );
     try testing.expectEqualStrings(
         "This is my second footnote.",
-        def_node.footnote_definition.label,
-    );
-
-    try testing.expectEqual(null, it.next());
-}
-
-test "iterate skip unreferenced" {
-    var def_map: DefMap = .empty;
-    defer def_map.deinit(testing.allocator);
-
-    var def_node_1: ast.Node = .{
-        .footnote_definition = .{
-            .children = &.{},
-            .identifier = "my-footnote",
-            .label = "This is my first footnote.",
-        },
-    };
-
-    var def_node_2: ast.Node = .{
-        .footnote_definition = .{
-            .children = &.{},
-            .identifier = "my-other-footnote",
-            .label = "This is my second footnote.",
-        },
-    };
-
-    try def_map.add(testing.allocator, &def_node_1);
-    try def_map.add(testing.allocator, &def_node_2);
-
-    // Reference one footnote
-    _ = try def_map.get("my-other-footnote");
-
-    // Iterate
-    var it = def_map.iterator(.{
-        .skip_unreferenced = true,
-    });
-
-    const number, const def_node = try util.testing.expectNonNull(it.next());
-    try testing.expectEqual(1, number);
-    try testing.expectEqualStrings(
-        "my-other-footnote",
-        def_node.footnote_definition.identifier,
-    );
-    try testing.expectEqualStrings(
-        "This is my second footnote.",
-        def_node.footnote_definition.label,
-    );
-
-    try testing.expectEqual(null, it.next());
-}
-
-test "iterate with integer identifier" {
-    var def_map: DefMap = .empty;
-    defer def_map.deinit(testing.allocator);
-
-    var def_node_1: ast.Node = .{
-        .footnote_definition = .{
-            .children = &.{},
-            .identifier = "my-footnote",
-            .label = "This is my first footnote.",
-        },
-    };
-
-    var def_node_2: ast.Node = .{
-        .footnote_definition = .{
-            .children = &.{},
-            .identifier = "7",
-            .label = "This is my second footnote.",
-        },
-    };
-
-    var def_node_3: ast.Node = .{
-        .footnote_definition = .{
-            .children = &.{},
-            .identifier = "my-other-footnote",
-            .label = "This is my third footnote.",
-        },
-    };
-
-    var def_node_4: ast.Node = .{
-        .footnote_definition = .{
-            .children = &.{},
-            .identifier = "0",
-            .label = "This is my fourth footnote.",
-        },
-    };
-
-    try def_map.add(testing.allocator, &def_node_1);
-    try def_map.add(testing.allocator, &def_node_2);
-    try def_map.add(testing.allocator, &def_node_3);
-    try def_map.add(testing.allocator, &def_node_4);
-
-    // Reference all footnotes
-    _ = try util.testing.expectNonNull(
-        try def_map.get("my-footnote"),
-    );
-    _ = try util.testing.expectNonNull(
-        try def_map.get("7"),
-    );
-    _ = try util.testing.expectNonNull(
-        try def_map.get("my-other-footnote"),
-    );
-    _ = try util.testing.expectNonNull(
-        try def_map.get("0"),
-    );
-
-    // Iterate
-    var it = def_map.iterator(.{
-        .skip_unreferenced = true,
-    });
-
-    var number, var def_node = try util.testing.expectNonNull(it.next());
-    try testing.expectEqual(1, number);
-    try testing.expectEqualStrings(
-        "my-footnote",
-        def_node.footnote_definition.identifier,
-    );
-    try testing.expectEqualStrings(
-        "This is my first footnote.",
-        def_node.footnote_definition.label,
-    );
-
-    number, def_node = try util.testing.expectNonNull(it.next());
-    try testing.expectEqual(7, number);
-    try testing.expectEqualStrings(
-        "7",
-        def_node.footnote_definition.identifier,
-    );
-    try testing.expectEqualStrings(
-        "This is my second footnote.",
-        def_node.footnote_definition.label,
-    );
-
-    number, def_node = try util.testing.expectNonNull(it.next());
-    try testing.expectEqual(2, number);
-    try testing.expectEqualStrings(
-        "my-other-footnote",
-        def_node.footnote_definition.identifier,
-    );
-    try testing.expectEqualStrings(
-        "This is my third footnote.",
-        def_node.footnote_definition.label,
-    );
-
-    number, def_node = try util.testing.expectNonNull(it.next());
-    try testing.expectEqual(3, number); // Integer identifier must be positive
-    try testing.expectEqualStrings(
-        "0",
-        def_node.footnote_definition.identifier,
-    );
-    try testing.expectEqualStrings(
-        "This is my fourth footnote.",
         def_node.footnote_definition.label,
     );
 
