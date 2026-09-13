@@ -50,6 +50,9 @@ const ast = @import("../ast.zig");
 const NodeList = @import("NodeList.zig");
 const alttext = @import("alttext.zig");
 const escape = @import("escape.zig");
+const logging = @import("../logging.zig");
+
+const logger = logging.logger(.@"inline");
 
 pub const Error = Io.Writer.Error ||
     Allocator.Error ||
@@ -98,6 +101,11 @@ pub fn parse(
 
         if (try self.parseInlineCode(alloc, scratch)) |code| {
             try nodes.append(code);
+            continue;
+        }
+
+        if (try self.parseFootnoteReference(alloc, scratch)) |footnote| {
+            try nodes.append(footnote);
             continue;
         }
 
@@ -2888,6 +2896,84 @@ fn parseAnyLink(
     }
 
     return null;
+}
+
+/// Parses footnote references looking like `[^foobar]`.
+fn parseFootnoteReference(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) Error!?*ast.Node {
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+    };
+
+    _ = try self.consume(scratch, &.{.l_square_bracket}) orelse return null;
+    _ = try self.consume(scratch, &.{.caret}) orelse return null;
+    const label = try self.scanFootnoteLabel(scratch) orelse return null;
+    _ = try self.consume(scratch, &.{.r_square_bracket}) orelse return null;
+
+    // If the definition is defined, this footnote doesn't parse.
+    _ = self.def_store.footnotes.get(label) catch |err| blk: {
+        switch (err) {
+            error.InvalidIdentifier => {
+                logger.warn(
+                    "Ignored reference to footnote \"{s}\"; identifier was " ++
+                    "invalid.",
+                    .{label},
+                );
+                break :blk null;
+            },
+            inline else => |e| return e,
+        }
+    } orelse return null;
+
+    const owned_identifier = try alloc.dupeZ(u8, label);
+    errdefer alloc.free(owned_identifier);
+    const owned_label = try alloc.dupeZ(u8, label);
+    errdefer alloc.free(owned_label);
+
+    const ref_node = try alloc.create(ast.Node);
+    ref_node.* = .{
+        .footnote_reference = .{
+            .identifier = owned_identifier,
+            .label = owned_label,
+        },
+    };
+    did_parse = true;
+    return ref_node;
+}
+
+/// Scans a footnote reference label, returning a string if we succeed.
+fn scanFootnoteLabel(self: *Self, scratch: Allocator) Error!?[]const u8 {
+    var did_parse = false;
+    const checkpoint_index = self.checkpoint();
+    defer if (!did_parse) {
+        self.backtrack(checkpoint_index);
+    };
+
+    var running_text = Io.Writer.Allocating.init(scratch);
+
+    while (try self.peek(scratch)) |token| {
+        switch (token.token_type) {
+            .whitespace, .newline, .caret, .l_square_bracket => return null,
+            .r_square_bracket => break,
+            else => |t| {
+                _ = try self.consume(scratch, &.{t});
+                const value = emitInlineLiteral(token);
+                _ = try running_text.writer.write(value);
+            },
+        }
+    }
+
+    if (running_text.written().len == 0) {
+        return null;
+    }
+
+    did_parse = true;
+    return try running_text.toOwnedSlice();
 }
 
 /// https://spec.commonmark.org/0.30/#hard-line-breaks
@@ -5932,4 +6018,38 @@ test "myst role cannot have empty value" {
 
     try testing.expectEqual(1, nodes.len);
     try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
+}
+
+test "footnote reference with no definition" {
+    const value = "This is true.[^1]";
+    const nodes = try parseIntoNodes(value, .empty);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
+}
+
+test "footnote reference with definition" {
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
+
+    var def_node: ast.Node = .{
+        .footnote_definition = .{
+            .children = &.{},
+            .label = "foobar-bim",
+            .identifier = "foobar-bim",
+        },
+    };
+    try def_store.footnotes.add(testing.allocator, &def_node);
+
+    const value = "This is true.[^foobar-bim]";
+    const nodes = try parseIntoNodes(value, def_store);
+    defer freeNodes(nodes);
+
+    try testing.expectEqual(2, nodes.len);
+    try testing.expectEqual(ast.NodeType.text, @as(ast.NodeType, nodes[0].*));
+    try testing.expectEqual(
+        ast.NodeType.footnote_reference,
+        @as(ast.NodeType, nodes[1].*),
+    );
 }
