@@ -20,8 +20,8 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const StringArrayHashMapUnmanaged = std.StringArrayHashMapUnmanaged;
 
-const ast = @import("../../ast.zig");
-const util = @import("../../util/util.zig");
+const ast = @import("../ast.zig");
+const util = @import("../util/util.zig");
 
 pub const Error = error{InvalidIdentifier} ||
     Allocator.Error ||

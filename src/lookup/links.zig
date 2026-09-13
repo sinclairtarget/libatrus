@@ -4,7 +4,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const StringHashMapUnmanaged = std.hash_map.StringHashMapUnmanaged;
 
-const util = @import("../../util/util.zig");
+const util = @import("../util/util.zig");
 
 pub const label_max_len = 999; // TODO: This is in bytes, but should be in
                                // Unicode codepoints.

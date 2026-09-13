@@ -34,7 +34,7 @@ const BlockToken = @import("../lex/tokens.zig").BlockToken;
 const BlockTokenType = @import("../lex/tokens.zig").BlockTokenType;
 const whitespaceLen = @import("../lex/tokens.zig").whitespaceLen;
 const LeafBlockParser = @import("LeafBlockParser.zig");
-const DefStore = @import("definitions/DefStore.zig");
+const DefStore = @import("../lookup/DefStore.zig");
 const TokenIterator = @import("../lex/iterator.zig").TokenIterator;
 const util = @import("../util/util.zig");
 

@@ -43,8 +43,8 @@ const InlineTokenType = tokens.InlineTokenType;
 const InlineTokenizer = @import("../lex/InlineTokenizer.zig");
 const cmark = @import("../cmark/cmark.zig");
 const myst = @import("../myst/myst.zig");
-const DefStore = @import("definitions/DefStore.zig");
-const link_label_max_len = @import("definitions/links.zig").label_max_len;
+const DefStore = @import("../lookup/DefStore.zig");
+const link_label_max_len = @import("../lookup/links.zig").label_max_len;
 const util = @import("../util/util.zig");
 const ast = @import("../ast.zig");
 const NodeList = @import("NodeList.zig");
@@ -3996,7 +3996,7 @@ fn backtrack(self: *Self, checkpoint_index: usize) void {
 // Unit Tests
 // ----------------------------------------------------------------------------
 const testing = std.testing;
-const LinkDefinition = @import("definitions/links.zig").Definition;
+const LinkDefinition = @import("../lookup/links.zig").Definition;
 
 fn parseIntoNodes(value: []const u8, def_store: DefStore) ![]*ast.Node {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);

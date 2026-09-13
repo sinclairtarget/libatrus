@@ -6,7 +6,7 @@ const ArrayList = std.ArrayList;
 const ast = @import("../ast.zig");
 const InlineTokenizer = @import("../lex/InlineTokenizer.zig");
 const InlineParser = @import("../parse/InlineParser.zig");
-const DefStore = @import("../parse/definitions/DefStore.zig");
+const DefStore = @import("../lookup/DefStore.zig");
 
 /// Recursively transform AST nodes by parsing inline content.
 pub fn transform(
