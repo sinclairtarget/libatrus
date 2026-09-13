@@ -3824,6 +3824,7 @@ fn emitInlineLiteral(token: InlineToken) []const u8 {
         .slash => "/",
         .hyphen => "-",
         .question_mark => "?",
+        .caret => "^",
         .newline => "\n",
         .escaped_single_quote => "\\'",
         .escaped_double_quote => "\\\"",

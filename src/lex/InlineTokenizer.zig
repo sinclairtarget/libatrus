@@ -205,6 +205,7 @@ fn matchSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
         '?' => .{ .question_mark, .punct },
         '{' => .{ .l_brace, .punct },
         '}' => .{ .r_brace, .punct },
+        '^' => .{ .caret, .punct },
         else => return null,
     };
 
@@ -981,6 +982,7 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
                 '/',
                 '-',
                 '?',
+                '^',
                 => {
                     lookahead_i += 1;
                     continue :fsm .punct;
@@ -1027,6 +1029,7 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
                 '?',
                 '{',
                 '}',
+                '^',
                 => {
                     break :fsm .normal;
                 },
@@ -1042,7 +1045,7 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
                     lookahead_i += 1;
                     continue :fsm .normal;
                 },
-                '#'...'%', '+', ',', '.', ':', ';', '@', '^', '|', '~' => {
+                '#'...'%', '+', ',', '.', ':', ';', '@', '|', '~' => {
                     continue :fsm .punct;
                 },
                 else => {
@@ -1125,6 +1128,7 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
                 '?',
                 '{',
                 '}',
+                '^',
                 => {
                     break :fsm .punct;
                 },
@@ -1135,7 +1139,6 @@ fn matchText(self: Self, scratch: Allocator) !?TokenizeResult {
                 ':',
                 ';',
                 '@',
-                '^',
                 '|',
                 '~',
                 => {
@@ -1241,6 +1244,7 @@ fn evaluateTokens(
         .slash,
         .hyphen,
         .question_mark,
+        .caret,
         .newline,
         .escaped_single_quote,
         .escaped_double_quote,

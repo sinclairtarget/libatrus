@@ -61,6 +61,7 @@ pub const InlineTokenType = enum {
     l_brace,
     r_brace,
     exclamation_mark,
+    caret,
     question_mark, // used only for HTML parsing
     equals, // used only for HTML parsing
     slash, // used only for HTML parsing
