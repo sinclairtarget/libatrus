@@ -20,7 +20,7 @@ pub fn transform(
 ) !*ast.Node {
     var node = original_node;
 
-    node = try groupByBlock(alloc, scratch, node);
+    node = try groupByBlock(alloc, node);
     node = try enumerateContainers(alloc, scratch, node);
 
     return node;
@@ -32,13 +32,7 @@ pub fn transform(
 ///
 /// If there are block breaks in deeper nodes of the AST, they are left in
 /// place.
-fn groupByBlock(
-    alloc: Allocator,
-    scratch: Allocator,
-    node: *ast.Node,
-) !*ast.Node {
-    _ = scratch;
-
+fn groupByBlock(alloc: Allocator, node: *ast.Node) !*ast.Node {
     if (@as(ast.NodeType, node.*) != .root) {
         // This transformation should only be done on the root node.
         return node;
@@ -65,6 +59,10 @@ fn groupByBlock(
                 // This block break has served its purpose.
                 child.deinit(alloc);
             },
+            .footnote_definition => {
+                // Footnote definitions always go outside of blocks at the end
+                // of the AST. So we skip them for now.
+            },
             else => {
                 current_block = current_block orelse
                     try createBlockNode(alloc, "");
@@ -79,6 +77,16 @@ fn groupByBlock(
     // had no children.
     const last_block = current_block orelse try createBlockNode(alloc, "");
     try new_children.append(alloc, last_block);
+
+    // Okay, now add trailing footnote definitions
+    for (original_children) |child| {
+        switch (child.*) {
+            .footnote_definition => {
+                try new_children.append(alloc, child);
+            },
+            else => {},
+        }
+    }
 
     node.root.children = try new_children.toOwnedSlice(alloc);
     return node;
