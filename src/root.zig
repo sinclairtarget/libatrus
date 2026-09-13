@@ -89,14 +89,14 @@ pub fn parse(
     defer arena.deinit();
     const scratch = arena.allocator();
 
+    var timer: util.debug.ComputationTimer(logger) = .init(.{});
+    defer timer.stop();
+
     var line_buf: [max_line_len]u8 = undefined;
     const line_reader: LineReader = .{ .in = in, .buf = &line_buf };
 
     var def_store: DefStore = .empty;
     defer def_store.deinit(alloc);
-
-    var timer: util.debug.ComputationTimer(logger) = .init(.{});
-    defer timer.stop();
 
     // first pass; parse into blocks
     timer.step("block parsing");
@@ -130,7 +130,7 @@ pub fn parse(
 
     // run pre stage transforms (built-in roles and directives)
     timer.step("pre transforms");
-    root = try transforms.pre.transform(alloc, scratch, root, def_store);
+    root = try transforms.pre.transform(alloc, scratch, root);
     if (options.parse_level == .pre) {
         return root;
     }

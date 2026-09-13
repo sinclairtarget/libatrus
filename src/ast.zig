@@ -397,22 +397,26 @@ pub const FootnoteDefinition = struct {
     children: []*Node,
     identifier: [:0]const u8,
     label: [:0]const u8,
+    enumerator: ?[:0]const u8 = null,
 
     pub fn deinit(self: *FootnoteDefinition, alloc: Allocator) void {
         freeChildren(alloc, self.children);
 
         alloc.free(self.identifier);
         alloc.free(self.label);
+        if (self.enumerator) |enumerator| alloc.free(enumerator);
     }
 };
 
 pub const FootnoteReference = struct {
     identifier: [:0]const u8,
     label: [:0]const u8,
+    enumerator: ?[:0]const u8 = null,
 
     pub fn deinit(self: *FootnoteReference, alloc: Allocator) void {
         alloc.free(self.identifier);
         alloc.free(self.label);
+        if (self.enumerator) |enumerator| alloc.free(enumerator);
     }
 };
 

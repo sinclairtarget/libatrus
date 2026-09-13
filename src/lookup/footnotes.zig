@@ -17,8 +17,12 @@
 //! have been manually assigned.
 
 const std = @import("std");
+const fmt = std.fmt;
 const Allocator = std.mem.Allocator;
 const StringArrayHashMapUnmanaged = std.StringArrayHashMapUnmanaged;
+const StringHashMapUnmanaged = std.StringHashMapUnmanaged;
+const BufSet = std.BufSet;
+const BufMap = std.BufMap;
 
 const ast = @import("../ast.zig");
 const util = @import("../util/util.zig");
@@ -133,6 +137,62 @@ pub const DefMap = struct {
         }
     };
 };
+
+/// Assigns footnote numbers to identifiers in the given definition map.
+///
+/// The numbers are assigned according to the order in which definitions were
+/// inserted into the map.
+///
+/// Returns a BufMap, owned by the caller, that maps identifiers -> footnote
+/// numbers (as strings).
+pub fn number(alloc: Allocator, def_map: DefMap) !BufMap {
+    var manual_numbers = BufSet.init(alloc);
+    defer manual_numbers.deinit();
+
+    // Add all manually numbered footnotes to set
+    var it = def_map.iterator();
+    while (it.next()) |def_node| {
+        const identifier = def_node.footnote_definition.identifier;
+        const parsed_num = fmt.parseInt(u32, identifier, 10) catch 0;
+        if (parsed_num > 0) {
+            try manual_numbers.insert(identifier);
+        }
+    }
+
+    // Figure out number for each footnote, inserting into final map
+    var number_map = BufMap.init(alloc);
+    var counter: u32 = 1;
+    var buf: [10]u8 = undefined; // scratch for printing number
+    it = def_map.iterator();
+    while (it.next()) |def_node| {
+        const identifier = def_node.footnote_definition.identifier;
+        const parsed_num = fmt.parseInt(u32, identifier, 10) catch 0;
+        if (parsed_num > 0) {
+            try number_map.put(identifier, identifier);
+            counter = parsed_num + 1;
+        } else {
+            const counter_num = while (true) {
+                const counter_num = fmt.bufPrint(
+                    &buf,
+                    "{d}",
+                    .{counter},
+                ) catch |err| switch (err) {
+                    error.NoSpaceLeft => @panic("buffer not long enough"),
+                    inline else => |e| return e,
+                };
+                if (!manual_numbers.contains(counter_num))
+                    break counter_num;
+
+                counter += 1;
+            };
+
+            try number_map.put(identifier, counter_num);
+            counter += 1;
+        }
+    }
+
+    return number_map;
+}
 
 /// Normalizes the given identifier, writing the result into buf.
 ///
@@ -263,5 +323,47 @@ test "case fold footnote" {
     try testing.expectEqualStrings(
         def_node.footnote_definition.label,
         retrieved.footnote_definition.label,
+    );
+}
+
+test "number footnotes correctly" {
+    var def_map: DefMap = .empty;
+    defer def_map.deinit(testing.allocator);
+
+    var def_node_1: ast.Node = .{
+        .footnote_definition = .{
+            .children = &.{},
+            .identifier = "my-footnote",
+            .label = "my-footnote",
+        },
+    };
+    var def_node_2: ast.Node = .{
+        .footnote_definition = .{
+            .children = &.{},
+            .identifier = "3",
+            .label = "3",
+        },
+    };
+    var def_node_3: ast.Node = .{
+        .footnote_definition = .{
+            .children = &.{},
+            .identifier = "my-other-footnote",
+            .label = "my-other-footnote",
+        },
+    };
+
+    try def_map.add(testing.allocator, &def_node_1);
+    try def_map.add(testing.allocator, &def_node_2);
+    try def_map.add(testing.allocator, &def_node_3);
+
+    var number_lookup = try number(testing.allocator, def_map);
+    defer number_lookup.deinit();
+
+    try testing.expectEqual(3, number_lookup.count());
+    try testing.expectEqualStrings("1", number_lookup.get("my-footnote").?);
+    try testing.expectEqualStrings("3", number_lookup.get("3").?);
+    try testing.expectEqualStrings(
+        "4",
+        number_lookup.get("my-other-footnote").?,
     );
 }

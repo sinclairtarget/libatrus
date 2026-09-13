@@ -193,6 +193,11 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
                 try stringify.objectField("label");
                 try stringify.write(n.label);
 
+                if (n.enumerator) |enumerator| {
+                    try stringify.objectField("enumerator");
+                    try stringify.write(enumerator);
+                }
+
                 try renderChildren(stringify, n);
             },
             inline else => |n| {
@@ -317,6 +322,11 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
 
                 try stringify.objectField("label");
                 try stringify.write(n.label);
+
+                if (n.enumerator) |enumerator| {
+                    try stringify.objectField("enumerator");
+                    try stringify.write(enumerator);
+                }
             },
         },
     }

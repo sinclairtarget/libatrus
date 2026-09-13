@@ -4,6 +4,7 @@ const Allocator = std.mem.Allocator;
 const ast = @import("../../ast.zig");
 const DefStore = @import("../../lookup/DefStore.zig");
 const FootnoteDefMap = @import("../../lookup/footnotes.zig").DefMap;
+const util = @import("../../util/util.zig");
 
 /// Moves all footnote definition nodes to the end of the AST. The footnote
 /// definitions are sorted according to when they are first referenced in the
@@ -11,64 +12,19 @@ const FootnoteDefMap = @import("../../lookup/footnotes.zig").DefMap;
 pub fn transform(
     alloc: Allocator,
     original_node: *ast.Node,
-    def_store: DefStore,
 ) !*ast.Node {
     var reference_order_def_map: FootnoteDefMap = .empty;
     defer reference_order_def_map.deinit(alloc);
 
-    var node = try gatherFootnotes(
+    try util.nodes.gatherFootnotesReferenceOrder(
         alloc,
         original_node,
-        def_store,
         &reference_order_def_map,
     );
+
+    var node = original_node;
     node = try dropFootnotes(alloc, original_node, reference_order_def_map);
     node = try addFootnotesAtEnd(alloc, node, reference_order_def_map);
-    return node;
-}
-
-/// Builds a map of all definitions referenced in the AST.
-///
-/// Definitions are inserted in the order they are referenced.
-fn gatherFootnotes(
-    alloc: Allocator,
-    node: *ast.Node,
-    def_store: DefStore,
-    def_map: *FootnoteDefMap,
-) !*ast.Node {
-    switch (node.allowedChildren()) {
-        .yes => |branch_node| switch (branch_node) {
-            inline else => |n| {
-                for (0..n.children.len) |i| {
-                    n.children[i] = try gatherFootnotes(
-                        alloc,
-                        n.children[i],
-                        def_store,
-                        def_map,
-                    );
-                }
-            },
-        },
-        .no => |leaf_node| switch (leaf_node) {
-            .footnote_reference => |n| {
-                // Use the def map we made at parse time to look up the
-                // definition for this reference.
-                //
-                // Then insert that definition into the new map we're building
-                // which is in reference order instead of in the order in which
-                // the definitions were defined.
-                const definition = def_store.footnotes.get(
-                    n.identifier,
-                ) catch null; // TODO: Handle errors
-                if (definition) |def_node| {
-                    // TODO: Handle errors
-                    def_map.add(alloc, def_node) catch {};
-                }
-            },
-            else => {},
-        },
-    }
-
     return node;
 }
 
@@ -189,13 +145,6 @@ test "footnotes get handled correctly" {
         },
     };
 
-    var def_store: DefStore = .empty;
-    defer def_store.deinit(testing.allocator);
-
-    try def_store.footnotes.add(testing.allocator, footnote_def_1);
-    try def_store.footnotes.add(testing.allocator, footnote_def_2);
-    try def_store.footnotes.add(testing.allocator, footnote_def_3);
-
     // Reference order is "bim", "bar". No reference to "foo"
     const footnote_ref_1 = try testing.allocator.create(ast.Node);
     footnote_ref_1.* = .{
@@ -222,7 +171,6 @@ test "footnotes get handled correctly" {
     };
 
     const root_node = try testing.allocator.create(ast.Node);
-    defer root_node.deinit(testing.allocator);
     root_node.* = .{
         .root = .{
             .children = try testing.allocator.dupe(
@@ -240,8 +188,8 @@ test "footnotes get handled correctly" {
     const transformed_node = try transform(
         testing.allocator,
         root_node,
-        def_store,
     );
+    defer transformed_node.deinit(testing.allocator);
     try testing.expectEqual(3, transformed_node.root.children.len);
 
     try testing.expectEqual(

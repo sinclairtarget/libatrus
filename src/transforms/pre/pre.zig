@@ -2,7 +2,6 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const ast = @import("../../ast.zig");
-const DefStore = @import("../../lookup/DefStore.zig");
 const roles = @import("roles.zig");
 const directives = @import("directives.zig");
 const footnotes = @import("footnotes.zig");
@@ -12,16 +11,17 @@ pub fn transform(
     alloc: Allocator,
     scratch: Allocator,
     original_node: *ast.Node,
-    def_store: DefStore,
 ) !*ast.Node {
+    var node = original_node;
+
     // built-in rols and directives
-    var node = try roles.transform(alloc, scratch, original_node);
+    node = try roles.transform(alloc, scratch, node);
     node = try directives.transform(alloc, scratch, node);
 
     // links and footnotes
     // careful... these transformations invalidate the def store because they
     // remove nodes from the tree
-    node = try footnotes.transform(alloc, node, def_store);
+    node = try footnotes.transform(alloc, node);
     node = try transformDropLinkDefininitions(alloc, node);
 
     return node;
