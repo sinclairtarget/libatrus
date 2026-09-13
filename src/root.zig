@@ -130,7 +130,7 @@ pub fn parse(
 
     // run pre stage transforms (built-in roles and directives)
     timer.step("pre transforms");
-    root = try transforms.pre.transform(alloc, scratch, root);
+    root = try transforms.pre.transform(alloc, scratch, root, def_store);
     if (options.parse_level == .pre) {
         return root;
     }

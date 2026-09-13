@@ -827,6 +827,13 @@ fn pop(
 
     // Add footnote definitions to def store
     if (@as(ast.NodeType, node.*) == .footnote_definition) {
+        const identifier = node.footnote_definition.identifier;
+        if (def_store.footnotes.contains(identifier) catch false) {
+            // Duplicate footnote, we want to pretend it doesn't exist
+            node.deinit(alloc);
+            return;
+        }
+
         def_store.footnotes.add(alloc, node) catch |err| {
             switch (err) {
                 error.InvalidIdentifier => {

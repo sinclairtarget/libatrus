@@ -2,23 +2,33 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const ast = @import("../../ast.zig");
+const DefStore = @import("../../lookup/DefStore.zig");
 const roles = @import("roles.zig");
 const directives = @import("directives.zig");
+const footnotes = @import("footnotes.zig");
 
 /// Apply all "pre" stage transformations.
 pub fn transform(
     alloc: Allocator,
     scratch: Allocator,
     original_node: *ast.Node,
+    def_store: DefStore,
 ) !*ast.Node {
+    // built-in rols and directives
     var node = try roles.transform(alloc, scratch, original_node);
     node = try directives.transform(alloc, scratch, node);
-    node = try transformDropDefinitions(alloc, node);
+
+    // links and footnotes
+    // careful... these transformations invalidate the def store because they
+    // remove nodes from the tree
+    node = try footnotes.transform(alloc, node, def_store);
+    node = try transformDropLinkDefininitions(alloc, node);
+
     return node;
 }
 
 /// Removes all link definitions from the AST.
-fn transformDropDefinitions(
+fn transformDropLinkDefininitions(
     alloc: Allocator,
     original_node: *ast.Node,
 ) !*ast.Node {
@@ -57,7 +67,7 @@ fn transformDropDefinitions(
                     n.children = new_children;
                 } else {
                     for (0..n.children.len) |i| {
-                        n.children[i] = try transformDropDefinitions(
+                        n.children[i] = try transformDropLinkDefininitions(
                             alloc,
                             n.children[i],
                         );
@@ -76,7 +86,7 @@ fn transformDropDefinitions(
 // ----------------------------------------------------------------------------
 const testing = std.testing;
 
-test "remove definition nodes" {
+test "remove link definition nodes" {
     const def_node = try testing.allocator.create(ast.Node);
     def_node.* = .{
         .definition = .{
@@ -93,7 +103,7 @@ test "remove definition nodes" {
         },
     };
 
-    const transformed_node = try transformDropDefinitions(
+    const transformed_node = try transformDropLinkDefininitions(
         testing.allocator,
         root_node,
     );

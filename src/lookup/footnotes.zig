@@ -93,6 +93,16 @@ pub const DefMap = struct {
         return self.backing_map.get(key);
     }
 
+    pub fn contains(self: Self, identifier: []const u8) Error!bool {
+        var buf: [normalization_buf_size]u8 = undefined;
+        const key = try normalizeIdentifier(identifier, &buf);
+        return self.backing_map.contains(key);
+    }
+
+    pub fn count(self: Self) usize {
+        return self.backing_map.count();
+    }
+
     /// Returns an iterator over stored footnotes.
     ///
     /// The iterator iterates over the footnotes in the order they were
