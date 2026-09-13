@@ -311,6 +311,13 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
                 try stringify.objectField("value");
                 try stringify.write(n.value);
             },
+            .footnote_reference => |n| {
+                try stringify.objectField("identifier");
+                try stringify.write(n.identifier);
+
+                try stringify.objectField("label");
+                try stringify.write(n.label);
+            },
         },
     }
 

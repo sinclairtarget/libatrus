@@ -37,6 +37,7 @@ pub fn write(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
             .definition,
             .comment,
             .block_break,
+            .footnote_reference,
             => {},
         },
     }

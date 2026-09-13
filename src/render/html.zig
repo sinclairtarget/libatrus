@@ -816,6 +816,9 @@ fn renderNode(
             _ = try out.writeAll("<div></div>");
         },
         .definition => {}, // Doesn't get rendered
+        .footnote_reference => {
+            @panic("footnote reference HTML rendering not yet implemented");
+        },
     }
 
     return true;
