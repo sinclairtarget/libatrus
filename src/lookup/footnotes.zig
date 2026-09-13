@@ -169,7 +169,9 @@ pub fn number(alloc: Allocator, def_map: DefMap) !BufMap {
         const parsed_num = fmt.parseInt(u32, identifier, 10) catch 0;
         if (parsed_num > 0) {
             try number_map.put(identifier, identifier);
-            counter = parsed_num + 1;
+            if (parsed_num >= counter) {
+                counter = parsed_num + 1;
+            }
         } else {
             const counter_num = while (true) {
                 const counter_num = fmt.bufPrint(

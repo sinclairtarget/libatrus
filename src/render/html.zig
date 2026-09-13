@@ -9,12 +9,19 @@ const Io = std.Io;
 
 const ast = @import("../ast.zig");
 
+const WhitespaceChoice = enum {
+    indent_none,
+    indent_2,
+    indent_4,
+};
+
 pub const Options = struct {
-    whitespace: enum {
-        indent_none,
-        indent_2,
-        indent_4,
-    } = .indent_none,
+    whitespace: WhitespaceChoice = .indent_none,
+};
+
+const InternalOptions = struct {
+    whitespace: WhitespaceChoice = .indent_none,
+    blacklist: []const ast.NodeType,
 };
 
 const FormattingState = struct {
@@ -25,6 +32,8 @@ const FormattingState = struct {
 };
 
 const RenderState = struct {
+    // Used to ensure we render div elements for only the second and subsequent
+    // blocks in the AST.
     have_seen_block: bool = false,
 };
 
@@ -38,9 +47,38 @@ pub fn render(
     options: Options,
 ) Io.Writer.Error!void {
     var render_state: RenderState = .{};
-    if (try renderNode(node, out, options, .start, &render_state)) {
+
+    var rendered_anything = try renderNode(
+        node,
+        out,
+        .{
+            .whitespace = options.whitespace,
+            .blacklist = &.{.footnote_definition},
+        },
+        .start,
+        &render_state,
+    );
+    if (rendered_anything) {
         _ = try out.print("\n", .{}); // add trailing newline
     }
+
+    if (@as(ast.NodeType, node.*) == .root) {
+        // Only render footnotes if we are rendering a full tree.
+        rendered_anything = try renderFootnotes(
+            node,
+            out,
+            .{
+                .whitespace = options.whitespace,
+                .blacklist = &.{},
+            },
+            .start,
+            &render_state,
+        );
+        if (rendered_anything) {
+            _ = try out.print("\n", .{});
+        }
+    }
+
     try out.flush();
 }
 
@@ -51,11 +89,11 @@ pub fn render(
 fn renderNode(
     node: *ast.Node,
     out: *Io.Writer,
-    options: Options,
+    options: InternalOptions,
     f: FormattingState,
     r: *RenderState,
 ) Io.Writer.Error!bool {
-    if (!willRenderAnything(node, r)) {
+    if (!willRenderAnything(node, options, r)) {
         return false;
     }
 
@@ -76,7 +114,7 @@ fn renderNode(
                 );
                 rendered_anything = rendered_anything or rendered;
                 if (rendered_anything and (i < n.children.len - 1 and
-                    willRenderAnything(n.children[i + 1], r)))
+                    willRenderAnything(n.children[i + 1], options, r)))
                 {
                     try out.print("\n", .{});
                 }
@@ -129,7 +167,7 @@ fn renderNode(
                     );
                     rendered_anything = rendered_anything or rendered;
                     if (rendered_anything and (i < n.children.len - 1 and
-                        willRenderAnything(n.children[i + 1], r)))
+                        willRenderAnything(n.children[i + 1], options, r)))
                     {
                         try out.print("\n", .{});
                     }
@@ -529,8 +567,74 @@ fn renderNode(
             _ = try printEscapedComment(out, n.value);
             _ = try out.writeAll("-->");
         },
-        .footnote_definition => {
-            @panic("footnote definition rendering not yet implemented");
+        .footnote_definition => |n| {
+            if (f.begin_line) {
+                try printIndent(out, options, f.depth);
+            }
+
+            _ = try out.writeAll("<li id=\"m-fn-");
+            try printHTMLEscapedAttrValue(out, n.identifier);
+            _ = try out.writeAll("\">\n");
+
+            var rendered_back_link = false;
+            for (n.children, 0..) |child, i| {
+                if (i == n.children.len - 1 and
+                    @as(ast.NodeType, child.*) == .paragraph)
+                {
+                    try printIndent(out, options, f.depth + 1);
+                    _ = try out.writeAll("<p>");
+                    for (child.paragraph.children) |grandchild| {
+                        _ = try renderNode(
+                            grandchild,
+                            out,
+                            options,
+                            .{
+                                .depth = f.depth + 1,
+                                .begin_line = false,
+                            },
+                            r,
+                        );
+                    }
+
+                    _ = try out.writeAll("<a href=\"#m-fnref-");
+                    try printHTMLEscapedAttrValue(out, n.identifier);
+                    _ = try out.writeAll(
+                        "\" data-foonote-backref " ++
+                            "class=\"data-footnote-backref\" " ++
+                            "aria-label=\"Back to content\">↩</a>",
+                    );
+                    _ = try out.writeAll("</p>");
+
+                    rendered_back_link = true;
+                } else {
+                    _ = try renderNode(
+                        child,
+                        out,
+                        options,
+                        .{
+                            .depth = f.depth + 1,
+                            .begin_line = true,
+                        },
+                        r,
+                    );
+                }
+                _ = try out.writeAll("\n");
+            }
+
+            if (!rendered_back_link) {
+                try printIndent(out, options, f.depth + 1);
+                _ = try out.writeAll("<a href=\"#m-fnref-");
+                try printHTMLEscapedAttrValue(out, n.identifier);
+                _ = try out.writeAll(
+                    "\" data-foonote-backref " ++
+                        "class=\"data-footnote-backref\" " ++
+                        "aria-label=\"Back to content\">↩</a>",
+                );
+                _ = try out.writeAll("\n");
+            }
+
+            try printIndent(out, options, f.depth);
+            _ = try out.writeAll("</li>");
         },
         // --- Inlines ---
         .text => |n| {
@@ -816,8 +920,20 @@ fn renderNode(
             _ = try out.writeAll("<div></div>");
         },
         .definition => {}, // Doesn't get rendered
-        .footnote_reference => {
-            @panic("footnote reference HTML rendering not yet implemented");
+        .footnote_reference => |n| {
+            if (f.begin_line) {
+                try printIndent(out, options, f.depth);
+            }
+
+            _ = try out.writeAll("<sup><a href=\"#m-fn-");
+            try printHTMLEscapedAttrValue(out, n.identifier);
+            _ = try out.writeAll("\" id=\"m-fnref-");
+            try printHTMLEscapedAttrValue(out, n.identifier);
+            _ = try out.writeAll(
+                "\" data-footnote-ref aria-describedby=\"footnote-label\">",
+            );
+            try printHTMLEscapedContent(out, n.enumerator orelse n.identifier);
+            try out.writeAll("</a></sup>");
         },
     }
 
@@ -862,7 +978,7 @@ fn renderAdmonitionTitle(out: *Io.Writer, kind: []const u8) !void {
 fn renderFigure(
     node: *ast.Node,
     out: *Io.Writer,
-    options: Options,
+    options: InternalOptions,
     f: FormattingState,
     r: *RenderState,
 ) !void {
@@ -878,7 +994,7 @@ fn renderFigure(
         _ = try out.writeAll("\" ");
     }
     if (n.enumerator) |_| {
-    _ = try out.writeAll("class=\"numbered\"");
+        _ = try out.writeAll("class=\"numbered\"");
     }
     _ = try out.writeAll(">\n");
 
@@ -916,7 +1032,7 @@ fn renderFigure(
 fn renderCaption(
     node: *ast.Node,
     out: *Io.Writer,
-    options: Options,
+    options: InternalOptions,
     f: FormattingState,
     r: *RenderState,
     container: ?ast.Container,
@@ -989,7 +1105,67 @@ fn renderCaption(
     _ = try out.writeAll("</figcaption>");
 }
 
-fn willRenderAnything(node: *const ast.Node, r: *RenderState) bool {
+fn renderFootnotes(
+    node: *ast.Node,
+    out: *Io.Writer,
+    options: InternalOptions,
+    f: FormattingState,
+    r: *RenderState,
+) !bool {
+    var num_footnotes: u32 = 0;
+    for (node.root.children) |child| {
+        if (@as(ast.NodeType, child.*) == .footnote_definition) {
+            num_footnotes += 1;
+        }
+    }
+
+    if (num_footnotes == 0) {
+        return false;
+    }
+
+    _ = try out.writeAll("<section data-footnotes class=\"footnotes\">\n");
+
+    try printIndent(out, options, f.depth + 1);
+    _ = try out.writeAll(
+        "<h2 id=\"footnote-label\" class=\"sr-only\">Footnotes</h2>\n",
+    );
+
+    try printIndent(out, options, f.depth + 1);
+    _ = try out.writeAll("<ol>\n");
+
+    for (node.root.children) |child| {
+        if (@as(ast.NodeType, child.*) == .footnote_definition) {
+            _ = try renderNode(
+                child,
+                out,
+                options,
+                .{
+                    .depth = f.depth + 2,
+                    .begin_line = true,
+                },
+                r,
+            );
+            _ = try out.writeAll("\n");
+        }
+    }
+
+    try printIndent(out, options, f.depth + 1);
+    _ = try out.writeAll("</ol>\n");
+    _ = try out.writeAll("</section>");
+
+    return true;
+}
+
+fn willRenderAnything(
+    node: *const ast.Node,
+    options: InternalOptions,
+    r: *RenderState,
+) bool {
+    for (options.blacklist) |blacklisted_type| {
+        if (@as(ast.NodeType, node.*) == blacklisted_type)
+            return false;
+    }
+
     return switch (node.*) {
         .definition => false,
         .block => |n| blk: {
@@ -997,14 +1173,14 @@ fn willRenderAnything(node: *const ast.Node, r: *RenderState) bool {
                 break :blk true;
             } else {
                 break :blk for (n.children) |child| {
-                    if (willRenderAnything(child, r)) {
+                    if (willRenderAnything(child, options, r)) {
                         break true;
                     }
                 } else false;
             }
         },
         .root => |n| for (n.children) |child| {
-            if (willRenderAnything(child, r)) {
+            if (willRenderAnything(child, options, r)) {
                 break true;
             }
         } else false,
@@ -1018,13 +1194,13 @@ fn printEscapedComment(
 ) Io.Writer.Error!void {
     var i: usize = 0;
     while (i < s.len) {
-        if (i + 4 <= s.len and std.mem.eql(u8, s[i..i+4], "--!>")) {
+        if (i + 4 <= s.len and std.mem.eql(u8, s[i .. i + 4], "--!>")) {
             _ = try out.writeAll("--!&gt;");
             i += 4;
-        } else if (i + 3 <= s.len and std.mem.eql(u8, s[i..i+3], "<!-")) {
+        } else if (i + 3 <= s.len and std.mem.eql(u8, s[i .. i + 3], "<!-")) {
             _ = try out.writeAll("&lt;!-");
             i += 3;
-        } else if (i + 2 <= s.len and std.mem.eql(u8, s[i..i+2], "->")) {
+        } else if (i + 2 <= s.len and std.mem.eql(u8, s[i .. i + 2], "->")) {
             _ = try out.writeAll("-&gt;");
             i += 2;
         } else {
@@ -1067,7 +1243,7 @@ fn printHTMLEscapedAttrValue(
     }
 }
 
-fn printIndent(out: *Io.Writer, options: Options, depth: u8) !void {
+fn printIndent(out: *Io.Writer, options: InternalOptions, depth: u8) !void {
     const whitespace = switch (options.whitespace) {
         .indent_none => "",
         .indent_2 => "  ",
