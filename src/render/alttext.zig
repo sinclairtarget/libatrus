@@ -9,12 +9,12 @@ const Io = std.Io;
 const ast = @import("../ast.zig");
 
 /// Write node as alt text to writer.
-pub fn write(out: *Io.Writer, node: *ast.Node) Io.Writer.Error!void {
+pub fn render(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!void {
     switch (node.allowedChildren()) {
         .yes => |branch_node| switch (branch_node) {
             inline else => |n| {
                 for (n.children) |child| {
-                    try write(out, child);
+                    try render(child, out);
                 }
             },
         },

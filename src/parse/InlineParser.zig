@@ -48,7 +48,7 @@ const link_label_max_len = @import("../lookup/links.zig").label_max_len;
 const util = @import("../util/util.zig");
 const ast = @import("../ast.zig");
 const NodeList = @import("NodeList.zig");
-const alttext = @import("alttext.zig");
+const alttext = @import("../render/alttext.zig");
 const escape = @import("escape.zig");
 const logging = @import("../logging.zig");
 
@@ -2166,7 +2166,7 @@ fn parseInlineImage(
     var running_text = Io.Writer.Allocating.init(alloc);
     errdefer running_text.deinit();
     for (img_desc_nodes) |node| {
-        try alttext.write(&running_text.writer, node);
+        try alttext.render(node, &running_text.writer);
     }
 
     const owned_url = try alloc.dupeZ(u8, url);
@@ -2342,7 +2342,7 @@ fn parseFullReferenceImage(
     var running_text = Io.Writer.Allocating.init(alloc);
     errdefer running_text.deinit();
     for (img_desc_nodes) |node| {
-        try alttext.write(&running_text.writer, node);
+        try alttext.render(node, &running_text.writer);
     }
 
     const url = try alloc.dupeZ(u8, link_def.url);
@@ -2413,7 +2413,7 @@ fn parseCollapsedReferenceImage(
     var running_text = Io.Writer.Allocating.init(alloc);
     errdefer running_text.deinit();
     for (inline_nodes) |node| {
-        try alttext.write(&running_text.writer, node);
+        try alttext.render(node, &running_text.writer);
     }
 
     const url = try alloc.dupeZ(u8, link_def.url);
@@ -2496,7 +2496,7 @@ fn parseShortcutReferenceImage(
     var running_text = Io.Writer.Allocating.init(alloc);
     errdefer running_text.deinit();
     for (inline_nodes) |node| {
-        try alttext.write(&running_text.writer, node);
+        try alttext.render(node, &running_text.writer);
     }
 
     const url = try alloc.dupeZ(u8, link_def.url);
