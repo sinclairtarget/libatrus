@@ -1,5 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const ArenaAllocator = std.heap.ArenaAllocator;
 const ArrayList = std.ArrayList;
 const Io = std.Io;
 
@@ -8,6 +9,8 @@ const atrus = @import("../../root.zig");
 const myst = @import("../../myst/myst.zig");
 const logger = @import("../../logging.zig").logger(.directives);
 const util = @import("../../util/util.zig");
+const InlineTokenizer = @import("../../lex/InlineTokenizer.zig");
+const InlineParser = @import("../../parse/InlineParser.zig");
 
 pub fn transform(
     alloc: Allocator,
@@ -94,6 +97,17 @@ fn transformBuiltin(
 
     if (std.mem.eql(u8, name, "image")) {
         return try transformImage(alloc, node, args, options);
+    }
+
+    if (std.mem.eql(u8, name, "list-table")) {
+        return try transformListTable(
+            alloc,
+            scratch,
+            node,
+            args,
+            options,
+            value,
+        );
     }
 
     return try transformUnknown(alloc, node);
@@ -479,6 +493,124 @@ fn transformImage(
     return node;
 }
 
+/// Implements the {list-table} directive.
+///
+/// This directive parses the contents of the directive block as MyST,
+/// expecting it to contain a uniform two-level bullet list. ("Uniform" meaning
+/// that each second-level list contains the same number of elements.)
+fn transformListTable(
+    alloc: Allocator,
+    scratch: Allocator,
+    node: *ast.Node,
+    args: []const u8,
+    options: []const ast.MySTDirective.Option,
+    value: []const u8,
+) !*ast.Node {
+    // Parse directive contents as nested MyST Markdown document!
+    var reader = Io.Reader.fixed(value);
+    const root_node = try atrus.parse(
+        alloc,
+        &reader,
+        .{ .parse_level = .pre },
+    );
+
+    if (root_node.root.children.len == 0) {
+        defer root_node.deinit(alloc);
+        defer node.deinit(alloc);
+        return try createErrorNode(
+            alloc,
+            "required body not provided for directive: list-table",
+        );
+    }
+
+    const table_dimensions = checkListDimensions(root_node) orelse {
+        defer root_node.deinit(alloc);
+        defer node.deinit(alloc);
+        return try createErrorNode(
+            alloc,
+            "list not uniform for directive: list-table",
+        );
+    };
+
+    // create caption
+    const caption_node = try createCaptionNode(alloc, scratch, args);
+
+    // create table
+    const table_rows = try alloc.alloc(*ast.Node, table_dimensions.rows);
+    const list_node = root_node.root.children[0];
+    for (list_node.list.children, 0..) |list_item_node, row_i| {
+        const sublist_node = list_item_node.list_item.children[0];
+        table_rows[row_i] = try createTableRow(
+            alloc,
+            sublist_node,
+            row_i == 0,
+        );
+    }
+
+    // TODO: Implement header-rows option
+    var table_align: ?[]const u8 = null;
+    for (options) |opt| {
+        if (std.mem.eql(u8, opt.name, "align")) {
+            if (opt.value) |v| {
+                table_align = v;
+            }
+        }
+    }
+
+    const table_node = try alloc.create(ast.Node);
+    table_node.* = .{
+        .table = .{
+            .@"align" = if (table_align) |a| try alloc.dupeZ(u8, a) else null,
+            .children = table_rows,
+        },
+    };
+    defer {
+        freeUniformList(alloc, list_node);
+        alloc.free(root_node.root.children);
+        alloc.destroy(root_node);
+    }
+
+    // create container
+    const container_node = try alloc.create(ast.Node);
+    container_node.* = .{
+        .container = .{
+            .kind = try alloc.dupeZ(u8, "table"),
+            .children = try alloc.dupe(*ast.Node, &.{
+                caption_node,
+                table_node,
+            }),
+        },
+    };
+
+    for (options) |opt| {
+        if (std.mem.eql(u8, opt.name, "name")) {
+            if (opt.value) |v| {
+                container_node.container.label = try alloc.dupeZ(u8, v);
+                const normalized = try myst.references.normalizeIdentifier(
+                    scratch,
+                    v,
+                );
+                container_node.container.identifier = try alloc.dupeZ(
+                    u8,
+                    normalized,
+                );
+                container_node.container.enumerated = true;
+            }
+        }
+
+        if (std.mem.eql(u8, opt.name, "class")) {
+            if (opt.value) |v| {
+                container_node.container.class = try alloc.dupeZ(u8, v);
+            }
+        }
+    }
+
+    std.debug.assert(node.myst_directive.children.len == 0);
+    try node.appendChild(alloc, container_node);
+
+    return node;
+}
+
 /// For directives we don't recognize, we have to partially "de-parse" the node
 /// to conform with the MyST spec. The spec says that options should not be
 /// parsed for directives we don't recognize.
@@ -530,6 +662,140 @@ fn transformUnknown(alloc: Allocator, node: *ast.Node) !*ast.Node {
     return replacement_node;
 }
 
+fn createErrorNode(alloc: Allocator, msg: []const u8) !*ast.Node {
+    const owned_msg = try alloc.dupeZ(u8, msg);
+    errdefer alloc.free(owned_msg);
+
+    const owned_children = try alloc.dupe(*ast.Node, &.{});
+    errdefer alloc.free(owned_children);
+
+    const error_node = try alloc.create(ast.Node);
+    error_node.* = .{
+        .myst_directive_error = .{
+            .children = owned_children,
+            .message = owned_msg,
+        },
+    };
+    return error_node;
+}
+
+const TableDimensions = struct { rows: usize, cols: usize };
+
+/// Checks that the given AST contains a uniform list (and nothing else).
+///
+/// If the list is valid and uniform, returns the dimensions of the table it
+/// will create. Otherwise returns null.
+fn checkListDimensions(root_node: *ast.Node) ?TableDimensions {
+    if (root_node.root.children.len != 1)
+        return null;
+
+    const list_node = root_node.root.children[0];
+    if (@as(ast.NodeType, list_node.*) != .list)
+        return null;
+
+    const rows = list_node.list.children.len;
+    var cols: ?usize = null;
+    for (list_node.list.children) |list_item_node| {
+        if (list_item_node.list_item.children.len != 1)
+            return null;
+
+        const sub_list_node = list_item_node.list_item.children[0];
+        if (@as(ast.NodeType, sub_list_node.*) != .list)
+            return null;
+
+        cols = cols orelse sub_list_node.list.children.len;
+        if (sub_list_node.list.children.len != cols)
+            return null;
+    }
+
+    const dimensions: TableDimensions = .{
+        .rows = rows,
+        .cols = cols orelse return null,
+    };
+    return dimensions;
+}
+
+/// Creates a row of table cells from the children of the given list.
+///
+/// DOES NOT MAKE COPIES of any nodes in the input list.
+fn createTableRow(
+    alloc: Allocator,
+    list_node: *ast.Node,
+    is_header: bool,
+) !*ast.Node {
+    const n_cols = list_node.list.children.len;
+    const cells = try alloc.alloc(*ast.Node, n_cols);
+    for (list_node.list.children, 0..) |list_item_node, col_i| {
+        const cell_children = try alloc.dupe(
+            *ast.Node,
+            list_item_node.list_item.children,
+        );
+
+        const cell_node = try alloc.create(ast.Node);
+        cell_node.* = .{
+            .table_cell = .{
+                .header = is_header,
+                .children = cell_children,
+            },
+        };
+        cells[col_i] = cell_node;
+    }
+
+    const row = try alloc.create(ast.Node);
+    row.* = .{
+        .table_row = .{
+            .children = cells,
+        },
+    };
+    return row;
+}
+
+/// Frees all the nodes in the uniform list except the leaf content nodes.
+fn freeUniformList(alloc: Allocator, list_node: *ast.Node) void {
+    // TODO: Can we write non-recursive destroy() or deinit() methods on
+    // ast.Node so that we don't have to know what to free here?
+
+    for (list_node.list.children) |list_item_node| {
+        const sublist_node = list_item_node.list_item.children[0];
+        for (sublist_node.list.children) |sublist_item_node| {
+            // We don't free any of the children, since they're now part of a
+            // table.
+            alloc.free(sublist_item_node.list_item.children);
+            alloc.destroy(sublist_item_node);
+        }
+
+        alloc.free(sublist_node.list.children);
+        alloc.destroy(sublist_node);
+        alloc.free(list_item_node.list_item.children);
+        alloc.destroy(list_item_node);
+    }
+
+    alloc.free(list_node.list.children);
+    alloc.destroy(list_node);
+}
+
+// TODO: Move somewhere more sensible than here
+fn createCaptionNode(
+    alloc: Allocator,
+    scratch: Allocator,
+    caption_value: []const u8,
+) !*ast.Node {
+    var tokenizer = InlineTokenizer.init(caption_value);
+    var parser = InlineParser.init(&tokenizer, .empty);
+    const inline_nodes = try parser.parse(alloc, scratch);
+
+    const p_node = try alloc.create(ast.Node);
+    p_node.* = .{
+        .paragraph = .{ .children = inline_nodes },
+    };
+
+    const caption_node = try alloc.create(ast.Node);
+    caption_node.* = .{
+        .caption = .{ .children = try alloc.dupe(*ast.Node, &.{p_node}) },
+    };
+    return caption_node;
+}
+
 // ----------------------------------------------------------------------------
 // Unit Tests
 // ----------------------------------------------------------------------------
@@ -568,9 +834,12 @@ fn handleDirective(
         },
     };
 
+    var arena = ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
     return try transformBuiltin(
         testing.allocator,
-        testing.allocator,
+        arena.allocator(),
         directive_node,
         name,
         args,
@@ -746,6 +1015,107 @@ test "code block with options" {
         u16,
         &.{ 1, 3, 4, 5, 7 },
         code_node.code.emphasize_lines.?,
+    );
+}
+
+fn expectTableRow(row_node: *ast.Node, values: anytype) !void {
+    try testing.expectEqual(.table_row, @as(ast.NodeType, row_node.*));
+    try testing.expectEqual(values.len, row_node.table_row.children.len);
+
+    inline for (values, 0..) |v, i| {
+        const cell_node = row_node.table_row.children[i];
+        try testing.expectEqual(.table_cell, @as(ast.NodeType, cell_node.*));
+        try testing.expectEqual(1, cell_node.table_cell.children.len);
+
+        const txt_node = cell_node.table_cell.children[0];
+        try testing.expectEqual(.text, @as(ast.NodeType, txt_node.*));
+        try testing.expectEqualStrings(v, txt_node.text.value);
+    }
+}
+
+test "list table uniform" {
+    const node = try handleDirective("list-table", "My table", &.{},
+        \\* - Name
+        \\  - Weight (lbs.)
+        \\* - John
+        \\  - 189
+        \\* - Sarah
+        \\  - 153
+        \\
+    );
+    defer node.deinit(testing.allocator);
+
+    try testing.expectEqual(.myst_directive, @as(ast.NodeType, node.*));
+    try testing.expectEqual(1, node.myst_directive.children.len);
+
+    const container_node = node.myst_directive.children[0];
+    try testing.expectEqual(.container, @as(ast.NodeType, container_node.*));
+    try testing.expectEqualStrings("table", container_node.container.kind);
+    try testing.expectEqual(2, container_node.container.children.len);
+
+    const caption_node = container_node.container.children[0];
+    try testing.expectEqual(.caption, @as(ast.NodeType, caption_node.*));
+    try testing.expectEqual(1, caption_node.caption.children.len);
+
+    const p_node = caption_node.caption.children[0];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, p_node.*));
+    try testing.expectEqual(1, p_node.paragraph.children.len);
+
+    const txt_node = p_node.paragraph.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, txt_node.*));
+    try testing.expectEqualStrings("My table", txt_node.text.value);
+
+    const table_node = container_node.container.children[1];
+    try testing.expectEqual(.table, @as(ast.NodeType, table_node.*));
+    try testing.expectEqual(3, table_node.table.children.len);
+
+    try expectTableRow(
+        table_node.table.children[0],
+        .{ "Name", "Weight (lbs.)" },
+    );
+    try expectTableRow(
+        table_node.table.children[1],
+        .{ "John", "189" },
+    );
+    try expectTableRow(
+        table_node.table.children[2],
+        .{ "Sarah", "153" },
+    );
+}
+
+test "empty list table" {
+    const node = try handleDirective(
+        "list-table",
+        "My table",
+        &.{},
+        "",
+    );
+    defer node.deinit(testing.allocator);
+
+    try testing.expectEqual(.myst_directive_error, @as(ast.NodeType, node.*));
+    try testing.expectEqualStrings(
+        "required body not provided for directive: list-table",
+        node.myst_directive_error.message,
+    );
+}
+
+test "invalid list table" {
+    const node = try handleDirective("list-table", "My table", &.{},
+        \\* - Name
+        \\  - Weight (lbs.)
+        \\* - John
+        \\  - 189
+        \\* - Sarah
+        \\  - 153
+        \\  - Spaghetti
+        \\
+    );
+    defer node.deinit(testing.allocator);
+
+    try testing.expectEqual(.myst_directive_error, @as(ast.NodeType, node.*));
+    try testing.expectEqualStrings(
+        "list not uniform for directive: list-table",
+        node.myst_directive_error.message,
     );
 }
 

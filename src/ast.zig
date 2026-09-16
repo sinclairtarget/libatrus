@@ -360,6 +360,7 @@ pub const Container = struct {
     kind: [:0]const u8,
     label: ?[:0]const u8 = null,
     identifier: ?[:0]const u8 = null,
+    class: ?[:0]const u8 = null,
     enumerated: bool = false,
     enumerator: ?[:0]const u8 = null,
 
@@ -369,6 +370,7 @@ pub const Container = struct {
         alloc.free(self.kind);
         if (self.label) |label| alloc.free(label);
         if (self.identifier) |identifier| alloc.free(identifier);
+        if (self.class) |class| alloc.free(class);
         if (self.enumerator) |enumerator| alloc.free(enumerator);
     }
 };
@@ -532,24 +534,24 @@ pub const Math = struct {
 
 pub const Table = struct {
     children: []*Node,
-    @"align": [:0]const u8,
+    @"align": ?[:0]const u8 = null,
 
     pub fn deinit(self: *Table, alloc: Allocator) void {
         freeChildren(alloc, self.children);
 
-        alloc.free(self.@"align");
+        if (self.@"align") |a| alloc.free(a);
     }
 };
 
 pub const TableCell = struct {
     children: []*Node,
     header: bool,
-    @"align": [:0]const u8,
+    @"align": ?[:0]const u8 = null,
 
     pub fn deinit(self: *TableCell, alloc: Allocator) void {
         freeChildren(alloc, self.children);
 
-        alloc.free(self.@"align");
+        if (self.@"align") |a| alloc.free(a);
     }
 };
 
