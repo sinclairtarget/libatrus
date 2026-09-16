@@ -596,10 +596,10 @@ fn renderNode(
                         );
                     }
 
-                    _ = try out.writeAll("<a href=\"#m-fnref-");
+                    _ = try out.writeAll(" <a href=\"#m-fnref-");
                     try printHTMLEscapedAttrValue(out, n.identifier);
                     _ = try out.writeAll(
-                        "\" data-foonote-backref " ++
+                        "\" data-footnote-backref " ++
                             "class=\"data-footnote-backref\" " ++
                             "aria-label=\"Back to content\">↩</a>",
                     );
@@ -626,7 +626,7 @@ fn renderNode(
                 _ = try out.writeAll("<a href=\"#m-fnref-");
                 try printHTMLEscapedAttrValue(out, n.identifier);
                 _ = try out.writeAll(
-                    "\" data-foonote-backref " ++
+                    "\" data-footnote-backref " ++
                         "class=\"data-footnote-backref\" " ++
                         "aria-label=\"Back to content\">↩</a>",
                 );
