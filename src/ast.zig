@@ -52,6 +52,9 @@ pub const NodeType = enum(c_uint) {
     admonition = 23,
     admonition_title = 24,
     math = 31,
+    table = 36,
+    table_row = 37,
+    table_cell = 38,
 
     pub fn name(self: NodeType) [:0]const u8 {
         return switch (self) {
@@ -64,10 +67,12 @@ pub const NodeType = enum(c_uint) {
             .myst_directive_error => "mystDirectiveError",
             .admonition_title => "admonitionTitle",
             .list_item => "listItem",
-            .comment => "mystComment",
+            .comment => "mystComment", // NB: Not just camel casing
             .block_break => "blockBreak",
             .footnote_definition => "footnoteDefinition",
             .footnote_reference => "footnoteReference",
+            .table_row => "tableRow",
+            .table_cell => "tableCell",
             else => @tagName(self),
         };
     }
@@ -111,6 +116,9 @@ pub const Node = union(NodeType) {
     admonition: Admonition,
     admonition_title: Wrapper,
     math: Math,
+    table: Table,
+    table_row: Wrapper,
+    table_cell: TableCell,
 
     /// Returns a union bisecting nodes into those that have children and those
     /// that don't.
@@ -522,6 +530,29 @@ pub const Math = struct {
     }
 };
 
+pub const Table = struct {
+    children: []*Node,
+    @"align": [:0]const u8,
+
+    pub fn deinit(self: *Table, alloc: Allocator) void {
+        freeChildren(alloc, self.children);
+
+        alloc.free(self.@"align");
+    }
+};
+
+pub const TableCell = struct {
+    children: []*Node,
+    header: bool,
+    @"align": [:0]const u8,
+
+    pub fn deinit(self: *TableCell, alloc: Allocator) void {
+        freeChildren(alloc, self.children);
+
+        alloc.free(self.@"align");
+    }
+};
+
 fn freeChildren(alloc: Allocator, children: []*Node) void {
     for (children) |child| {
         child.deinit(alloc);
@@ -563,6 +594,9 @@ pub const AllowedChildren = enum {
             .admonition_title,
             .legend,
             .footnote_definition,
+            .table,
+            .table_row,
+            .table_cell,
             => .yes,
             .text,
             .code,

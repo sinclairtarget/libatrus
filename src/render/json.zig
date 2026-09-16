@@ -200,6 +200,9 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
 
                 try renderChildren(stringify, n);
             },
+            .table => @panic("not yet implemented"),
+            .table_row => @panic("not yet implemented"),
+            .table_cell => @panic("not yet implemented"),
             inline else => |n| {
                 // Other nodes with children handled here.
                 try renderChildren(stringify, n);

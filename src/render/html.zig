@@ -636,6 +636,9 @@ fn renderNode(
             try printIndent(out, options, f.depth);
             _ = try out.writeAll("</li>");
         },
+        .table => @panic("not yet implemented"),
+        .table_row => @panic("not yet implemented"),
+        .table_cell => @panic("not yet implemented"),
         // --- Inlines ---
         .text => |n| {
             if (f.begin_line) {
