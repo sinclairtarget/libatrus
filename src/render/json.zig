@@ -80,6 +80,10 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
                     try stringify.objectField("label");
                     try stringify.write(f);
                 }
+                if (n.class) |f| {
+                    try stringify.objectField("class");
+                    try stringify.write(f);
+                }
 
                 if (n.children.len > 0) {
                     try renderChildren(stringify, n);
@@ -200,9 +204,27 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
 
                 try renderChildren(stringify, n);
             },
-            .table => @panic("not yet implemented"),
-            .table_row => @panic("not yet implemented"),
-            .table_cell => @panic("not yet implemented"),
+            .table => |n| {
+                if (n.@"align") |a| {
+                    try stringify.objectField("align");
+                    try stringify.write(a);
+                }
+
+                try renderChildren(stringify, n);
+            },
+            .table_cell => |n| {
+                if (n.header) {
+                    try stringify.objectField("header");
+                    try stringify.write(n.header);
+                }
+
+                if (n.@"align") |a| {
+                    try stringify.objectField("align");
+                    try stringify.write(a);
+                }
+
+                try renderChildren(stringify, n);
+            },
             inline else => |n| {
                 // Other nodes with children handled here.
                 try renderChildren(stringify, n);
