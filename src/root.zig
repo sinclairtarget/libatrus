@@ -257,20 +257,32 @@ const testing = std.testing;
 test {
     // Ensures all unit tests are reachable even when filtering only for tests
     // in imported structs/namespaces and not in this file.
-    _ = @import("cmark/cmark.zig");
-    _ = @import("lex/LineReader.zig");
+    //
+    // Without this, the only code that gets discovered is code reachable from
+    // the unit tests in this file that match the test filter. Typically none
+    // of the tests in this file will match the filter if we're using one, so
+    // that's a problem!
+    _ = @import("cmark/uri.zig");
     _ = @import("lex/BlockTokenizer.zig");
     _ = @import("lex/InlineTokenizer.zig");
-    _ = @import("myst/myst.zig");
-    _ = @import("myst/option_values.zig");
+    _ = @import("lex/iterator.zig");
+    _ = @import("lex/LineReader.zig");
     _ = @import("lookup/footnotes.zig");
     _ = @import("lookup/links.zig");
+    _ = @import("myst/option_values.zig");
     _ = @import("parse/ContainerBlockParser.zig");
     _ = @import("parse/escape.zig");
     _ = @import("parse/InlineParser.zig");
     _ = @import("parse/LeafBlockParser.zig");
+    _ = @import("render/html.zig");
     _ = @import("render/json.zig");
-    _ = @import("transforms/transforms.zig");
+    _ = @import("root.zig");
+    _ = @import("transforms/post/enumerate.zig");
+    _ = @import("transforms/post/post.zig");
+    _ = @import("transforms/pre/directives.zig");
+    _ = @import("transforms/pre/footnotes.zig");
+    _ = @import("transforms/pre/pre.zig");
+    _ = @import("transforms/pre/roles.zig");
     _ = @import("util/unicode.zig");
 }
 
