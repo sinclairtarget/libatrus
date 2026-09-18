@@ -276,7 +276,9 @@ fn renderNode(
         },
         .container => |n| {
             const kind = n.kind;
-            if (std.mem.eql(u8, kind, "figure")) {
+            if (std.mem.eql(u8, kind, "figure") or
+                std.mem.eql(u8, kind, "table"))
+            {
                 try renderFigure(node, out, options, f, r);
             } else {
                 @panic("no HTML rendering implementation for container kind");
@@ -636,9 +638,48 @@ fn renderNode(
             try printIndent(out, options, f.depth);
             _ = try out.writeAll("</li>");
         },
-        .table => @panic("not yet implemented"),
-        .table_row => @panic("not yet implemented"),
-        .table_cell => @panic("not yet implemented"),
+        .table => try renderTable(node, out, options, f, r),
+        .table_row => |n| {
+            if (f.begin_line) {
+                try printIndent(out, options, f.depth);
+            }
+            _ = try out.writeAll("<tr>\n");
+            for (n.children) |child| {
+                _ = try renderNode(
+                    child,
+                    out,
+                    options,
+                    .{
+                        .depth = f.depth + 1,
+                        .begin_line = true,
+                    },
+                    r,
+                );
+                _ = try out.writeAll("\n");
+            }
+            try printIndent(out, options, f.depth);
+            _ = try out.writeAll("</tr>");
+        },
+        .table_cell => |n| {
+            if (f.begin_line) {
+                try printIndent(out, options, f.depth);
+            }
+            const tag = if (n.header) "th" else "td";
+            try out.print("<{s}>", .{tag});
+            for (n.children) |child| {
+                _ = try renderNode(
+                    child,
+                    out,
+                    options,
+                    .{
+                        .depth = f.depth,
+                        .begin_line = false,
+                    },
+                    r,
+                );
+            }
+            try out.print("</{s}>", .{tag});
+        },
         // --- Inlines ---
         .text => |n| {
             if (f.begin_line) {
@@ -996,9 +1037,26 @@ fn renderFigure(
         try printHTMLEscapedAttrValue(out, identifier);
         _ = try out.writeAll("\" ");
     }
-    if (n.enumerator) |_| {
-        _ = try out.writeAll("class=\"numbered\"");
+
+    const needs_class = n.enumerator != null or n.class != null;
+    if (needs_class) {
+        _ = try out.writeAll("class=\"");
+
+        if (n.enumerator) |_| {
+            _ = try out.writeAll("numbered");
+
+            if (n.class) |_| {
+                _ = try out.writeAll(" ");
+            }
+        }
+
+        if (n.class) |class| {
+            try printHTMLEscapedAttrValue(out, class);
+        }
+
+        _ = try out.writeAll("\"");
     }
+
     _ = try out.writeAll(">\n");
 
     for (n.children) |child| {
@@ -1051,15 +1109,16 @@ fn renderCaption(
         container.?.enumerator != null and
         n.children.len > 0 and
         @as(ast.NodeType, n.children[0].*) == .paragraph;
+
     if (shouldRenderEnumerated) {
         try printIndent(out, options, f.depth + 1);
 
-        const paragraph = n.children[0].paragraph;
-
-        _ = try out.writeAll("<p><span class=\"caption-number\">Figure ");
+        _ = try out.writeAll("<p><span class=\"caption-number\">");
+        try out.print("{s} ", .{containerKindName(container.?.kind)});
         try printHTMLEscapedContent(out, container.?.enumerator.?);
         _ = try out.writeAll("</span>");
 
+        const paragraph = n.children[0].paragraph;
         for (paragraph.children) |child| {
             _ = try renderNode(
                 child,
@@ -1106,6 +1165,69 @@ fn renderCaption(
 
     try printIndent(out, options, f.depth);
     _ = try out.writeAll("</figcaption>");
+}
+
+fn renderTable(
+    node: *ast.Node,
+    out: *Io.Writer,
+    options: InternalOptions,
+    f: FormattingState,
+    r: *RenderState,
+) !void {
+    const table = node.table;
+
+    try printIndent(out, options, f.depth);
+    _ = try out.writeAll("<table");
+    if (table.@"align") |a| {
+        _ = try out.writeAll(" align=\"");
+        try printHTMLEscapedAttrValue(out, a);
+        _ = try out.writeAll("\"");
+    }
+    _ = try out.writeAll(">\n");
+
+    // TODO: Implement header-rows option
+    if (table.children.len > 0) {
+        try printIndent(out, options, f.depth + 1);
+        _ = try out.writeAll("<thead>\n");
+        for (table.children[0..1]) |child| {
+            _ = try renderNode(
+                child,
+                out,
+                options,
+                .{
+                    .depth = f.depth + 2,
+                    .begin_line = true,
+                },
+                r,
+            );
+            _ = try out.writeAll("\n");
+        }
+        try printIndent(out, options, f.depth + 1);
+        _ = try out.writeAll("</thead>\n");
+
+        if (table.children.len > 1) {
+            try printIndent(out, options, f.depth + 1);
+            _ = try out.writeAll("<tbody>\n");
+            for (table.children[1..]) |child| {
+                _ = try renderNode(
+                    child,
+                    out,
+                    options,
+                    .{
+                        .depth = f.depth + 2,
+                        .begin_line = true,
+                    },
+                    r,
+                );
+                _ = try out.writeAll("\n");
+            }
+            try printIndent(out, options, f.depth + 1);
+            _ = try out.writeAll("</tbody>\n");
+        }
+    }
+
+    try printIndent(out, options, f.depth);
+    _ = try out.writeAll("</table>");
 }
 
 fn renderFootnotes(
@@ -1189,6 +1311,16 @@ fn willRenderAnything(
         } else false,
         else => true,
     };
+}
+
+fn containerKindName(kind: []const u8) []const u8 {
+    if (std.mem.eql(u8, kind, "figure")) {
+        return "Figure";
+    } else if (std.mem.eql(u8, kind, "table")) {
+        return "Table";
+    }
+
+    @panic("unknown container kind");
 }
 
 fn printEscapedComment(
