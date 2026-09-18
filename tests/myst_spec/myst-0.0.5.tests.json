@@ -19651,7 +19651,6 @@
   },
   {
     "title": "directives.table: Basic list table",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -19818,6 +19817,7 @@
       ]
     },
     "myst": "```{list-table}  Caption *text*\n:name: my-table\n:header-rows: 1\n:align: center\n:class: myclass\n\n*   - Head 1, Column 1\n    - Head 1, Column 2\n    - Head 1, Column 3\n*   - Row 1, Column 1\n    - Row 1, Column 2\n    - Row 1, Column 3\n*   - Row 2, Column 1\n    - Row 2, Column 2\n    - Row 2, **Column 3**\n```",
+    "html_indented": true,
     "html": "<figure id=\"my-table\" class=\"numbered myclass\">\n  <figcaption>\n    <p><span class=\"caption-number\">Table 1</span>Caption <em>text</em></p>\n  </figcaption>\n  <table align=\"center\">\n    <thead>\n      <tr>\n        <th>Head 1, Column 1</th>\n        <th>Head 1, Column 2</th>\n        <th>Head 1, Column 3</th>\n      </tr>\n    </thead>\n    <tbody>\n      <tr>\n        <td>Row 1, Column 1</td>\n        <td>Row 1, Column 2</td>\n        <td>Row 1, Column 3</td>\n      </tr>\n      <tr>\n        <td>Row 2, Column 1</td>\n        <td>Row 2, Column 2</td>\n        <td>Row 2, <strong>Column 3</strong></td>\n      </tr>\n    </tbody>\n  </table>\n</figure>\n"
   },
   {
