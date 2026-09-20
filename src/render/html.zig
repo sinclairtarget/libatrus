@@ -963,7 +963,6 @@ fn renderNode(
 
             _ = try out.writeAll("<div></div>");
         },
-        .definition => {}, // Doesn't get rendered
         .footnote_reference => |n| {
             if (f.begin_line) {
                 try printIndent(out, options, f.depth);
@@ -979,6 +978,7 @@ fn renderNode(
             try printHTMLEscapedContent(out, n.enumerator orelse n.identifier);
             try out.writeAll("</a></sup>");
         },
+        .definition, .target => {}, // Don't get rendered
     }
 
     return true;

@@ -353,6 +353,10 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
                     try stringify.write(enumerator);
                 }
             },
+            .target => |n| {
+                try stringify.objectField("label");
+                try stringify.write(n.label);
+            },
         },
     }
 

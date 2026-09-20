@@ -38,6 +38,7 @@ pub fn render(node: *ast.Node, out: *Io.Writer) Io.Writer.Error!void {
             .comment,
             .block_break,
             .footnote_reference,
+            .target,
             => {},
         },
     }

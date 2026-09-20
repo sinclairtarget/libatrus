@@ -39,6 +39,7 @@ pub const NodeType = enum(c_uint) {
     block_break = 33,
     footnote_definition = 34,
     footnote_reference = 35,
+    target = 39,
     // built-in roles
     myst_role = 16,
     myst_role_error = 17,
@@ -73,6 +74,7 @@ pub const NodeType = enum(c_uint) {
             .footnote_reference => "footnoteReference",
             .table_row => "tableRow",
             .table_cell => "tableCell",
+            .target => "mystTarget",
             else => @tagName(self),
         };
     }
@@ -105,6 +107,7 @@ pub const Node = union(NodeType) {
     block_break: BlockBreak,
     footnote_definition: FootnoteDefinition,
     footnote_reference: FootnoteReference,
+    target: ReferenceTarget,
     myst_role: MySTRole,
     myst_role_error: MySTRoleError,
     subscript: Wrapper,
@@ -555,6 +558,14 @@ pub const TableCell = struct {
     }
 };
 
+pub const ReferenceTarget = struct {
+    label: [:0]const u8,
+
+    pub fn deinit(self: *ReferenceTarget, alloc: Allocator) void {
+        alloc.free(self.label);
+    }
+};
+
 fn freeChildren(alloc: Allocator, children: []*Node) void {
     for (children) |child| {
         child.deinit(alloc);
@@ -614,6 +625,7 @@ pub const AllowedChildren = enum {
             .inline_math,
             .math,
             .footnote_reference,
+            .target,
             => .no,
         };
     }
