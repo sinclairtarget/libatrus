@@ -154,6 +154,11 @@ pub fn parse(
             }
         }
 
+        if (try self.parseReferenceTarget(alloc, scratch)) |target| {
+            try children.append(target);
+            continue;
+        }
+
         if (try self.parseATXHeading(alloc, scratch)) |heading| {
             try children.append(heading);
             continue;
@@ -2587,6 +2592,48 @@ fn parseMySTDirectiveOption(
     };
 }
 
+fn parseReferenceTarget(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) !?*ast.Node {
+    var did_parse = false;
+    const checkpoint_index = self.it.checkpoint();
+    defer if (!did_parse) {
+        self.it.backtrack(checkpoint_index);
+    };
+
+    _ = try self.it.consume(scratch, &.{.l_paren}) orelse return null;
+
+    var running_text = Io.Writer.Allocating.init(scratch);
+    while (try self.it.peek(scratch)) |token| {
+        switch (token.token_type) {
+            .text, .hyphen, .plus, .period, .star => |t| {
+                _ = try running_text.writer.write(token.lexeme);
+                _ = try self.it.consume(scratch, &.{t});
+            },
+            .r_paren => break,
+            else => return null,
+        }
+    }
+
+    _ = try self.it.consume(scratch, &.{.r_paren}) orelse return null;
+    _ = try self.it.consume(scratch, &.{.equals}) orelse return null;
+
+    const owned_label = try alloc.dupeZ(u8, running_text.written());
+    errdefer alloc.free(owned_label);
+
+    const node = try alloc.create(ast.Node);
+    node.* = .{
+        .target = .{
+            .label = owned_label,
+        },
+    };
+
+    did_parse = true;
+    return node;
+}
+
 fn parseBlankLine(self: *Self, scratch: Allocator) !bool {
     var did_parse = false;
     const checkpoint_index = self.it.checkpoint();
@@ -4894,4 +4941,49 @@ test "block break with spaces and meta" {
     const bb_3_node = nodes[2];
     try testing.expectEqual(.block_break, @as(ast.NodeType, bb_3_node.*));
     try testing.expectEqualStrings("", bb_3_node.block_break.meta);
+}
+
+test "simple reference target" {
+    const md =
+        \\(foobar)=
+        \\
+    ;
+
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
+
+    const nodes = try parseBlocksMd(md, &def_store);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(1, nodes.len);
+
+    const target_node = nodes[0];
+    try testing.expectEqual(.target, @as(ast.NodeType, target_node.*));
+    try testing.expectEqualStrings("foobar", target_node.target.label);
+}
+
+test "invalid reference target with whitespace" {
+    const md =
+        \\(foo bar)=
+        \\
+    ;
+
+    var def_store: DefStore = .empty;
+    defer def_store.deinit(testing.allocator);
+
+    const nodes = try parseBlocksMd(md, &def_store);
+    defer {
+        for (nodes) |node| {
+            node.deinit(testing.allocator);
+        }
+        testing.allocator.free(nodes);
+    }
+
+    try testing.expectEqual(1, nodes.len);
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, nodes[0].*));
 }

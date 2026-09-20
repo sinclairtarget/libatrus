@@ -23,12 +23,12 @@ pub const BlockTokenType = enum {
     period,
     percent,
     caret,
+    equals,
     space, // ascii space
     tab,
     exclamation_mark, // used only for HTML parsing
     question_mark, // used only for HTML parsing
     slash, // used only for HTML parsing
-    equals, // used only for HTML parsing
     close, // special token inserted by container block parser
     // --- multi-character tokens ---
     text,
