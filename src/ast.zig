@@ -579,11 +579,14 @@ pub const CrossReference = struct {
     kind: [:0]const u8, // TODO: Should be an enum?
     label: [:0]const u8,
     identifier: [:0]const u8,
+    title: ?[:0]const u8 = null,
 
     pub fn deinit(self: *CrossReference, alloc: Allocator) void {
         alloc.free(self.kind);
         alloc.free(self.label);
         alloc.free(self.identifier);
+
+        if (self.title) |title| alloc.free(title);
 
         freeChildren(alloc, self.children);
     }

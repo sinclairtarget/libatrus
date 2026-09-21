@@ -279,6 +279,7 @@ test {
     _ = @import("root.zig");
     _ = @import("transforms/post/enumerate.zig");
     _ = @import("transforms/post/post.zig");
+    _ = @import("transforms/post/references.zig");
     _ = @import("transforms/pre/directives.zig");
     _ = @import("transforms/pre/footnotes.zig");
     _ = @import("transforms/pre/pre.zig");

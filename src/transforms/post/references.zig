@@ -12,6 +12,7 @@ pub fn transform(
     var node = original_node;
 
     node = try transformTargets(alloc, scratch, node);
+    node = try transformLinksToRef(alloc, scratch, node);
 
     return node;
 }
@@ -91,6 +92,81 @@ fn transformTargets(
         },
         .no => return original_node,
     }
+}
+
+/// For all links in the tree that have only a fragment URL, replace the link
+/// node with an unresolved cross reference node.
+fn transformLinksToRef(
+    alloc: Allocator,
+    scratch: Allocator,
+    original_node: *ast.Node,
+) !*ast.Node {
+    switch (original_node.allowedChildren()) {
+        .yes => |branch_node| switch (branch_node) {
+            .link => |n| {
+                if (linkURLToReferenceID(n.url)) |id| {
+                    // TODO: Should be a better way to non-recursively
+                    // deallocate a node.
+                    defer alloc.free(n.url);
+                    defer alloc.free(n.title);
+                    defer alloc.destroy(original_node);
+
+                    const label = try alloc.dupeZ(u8, id);
+                    const identifier = try alloc.dupeZ(u8, id);
+
+                    const ref_node = try alloc.create(ast.Node);
+                    ref_node.* = .{
+                        .cross_reference = .{
+                            .children = n.children,
+                            .kind = try alloc.dupeZ(u8, "ref"),
+                            .label = label,
+                            .identifier = identifier,
+                        },
+                    };
+
+                    if (n.title.len > 0) {
+                        ref_node.cross_reference.title = try alloc.dupeZ(
+                            u8,
+                            n.title,
+                        );
+                    }
+
+                    return ref_node;
+                } else {
+                    return original_node;
+                }
+            },
+            inline else => |n| {
+                for (0..n.children.len) |i| {
+                    n.children[i] = try transformLinksToRef(
+                        alloc,
+                        scratch,
+                        n.children[i],
+                    );
+                }
+                return original_node;
+            },
+        },
+        .no => return original_node,
+    }
+}
+
+/// If the given URL contains only a fragment, turns that fragment into a
+/// reference ID and returns it. Otherwise returns null.
+fn linkURLToReferenceID(url: []const u8) ?[]const u8 {
+    if (url.len == 0)
+        return null;
+
+    // If we can parse it as a URI, skip it
+    if (std.Uri.parse(url)) |_| {
+        return null;
+    } else |_| {}
+
+    if (url[0] == '#') {
+        return if (url.len > 1) url[1..] else null;
+    }
+
+    return url;
 }
 
 // ----------------------------------------------------------------------------
@@ -187,4 +263,92 @@ test "handle reference target with no next sibling" {
     try testing.expectEqual(1, post_node.root.children.len);
     const post_target_node = post_node.root.children[0];
     try testing.expectEqual(.target, @as(ast.NodeType, post_target_node.*));
+}
+
+test "link to ref" {
+    const link_text_node = try testing.allocator.create(ast.Node);
+    link_text_node.* = .{
+        .text = .{ .value = try testing.allocator.dupeZ(u8, "Bucatini") },
+    };
+
+    const fragment_link_node = try testing.allocator.create(ast.Node);
+    fragment_link_node.* = .{
+        .link = .{
+            .url = try testing.allocator.dupeZ(u8, "pasta"),
+            .title = try testing.allocator.dupeZ(u8, "The Best Pasta"),
+            .children = try testing.allocator.dupe(
+                *ast.Node,
+                &.{link_text_node},
+            ),
+        },
+    };
+
+    const paragraph_text_node = try testing.allocator.create(ast.Node);
+    paragraph_text_node.* = .{
+        .text = .{ .value = try testing.allocator.dupeZ(u8, " is my fav.") },
+    };
+
+    const abs_link_node = try testing.allocator.create(ast.Node);
+    abs_link_node.* = .{
+        .link = .{
+            .url = try testing.allocator.dupeZ(u8, "http://google.com"),
+            .title = try testing.allocator.dupeZ(u8, "Google"),
+            .children = &.{},
+        },
+    };
+
+    const p_node = try testing.allocator.create(ast.Node);
+    p_node.* = .{
+        .paragraph = .{
+            .children = try testing.allocator.dupe(
+                *ast.Node,
+                &.{ fragment_link_node, paragraph_text_node, abs_link_node },
+            ),
+        },
+    };
+
+    const root_node = try testing.allocator.create(ast.Node);
+    root_node.* = .{
+        .root = .{
+            .children = try testing.allocator.dupe(*ast.Node, &.{p_node}),
+        },
+    };
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const post_node = try transform(
+        testing.allocator,
+        arena.allocator(),
+        root_node,
+    );
+    defer post_node.deinit(testing.allocator);
+
+    try testing.expectEqual(.root, @as(ast.NodeType, post_node.*));
+    try testing.expectEqual(1, post_node.root.children.len);
+
+    const post_p_node = post_node.root.children[0];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, post_p_node.*));
+    try testing.expectEqual(3, post_p_node.paragraph.children.len);
+
+    const ref_node = post_p_node.paragraph.children[0];
+    try testing.expectEqual(.cross_reference, @as(ast.NodeType, ref_node.*));
+    try testing.expectEqualStrings("ref", ref_node.cross_reference.kind);
+    try testing.expectEqualStrings("pasta", ref_node.cross_reference.label);
+    try testing.expectEqualStrings(
+        "pasta",
+        ref_node.cross_reference.identifier,
+    );
+    const title = try util.testing.expectNonNull(
+        ref_node.cross_reference.title,
+    );
+    try testing.expectEqualStrings("The Best Pasta", title);
+
+    try testing.expectEqual(1, ref_node.cross_reference.children.len);
+    const post_link_text_node = ref_node.cross_reference.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, post_link_text_node.*));
+
+    // Other link should be unchanged
+    const link_node = post_p_node.paragraph.children[2];
+    try testing.expectEqual(.link, @as(ast.NodeType, link_node.*));
 }
