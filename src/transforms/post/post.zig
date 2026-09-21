@@ -7,6 +7,7 @@ const Allocator = std.mem.Allocator;
 const ast = @import("../../ast.zig");
 const blocks = @import("blocks.zig");
 const enumerate = @import("enumerate.zig");
+const references = @import("references.zig");
 
 /// Apply all "post" stage transformations.
 ///
@@ -23,6 +24,7 @@ pub fn transform(
 
     node = try blocks.transform(alloc, node);
     node = try enumerate.transform(alloc, scratch, node);
+    node = try references.transform(alloc, scratch, node);
 
     return node;
 }
