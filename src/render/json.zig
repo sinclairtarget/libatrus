@@ -47,6 +47,17 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
             .heading => |n| {
                 try stringify.objectField("depth");
                 try stringify.write(n.depth);
+
+                if (n.label) |label| {
+                    try stringify.objectField("label");
+                    try stringify.write(label);
+                }
+
+                if (n.identifier) |identifier| {
+                    try stringify.objectField("identifier");
+                    try stringify.write(identifier);
+                }
+
                 try renderChildren(stringify, n);
             },
             .link => |n| {

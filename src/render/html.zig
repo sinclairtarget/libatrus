@@ -221,7 +221,14 @@ fn renderNode(
             if (f.begin_line) {
                 try printIndent(out, options, f.depth);
             }
-            try out.print("<h{d}>", .{n.depth});
+            try out.print("<h{d}", .{n.depth});
+            if (n.identifier) |id| {
+                _ = try out.writeAll(" id=\"");
+                try printHTMLEscapedAttrValue(out, id);
+                _ = try out.writeAll("\"");
+            }
+            _ = try out.writeAll(">");
+
             for (n.children) |child| {
                 _ = try renderNode(
                     child,

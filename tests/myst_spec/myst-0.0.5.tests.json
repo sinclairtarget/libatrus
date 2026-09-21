@@ -21464,7 +21464,6 @@
   },
   {
     "title": "references.target: Header with id label",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [

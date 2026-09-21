@@ -269,9 +269,14 @@ pub const Wrapper = struct {
 pub const Heading = struct {
     children: []*Node,
     depth: u8, // Headings cannot be deeper than six levels
+    label: ?[:0]const u8 = null,
+    identifier: ?[:0]const u8 = null,
 
     pub fn deinit(self: *Heading, alloc: Allocator) void {
         freeChildren(alloc, self.children);
+
+        if (self.label) |label| alloc.free(label);
+        if (self.identifier) |identifier| alloc.free(identifier);
     }
 };
 

@@ -59,7 +59,7 @@ fn transformTargets(
                         },
                     };
                     switch (n.children[j].*) {
-                        .code => |*applied_n| {
+                        inline .code, .heading => |*applied_n| {
                             if (applied_n.label != null) continue;
                             applied_n.label = try alloc.dupeZ(
                                 u8,
