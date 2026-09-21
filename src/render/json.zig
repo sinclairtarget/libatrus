@@ -236,6 +236,18 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
 
                 try renderChildren(stringify, n);
             },
+            .cross_reference => |n| {
+                try stringify.objectField("kind");
+                try stringify.write(n.kind);
+
+                try stringify.objectField("label");
+                try stringify.write(n.label);
+
+                try stringify.objectField("identifier");
+                try stringify.write(n.identifier);
+
+                try renderChildren(stringify, n);
+            },
             inline else => |n| {
                 // Other nodes with children handled here.
                 try renderChildren(stringify, n);

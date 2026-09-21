@@ -24,6 +24,8 @@ pub fn transform(
 
     node = try blocks.transform(alloc, node);
     node = try enumerate.transform(alloc, scratch, node);
+
+    // Enumeration must happen before we handle references
     node = try references.transform(alloc, scratch, node);
 
     return node;

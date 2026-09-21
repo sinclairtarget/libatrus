@@ -40,6 +40,7 @@ pub const NodeType = enum(c_uint) {
     footnote_definition = 34,
     footnote_reference = 35,
     target = 39,
+    cross_reference = 40,
     // built-in roles
     myst_role = 16,
     myst_role_error = 17,
@@ -75,6 +76,7 @@ pub const NodeType = enum(c_uint) {
             .table_row => "tableRow",
             .table_cell => "tableCell",
             .target => "mystTarget",
+            .cross_reference => "crossReference",
             else => @tagName(self),
         };
     }
@@ -108,6 +110,7 @@ pub const Node = union(NodeType) {
     footnote_definition: FootnoteDefinition,
     footnote_reference: FootnoteReference,
     target: ReferenceTarget,
+    cross_reference: CrossReference,
     myst_role: MySTRole,
     myst_role_error: MySTRoleError,
     subscript: Wrapper,
@@ -571,6 +574,21 @@ pub const ReferenceTarget = struct {
     }
 };
 
+pub const CrossReference = struct {
+    children: []*Node,
+    kind: [:0]const u8, // TODO: Should be an enum?
+    label: [:0]const u8,
+    identifier: [:0]const u8,
+
+    pub fn deinit(self: *CrossReference, alloc: Allocator) void {
+        alloc.free(self.kind);
+        alloc.free(self.label);
+        alloc.free(self.identifier);
+
+        freeChildren(alloc, self.children);
+    }
+};
+
 fn freeChildren(alloc: Allocator, children: []*Node) void {
     for (children) |child| {
         child.deinit(alloc);
@@ -615,6 +633,7 @@ pub const AllowedChildren = enum {
             .table,
             .table_row,
             .table_cell,
+            .cross_reference,
             => .yes,
             .text,
             .code,

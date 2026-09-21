@@ -985,6 +985,30 @@ fn renderNode(
             try printHTMLEscapedContent(out, n.enumerator orelse n.identifier);
             try out.writeAll("</a></sup>");
         },
+        .cross_reference => |n| {
+            if (f.begin_line) {
+                try printIndent(out, options, f.depth);
+            }
+
+            _ = try out.writeAll("<a href=\"#");
+            try printHTMLEscapedAttrValue(out, n.identifier);
+            _ = try out.writeAll("\">");
+
+            for (n.children) |child| {
+                _ = try renderNode(
+                    child,
+                    out,
+                    options,
+                    .{
+                        .depth = f.depth,
+                        .begin_line = false,
+                    },
+                    r,
+                );
+            }
+
+            _ = try out.writeAll("</a>");
+        },
         .definition, .target => {}, // Don't get rendered
     }
 
@@ -1635,6 +1659,36 @@ test "render block break" {
 
     const expected =
         \\<div></div>
+        \\
+    ;
+
+    try renderAndCompare(&root_node, .{}, expected);
+}
+
+test "render cross reference" {
+    var text_node: ast.Node = .{
+        .text = .{ .value = "hello, world" },
+    };
+    var ref_node: ast.Node = blk: {
+        var children = [_]*ast.Node{&text_node};
+        break :blk .{
+            .cross_reference = .{
+                .kind = "ref",
+                .label = "Foobar",
+                .identifier = "foobar",
+                .children = &children,
+            },
+        };
+    };
+    var root_node: ast.Node = blk: {
+        var children = [_]*ast.Node{&ref_node};
+        break :blk .{
+            .root = .{ .children = &children },
+        };
+    };
+
+    const expected =
+        \\<a href="#foobar">hello, world</a>
         \\
     ;
 
