@@ -4,6 +4,8 @@ const Allocator = std.mem.Allocator;
 const ast = @import("../../ast.zig");
 const myst = @import("../../myst/myst.zig");
 
+const TargetMap = std.hash_map.StringHashMapUnmanaged(*ast.Node);
+
 pub fn transform(
     alloc: Allocator,
     scratch: Allocator,
@@ -12,7 +14,12 @@ pub fn transform(
     var node = original_node;
 
     node = try transformTargets(alloc, scratch, node);
-    node = try transformLinksToRef(alloc, scratch, node);
+
+    var target_map: TargetMap = .empty;
+    try fillTargetMap(scratch, node, &target_map);
+
+    node = try transformLinksToRef(alloc, scratch, node, target_map);
+    node = try transformResolve(alloc, scratch, node, target_map);
 
     return node;
 }
@@ -94,17 +101,29 @@ fn transformTargets(
     }
 }
 
-/// For all links in the tree that have only a fragment URL, replace the link
+/// For all links in the tree that could be a cross reference, replace the link
 /// node with an unresolved cross reference node.
 fn transformLinksToRef(
     alloc: Allocator,
     scratch: Allocator,
     original_node: *ast.Node,
+    target_map: TargetMap,
 ) !*ast.Node {
     switch (original_node.allowedChildren()) {
         .yes => |branch_node| switch (branch_node) {
             .link => |n| {
-                if (linkURLToReferenceID(n.url)) |id| {
+                // We check to see if the link URL could be a cross reference.
+                const maybe_ref_id = blk: {
+                    // First check if the URL is a valid identifier
+                    const ref_id = linkURLToReferenceID(n.url) orelse
+                        break :blk null;
+                    // Then check if there's a matching target
+                    if (!target_map.contains(ref_id))
+                        break :blk null;
+
+                    break :blk ref_id;
+                };
+                if (maybe_ref_id) |id| {
                     // TODO: Should be a better way to non-recursively
                     // deallocate a node.
                     defer alloc.free(n.url);
@@ -142,6 +161,7 @@ fn transformLinksToRef(
                         alloc,
                         scratch,
                         n.children[i],
+                        target_map,
                     );
                 }
                 return original_node;
@@ -151,8 +171,111 @@ fn transformLinksToRef(
     }
 }
 
+/// Pairs each cross reference in the AST with its target.
+///
+/// This means that we update the "kind" of the cross reference depending on
+/// the type of node it points to. We also add children to the cross reference
+/// if it doesn't already have children, implementing default link text
+/// depending on the cross reference type.
+fn transformResolve(
+    alloc: Allocator,
+    scratch: Allocator,
+    original_node: *ast.Node,
+    target_map: TargetMap,
+) !*ast.Node {
+    switch (original_node.allowedChildren()) {
+        .yes => |branch_node| switch (branch_node) {
+            .cross_reference => |n| {
+                const target_node = target_map.get(n.identifier) orelse
+                    return original_node; // TODO: Anything more to do here?
+
+                // Assign kind
+                switch (target_node.*) {
+                    .heading => {
+                        alloc.free(n.kind);
+                        n.kind = try alloc.dupeZ(u8, "heading");
+                    },
+                    // TODO: Handle other cases
+                    else => {},
+                }
+
+                if (n.children.len > 0) {
+                    // exit early, no need to add default children
+                    return original_node;
+                }
+
+                switch (target_node.*) {
+                    .heading => |target_n| {
+                        try addCrossRefTextHeading(
+                            alloc,
+                            n,
+                            target_n,
+                        );
+                    },
+                    // TODO: Handle other cases
+                    else => {},
+                }
+            },
+            inline else => |n| {
+                for (0..n.children.len) |i| {
+                    n.children[i] = try transformResolve(
+                        alloc,
+                        scratch,
+                        n.children[i],
+                        target_map,
+                    );
+                }
+            },
+        },
+        .no => {},
+    }
+
+    return original_node;
+}
+
+/// Adds all potential targets for cross references to the hash map.
+///
+/// Any node with a label/identifier pair is a potential target.
+fn fillTargetMap(alloc: Allocator, node: *ast.Node, map: *TargetMap) !void {
+    switch (node.allowedChildren()) {
+        .yes => |branch_node| switch (branch_node) {
+            inline .heading, .container => |n| {
+                if (n.identifier) |identifier| {
+                    if (!map.contains(identifier)) {
+                        try map.put(alloc, identifier, node);
+                    }
+                }
+
+                for (n.children) |child| {
+                    try fillTargetMap(alloc, child, map);
+                }
+            },
+            inline else => |n| {
+                for (n.children) |child| {
+                    try fillTargetMap(alloc, child, map);
+                }
+            },
+        },
+        .no => |leaf_node| switch (leaf_node) {
+            inline .code, .math => |n| {
+                if (n.identifier) |identifier| {
+                    if (!map.contains(identifier)) {
+                        try map.put(alloc, identifier, node);
+                    }
+                }
+            },
+            else => {},
+        },
+    }
+}
+
 /// If the given URL contains only a fragment, turns that fragment into a
 /// reference ID and returns it. Otherwise returns null.
+///
+/// That's the idea, anyway. In later versions of MyST, the URL has to be a
+/// fragment, i.e. has to start with "#". In MyST 0.0.5, this isn't true. So we
+/// consider just a plain string, even if it doesn't start with "#", to be a
+/// fragment, so long as it doesn't look like an absolute or relative URL.
 fn linkURLToReferenceID(url: []const u8) ?[]const u8 {
     if (url.len == 0)
         return null;
@@ -162,11 +285,41 @@ fn linkURLToReferenceID(url: []const u8) ?[]const u8 {
         return null;
     } else |_| {}
 
+    // If it starts with a forward slash, consider it a relative URL, skip it
+    if (url[0] == '/' or std.mem.startsWith(u8, url, "./"))
+        return null;
+
+    // If it starts with "#", we have a fragment, strip the "#" to get the
+    // reference ID
     if (url[0] == '#') {
         return if (url.len > 1) url[1..] else null;
     }
 
+    // We have a plain string that we'll pretend is a fragment
     return url;
+}
+
+fn addCrossRefTextHeading(
+    alloc: Allocator,
+    cross_ref: *ast.CrossReference,
+    heading: ast.Heading,
+) !void {
+    std.debug.assert(cross_ref.children.len == 0);
+
+    const new_children = try alloc.alloc(*ast.Node, heading.children.len);
+    for (heading.children, 0..) |child, i| {
+        // TODO: Handle general case of arbitrary child nodes. For now we
+        // assume headings can only have text children, which isn't true.
+        const copy_node = try alloc.create(ast.Node);
+        copy_node.* = .{
+            .text = .{
+                .value = try alloc.dupeZ(u8, child.text.value),
+            },
+        };
+        new_children[i] = copy_node;
+    }
+
+    cross_ref.children = new_children;
 }
 
 // ----------------------------------------------------------------------------
@@ -351,4 +504,83 @@ test "link to ref" {
     // Other link should be unchanged
     const link_node = post_p_node.paragraph.children[2];
     try testing.expectEqual(.link, @as(ast.NodeType, link_node.*));
+}
+
+test "heading cross reference resolution" {
+    const target_node = try testing.allocator.create(ast.Node);
+    target_node.* = .{
+        .target = .{
+            .label = try testing.allocator.dupeZ(u8, "my-heading"),
+        },
+    };
+
+    const heading_txt_node = try testing.allocator.create(ast.Node);
+    heading_txt_node.* = .{
+        .text = .{ .value = try testing.allocator.dupeZ(u8, "My Heading") },
+    };
+    const heading_node = try testing.allocator.create(ast.Node);
+    heading_node.* = .{
+        .heading = .{
+            .depth = 1,
+            .children = try testing.allocator.dupe(
+                *ast.Node,
+                &.{heading_txt_node},
+            ),
+        },
+    };
+
+    const fragment_link_node = try testing.allocator.create(ast.Node);
+    fragment_link_node.* = .{
+        .link = .{
+            .title = try testing.allocator.dupeZ(u8, ""),
+            .url = try testing.allocator.dupeZ(u8, "my-heading"),
+            .children = &.{},
+        },
+    };
+    const p_node = try testing.allocator.create(ast.Node);
+    p_node.* = .{
+        .paragraph = .{
+            .children = try testing.allocator.dupe(
+                *ast.Node,
+                &.{fragment_link_node},
+            ),
+        },
+    };
+
+    const root_node = try testing.allocator.create(ast.Node);
+    root_node.* = .{
+        .root = .{
+            .children = try testing.allocator.dupe(
+                *ast.Node,
+                &.{
+                    target_node,
+                    heading_node,
+                    p_node,
+                },
+            ),
+        },
+    };
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const post_node = try transform(
+        testing.allocator,
+        arena.allocator(),
+        root_node,
+    );
+    defer post_node.deinit(testing.allocator);
+    try testing.expectEqual(2, post_node.root.children.len);
+
+    const post_p_node = post_node.root.children[1];
+    try testing.expectEqual(.paragraph, @as(ast.NodeType, post_p_node.*));
+    try testing.expectEqual(1, post_p_node.paragraph.children.len);
+
+    const ref_node = post_p_node.paragraph.children[0];
+    try testing.expectEqualStrings("heading", ref_node.cross_reference.kind);
+    try testing.expectEqual(1, ref_node.cross_reference.children.len);
+
+    const ref_txt_node = ref_node.cross_reference.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, ref_txt_node.*));
+    try testing.expectEqualStrings("My Heading", ref_txt_node.text.value);
 }
