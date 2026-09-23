@@ -171,12 +171,13 @@ fn transformLinksToRef(
     }
 }
 
-/// Pairs each cross reference in the AST with its target.
+/// Pairs each cross reference in the AST with its target and resolves the
+/// cross reference.
 ///
 /// This means that we update the "kind" of the cross reference depending on
 /// the type of node it points to. We also add children to the cross reference
 /// if it doesn't already have children, implementing default link text
-/// depending on the cross reference type.
+/// depending on the cross reference type (i.e. "Table 1" or "My Heading").
 fn transformResolve(
     alloc: Allocator,
     scratch: Allocator,
@@ -200,13 +201,14 @@ fn transformResolve(
                 }
 
                 if (n.children.len > 0) {
-                    // exit early, no need to add default children
+                    // exit early, no need to add default link text
                     return original_node;
                 }
 
+                // Add children to implement default link text
                 switch (target_node.*) {
                     .heading => |target_n| {
-                        try addCrossRefTextHeading(
+                        try generateHeadingCrossRefLinkText(
                             alloc,
                             n,
                             target_n,
@@ -299,7 +301,12 @@ fn linkURLToReferenceID(url: []const u8) ?[]const u8 {
     return url;
 }
 
-fn addCrossRefTextHeading(
+/// For cross refs to headings, the default link text is the text of the
+/// heading itself.
+///
+/// So this function deep copies all children of the heading node to the cross
+/// reference node.
+fn generateHeadingCrossRefLinkText(
     alloc: Allocator,
     cross_ref: *ast.CrossReference,
     heading: ast.Heading,
@@ -308,14 +315,8 @@ fn addCrossRefTextHeading(
 
     const new_children = try alloc.alloc(*ast.Node, heading.children.len);
     for (heading.children, 0..) |child, i| {
-        // TODO: Handle general case of arbitrary child nodes. For now we
-        // assume headings can only have text children, which isn't true.
         const copy_node = try alloc.create(ast.Node);
-        copy_node.* = .{
-            .text = .{
-                .value = try alloc.dupeZ(u8, child.text.value),
-            },
-        };
+        copy_node.* = try child.clone(alloc);
         new_children[i] = copy_node;
     }
 

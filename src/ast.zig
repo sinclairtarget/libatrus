@@ -202,6 +202,20 @@ pub const Node = union(NodeType) {
         }
     }
 
+    /// Returns a deep copy of this node.
+    ///
+    /// Recursively copies all children!
+    pub fn clone(self: Node, alloc: Allocator) Allocator.Error!Node {
+        return switch (self) {
+            .thematic_break, .@"break" => self,
+            inline else => |n, tag| @unionInit(
+                Node,
+                @tagName(tag),
+                try n.clone(alloc),
+            ),
+        };
+    }
+
     pub fn deinit(self: *Node, alloc: Allocator) void {
         switch (self.*) {
             .thematic_break, .@"break" => {}, // no cleanup needed
@@ -245,6 +259,12 @@ pub const Node = union(NodeType) {
 pub const Root = struct {
     children: []*Node,
 
+    pub fn clone(self: Root, alloc: Allocator) !Root {
+        return .{
+            .children = try cloneChildren(alloc, self.children),
+        };
+    }
+
     pub fn deinit(self: *Root, alloc: Allocator) void {
         freeChildren(alloc, self.children);
     }
@@ -253,6 +273,13 @@ pub const Root = struct {
 pub const Block = struct {
     children: []*Node,
     meta: [:0]const u8,
+
+    pub fn clone(self: Block, alloc: Allocator) !Block {
+        return .{
+            .children = try cloneChildren(alloc, self.children),
+            .meta = try alloc.dupeZ(u8, self.meta),
+        };
+    }
 
     pub fn deinit(self: *Block, alloc: Allocator) void {
         freeChildren(alloc, self.children);
@@ -263,6 +290,12 @@ pub const Block = struct {
 
 pub const Wrapper = struct {
     children: []*Node,
+
+    pub fn clone(self: Wrapper, alloc: Allocator) !Wrapper {
+        return .{
+            .children = try cloneChildren(alloc, self.children),
+        };
+    }
 
     pub fn deinit(self: *Wrapper, alloc: Allocator) void {
         freeChildren(alloc, self.children);
@@ -275,6 +308,21 @@ pub const Heading = struct {
     label: ?[:0]const u8 = null,
     identifier: ?[:0]const u8 = null,
 
+    pub fn clone(self: Heading, alloc: Allocator) !Heading {
+        return .{
+            .children = try cloneChildren(alloc, self.children),
+            .depth = self.depth,
+            .label = if (self.label) |label|
+                try alloc.dupeZ(u8, label)
+            else
+                null,
+            .identifier = if (self.identifier) |identifier|
+                try alloc.dupeZ(u8, identifier)
+            else
+                null,
+        };
+    }
+
     pub fn deinit(self: *Heading, alloc: Allocator) void {
         freeChildren(alloc, self.children);
 
@@ -285,6 +333,12 @@ pub const Heading = struct {
 
 pub const Text = struct {
     value: [:0]const u8,
+
+    pub fn clone(self: Text, alloc: Allocator) !Text {
+        return .{
+            .value = try alloc.dupeZ(u8, self.value),
+        };
+    }
 
     pub fn deinit(self: *Text, alloc: Allocator) void {
         alloc.free(self.value);
@@ -298,9 +352,38 @@ pub const Code = struct {
     starting_line_number: ?u32 = null,
     filename: ?[:0]const u8 = null,
     emphasize_lines: ?[]u16 = null,
-    class: ?[:0]const u8 = null,      // user-defined class for code block
+    class: ?[:0]const u8 = null, // user-defined class for code block
     label: ?[:0]const u8 = null,
     identifier: ?[:0]const u8 = null,
+
+    pub fn clone(self: Code, alloc: Allocator) !Code {
+        return .{
+            .value = try alloc.dupeZ(u8, self.value),
+            .lang = try alloc.dupeZ(u8, self.lang),
+            .show_line_numbers = self.show_line_numbers,
+            .starting_line_number = self.starting_line_number,
+            .filename = if (self.filename) |filename|
+                try alloc.dupeZ(u8, filename)
+            else
+                null,
+            .emphasize_lines = if (self.emphasize_lines) |emphasize_lines|
+                try alloc.dupe(u16, emphasize_lines)
+            else
+                null,
+            .class = if (self.class) |class|
+                try alloc.dupeZ(u8, class)
+            else
+                null,
+            .label = if (self.label) |label|
+                try alloc.dupeZ(u8, label)
+            else
+                null,
+            .identifier = if (self.identifier) |identifier|
+                try alloc.dupeZ(u8, identifier)
+            else
+                null,
+        };
+    }
 
     pub fn deinit(self: *Code, alloc: Allocator) void {
         alloc.free(self.value);
@@ -328,6 +411,14 @@ pub const Link = struct {
     url: [:0]const u8,
     title: [:0]const u8,
 
+    pub fn clone(self: Link, alloc: Allocator) !Link {
+        return .{
+            .children = try cloneChildren(alloc, self.children),
+            .url = try alloc.dupeZ(u8, self.url),
+            .title = try alloc.dupeZ(u8, self.title),
+        };
+    }
+
     pub fn deinit(self: *Link, alloc: Allocator) void {
         freeChildren(alloc, self.children);
 
@@ -340,6 +431,14 @@ pub const LinkDefinition = struct {
     url: [:0]const u8,
     title: [:0]const u8,
     label: [:0]const u8,
+
+    pub fn clone(self: LinkDefinition, alloc: Allocator) !LinkDefinition {
+        return .{
+            .url = try alloc.dupeZ(u8, self.url),
+            .title = try alloc.dupeZ(u8, self.title),
+            .label = try alloc.dupeZ(u8, self.label),
+        };
+    }
 
     pub fn deinit(self: *LinkDefinition, alloc: Allocator) void {
         alloc.free(self.url);
@@ -355,6 +454,26 @@ pub const Image = struct {
     class: ?[:0]const u8 = null,
     @"align": ?[:0]const u8 = null,
     width: ?[:0]const u8 = null,
+
+    pub fn clone(self: Image, alloc: Allocator) !Image {
+        return .{
+            .url = try alloc.dupeZ(u8, self.url),
+            .title = try alloc.dupeZ(u8, self.title),
+            .alt = try alloc.dupeZ(u8, self.alt),
+            .class = if (self.class) |class|
+                try alloc.dupeZ(u8, class)
+            else
+                null,
+            .@"align" = if (self.@"align") |a|
+                try alloc.dupeZ(u8, a)
+            else
+                null,
+            .width = if (self.width) |width|
+                try alloc.dupeZ(u8, width)
+            else
+                null,
+        };
+    }
 
     pub fn deinit(self: *Image, alloc: Allocator) void {
         alloc.free(self.url);
@@ -375,6 +494,30 @@ pub const Container = struct {
     enumerated: bool = false,
     enumerator: ?[:0]const u8 = null,
 
+    pub fn clone(self: Container, alloc: Allocator) !Container {
+        return .{
+            .children = try cloneChildren(alloc, self.children),
+            .kind = try alloc.dupeZ(u8, self.kind),
+            .label = if (self.label) |label|
+                try alloc.dupeZ(u8, label)
+            else
+                null,
+            .identifier = if (self.identifier) |identifier|
+                try alloc.dupeZ(u8, identifier)
+            else
+                null,
+            .class = if (self.class) |class|
+                try alloc.dupeZ(u8, class)
+            else
+                null,
+            .enumerated = self.enumerated,
+            .enumerator = if (self.enumerator) |enumerator|
+                try alloc.dupeZ(u8, enumerator)
+            else
+                null,
+        };
+    }
+
     pub fn deinit(self: *Container, alloc: Allocator) void {
         freeChildren(alloc, self.children);
 
@@ -392,6 +535,15 @@ pub const List = struct {
     start: u32 = 1,
     spread: bool = false,
 
+    pub fn clone(self: List, alloc: Allocator) !List {
+        return .{
+            .children = try cloneChildren(alloc, self.children),
+            .ordered = self.ordered,
+            .start = self.start,
+            .spread = self.spread,
+        };
+    }
+
     pub fn deinit(self: *List, alloc: Allocator) void {
         freeChildren(alloc, self.children);
     }
@@ -401,6 +553,13 @@ pub const ListItem = struct {
     children: []*Node,
     spread: bool = false,
 
+    pub fn clone(self: ListItem, alloc: Allocator) !ListItem {
+        return .{
+            .children = try cloneChildren(alloc, self.children),
+            .spread = self.spread,
+        };
+    }
+
     pub fn deinit(self: *ListItem, alloc: Allocator) void {
         freeChildren(alloc, self.children);
     }
@@ -408,6 +567,12 @@ pub const ListItem = struct {
 
 pub const BlockBreak = struct {
     meta: [:0]const u8,
+
+    pub fn clone(self: BlockBreak, alloc: Allocator) !BlockBreak {
+        return .{
+            .meta = try alloc.dupeZ(u8, self.meta),
+        };
+    }
 
     pub fn deinit(self: *BlockBreak, alloc: Allocator) void {
         alloc.free(self.meta);
@@ -419,6 +584,21 @@ pub const FootnoteDefinition = struct {
     identifier: [:0]const u8,
     label: [:0]const u8,
     enumerator: ?[:0]const u8 = null,
+
+    pub fn clone(
+        self: FootnoteDefinition,
+        alloc: Allocator,
+    ) !FootnoteDefinition {
+        return .{
+            .children = try cloneChildren(alloc, self.children),
+            .identifier = try alloc.dupeZ(u8, self.identifier),
+            .label = try alloc.dupeZ(u8, self.label),
+            .enumerator = if (self.enumerator) |enumerator|
+                try alloc.dupeZ(u8, enumerator)
+            else
+                null,
+        };
+    }
 
     pub fn deinit(self: *FootnoteDefinition, alloc: Allocator) void {
         freeChildren(alloc, self.children);
@@ -434,6 +614,20 @@ pub const FootnoteReference = struct {
     label: [:0]const u8,
     enumerator: ?[:0]const u8 = null,
 
+    pub fn clone(
+        self: FootnoteReference,
+        alloc: Allocator,
+    ) !FootnoteReference {
+        return .{
+            .identifier = try alloc.dupeZ(u8, self.identifier),
+            .label = try alloc.dupeZ(u8, self.label),
+            .enumerator = if (self.enumerator) |enumerator|
+                try alloc.dupeZ(u8, enumerator)
+            else
+                null,
+        };
+    }
+
     pub fn deinit(self: *FootnoteReference, alloc: Allocator) void {
         alloc.free(self.identifier);
         alloc.free(self.label);
@@ -446,6 +640,14 @@ pub const MySTRole = struct {
     name: [:0]const u8,
     value: [:0]const u8,
 
+    pub fn clone(self: MySTRole, alloc: Allocator) !MySTRole {
+        return .{
+            .children = try cloneChildren(alloc, self.children),
+            .name = try alloc.dupeZ(u8, self.name),
+            .value = try alloc.dupeZ(u8, self.value),
+        };
+    }
+
     pub fn deinit(self: *MySTRole, alloc: Allocator) void {
         freeChildren(alloc, self.children);
 
@@ -457,6 +659,12 @@ pub const MySTRole = struct {
 pub const MySTRoleError = struct {
     value: [:0]const u8,
 
+    pub fn clone(self: MySTRoleError, alloc: Allocator) !MySTRoleError {
+        return .{
+            .value = try alloc.dupeZ(u8, self.value),
+        };
+    }
+
     pub fn deinit(self: *MySTRoleError, alloc: Allocator) void {
         alloc.free(self.value);
     }
@@ -465,6 +673,13 @@ pub const MySTRoleError = struct {
 pub const Abbreviation = struct {
     children: []*Node,
     title: [:0]const u8,
+
+    pub fn clone(self: Abbreviation, alloc: Allocator) !Abbreviation {
+        return .{
+            .children = try cloneChildren(alloc, self.children),
+            .title = try alloc.dupeZ(u8, self.title),
+        };
+    }
 
     pub fn deinit(self: *Abbreviation, alloc: Allocator) void {
         freeChildren(alloc, self.children);
@@ -477,6 +692,16 @@ pub const MySTDirective = struct {
     pub const Option = struct {
         name: [:0]const u8,
         value: ?[:0]const u8 = null,
+
+        pub fn clone(self: Option, alloc: Allocator) !Option {
+            return .{
+                .name = try alloc.dupeZ(u8, self.name),
+                .value = if (self.value) |value|
+                    try alloc.dupeZ(u8, value)
+                else
+                    null,
+            };
+        }
 
         pub fn deinit(self: Option, alloc: Allocator) void {
             alloc.free(self.name);
@@ -491,6 +716,20 @@ pub const MySTDirective = struct {
     args: [:0]const u8,
     options: []const Option,
     value: [:0]const u8,
+
+    pub fn clone(self: MySTDirective, alloc: Allocator) !MySTDirective {
+        const options = try alloc.alloc(Option, self.options.len);
+        for (self.options, 0..) |opt, i| {
+            options[i] = try opt.clone(alloc);
+        }
+        return .{
+            .children = try cloneChildren(alloc, self.children),
+            .name = try alloc.dupeZ(u8, self.name),
+            .args = try alloc.dupeZ(u8, self.args),
+            .options = options,
+            .value = try alloc.dupeZ(u8, self.value),
+        };
+    }
 
     pub fn deinit(self: *MySTDirective, alloc: Allocator) void {
         freeChildren(alloc, self.children);
@@ -511,6 +750,16 @@ pub const MySTDirectiveError = struct {
     children: []*Node,
     message: [:0]const u8,
 
+    pub fn clone(
+        self: MySTDirectiveError,
+        alloc: Allocator,
+    ) !MySTDirectiveError {
+        return .{
+            .children = try cloneChildren(alloc, self.children),
+            .message = try alloc.dupeZ(u8, self.message),
+        };
+    }
+
     pub fn deinit(self: *MySTDirectiveError, alloc: Allocator) void {
         freeChildren(alloc, self.children);
 
@@ -522,6 +771,17 @@ pub const Admonition = struct {
     children: []*Node,
     kind: [:0]const u8,
     class: ?[:0]const u8 = null,
+
+    pub fn clone(self: Admonition, alloc: Allocator) !Admonition {
+        return .{
+            .children = try cloneChildren(alloc, self.children),
+            .kind = try alloc.dupeZ(u8, self.kind),
+            .class = if (self.class) |class|
+                try alloc.dupeZ(u8, class)
+            else
+                null,
+        };
+    }
 
     pub fn deinit(self: *Admonition, alloc: Allocator) void {
         freeChildren(alloc, self.children);
@@ -536,6 +796,20 @@ pub const Math = struct {
     identifier: ?[:0]const u8 = null,
     label: ?[:0]const u8 = null,
 
+    pub fn clone(self: Math, alloc: Allocator) !Math {
+        return .{
+            .value = try alloc.dupeZ(u8, self.value),
+            .identifier = if (self.identifier) |identifier|
+                try alloc.dupeZ(u8, identifier)
+            else
+                null,
+            .label = if (self.label) |label|
+                try alloc.dupeZ(u8, label)
+            else
+                null,
+        };
+    }
+
     pub fn deinit(self: *Math, alloc: Allocator) void {
         alloc.free(self.value);
         if (self.identifier) |identifier| alloc.free(identifier);
@@ -546,6 +820,16 @@ pub const Math = struct {
 pub const Table = struct {
     children: []*Node,
     @"align": ?[:0]const u8 = null,
+
+    pub fn clone(self: Table, alloc: Allocator) !Table {
+        return .{
+            .children = try cloneChildren(alloc, self.children),
+            .@"align" = if (self.@"align") |@"align"|
+                try alloc.dupeZ(u8, @"align")
+            else
+                null,
+        };
+    }
 
     pub fn deinit(self: *Table, alloc: Allocator) void {
         freeChildren(alloc, self.children);
@@ -559,6 +843,17 @@ pub const TableCell = struct {
     header: bool,
     @"align": ?[:0]const u8 = null,
 
+    pub fn clone(self: TableCell, alloc: Allocator) !TableCell {
+        return .{
+            .children = try cloneChildren(alloc, self.children),
+            .header = self.header,
+            .@"align" = if (self.@"align") |@"align"|
+                try alloc.dupeZ(u8, @"align")
+            else
+                null,
+        };
+    }
+
     pub fn deinit(self: *TableCell, alloc: Allocator) void {
         freeChildren(alloc, self.children);
 
@@ -568,6 +863,12 @@ pub const TableCell = struct {
 
 pub const ReferenceTarget = struct {
     label: [:0]const u8,
+
+    pub fn clone(self: ReferenceTarget, alloc: Allocator) !ReferenceTarget {
+        return .{
+            .label = try alloc.dupeZ(u8, self.label),
+        };
+    }
 
     pub fn deinit(self: *ReferenceTarget, alloc: Allocator) void {
         alloc.free(self.label);
@@ -581,6 +882,19 @@ pub const CrossReference = struct {
     identifier: [:0]const u8,
     title: ?[:0]const u8 = null,
 
+    pub fn clone(self: CrossReference, alloc: Allocator) !CrossReference {
+        return .{
+            .children = try cloneChildren(alloc, self.children),
+            .kind = try alloc.dupeZ(u8, self.kind),
+            .label = try alloc.dupeZ(u8, self.label),
+            .identifier = try alloc.dupeZ(u8, self.identifier),
+            .title = if (self.title) |title|
+                try alloc.dupeZ(u8, title)
+            else
+                null,
+        };
+    }
+
     pub fn deinit(self: *CrossReference, alloc: Allocator) void {
         alloc.free(self.kind);
         alloc.free(self.label);
@@ -591,6 +905,15 @@ pub const CrossReference = struct {
         freeChildren(alloc, self.children);
     }
 };
+
+fn cloneChildren(alloc: Allocator, children: []*Node) ![]*Node {
+    const new_children = try alloc.alloc(*Node, children.len);
+    for (children, 0..) |child, i| {
+        new_children[i] = try alloc.create(Node);
+        new_children[i].* = try child.clone(alloc);
+    }
+    return new_children;
+}
 
 fn freeChildren(alloc: Allocator, children: []*Node) void {
     for (children) |child| {
