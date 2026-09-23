@@ -20766,7 +20766,6 @@
   },
   {
     "title": "references.headings: Link-style default header reference",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -20814,7 +20813,6 @@
   },
   {
     "title": "references.headings: Link-style custom header reference",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
