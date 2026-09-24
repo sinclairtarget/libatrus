@@ -542,6 +542,33 @@ fn transformListTable(
     const caption_node = try createCaptionNode(alloc, scratch, args);
 
     // create table
+    var table_align: ?[]const u8 = null;
+    var header_rows: std.DynamicBitSet = try .initEmpty(
+        scratch,
+        table_dimensions.rows,
+    );
+    for (options) |opt| {
+        if (std.mem.eql(u8, opt.name, "align")) {
+            if (opt.value) |v| {
+                table_align = v;
+            }
+        }
+
+        if (std.mem.eql(u8, opt.name, "header-rows")) {
+            if (opt.value) |v| {
+                const rows = try myst.option_values.parseCommaSeparatedRanges(
+                    scratch,
+                    v,
+                ) orelse &.{};
+                for (rows) |r| {
+                    const zero_indexed = r - 1;
+                    if (zero_indexed < header_rows.capacity())
+                        header_rows.set(zero_indexed);
+                }
+            }
+        }
+    }
+
     const table_rows = try alloc.alloc(*ast.Node, table_dimensions.rows);
     const list_node = root_node.root.children[0];
     for (list_node.list.children, 0..) |list_item_node, row_i| {
@@ -549,18 +576,8 @@ fn transformListTable(
         table_rows[row_i] = try createTableRow(
             alloc,
             sublist_node,
-            row_i == 0,
+            header_rows.isSet(row_i),
         );
-    }
-
-    // TODO: Implement header-rows option
-    var table_align: ?[]const u8 = null;
-    for (options) |opt| {
-        if (std.mem.eql(u8, opt.name, "align")) {
-            if (opt.value) |v| {
-                table_align = v;
-            }
-        }
     }
 
     const table_node = try alloc.create(ast.Node);

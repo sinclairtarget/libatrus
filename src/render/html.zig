@@ -1224,11 +1224,44 @@ fn renderTable(
     }
     _ = try out.writeAll(">\n");
 
-    // TODO: Implement header-rows option
-    if (table.children.len > 0) {
+    // Handle header rows
+    var wrote_thead: bool = false;
+    const next_row_i = for (table.children, 0..) |child, i| {
+        const is_header_row = for (child.table_row.children) |cell| {
+            if (cell.table_cell.header)
+                break true;
+        } else false;
+        if (!is_header_row)
+            break i;
+
+        if (!wrote_thead) {
+            try printIndent(out, options, f.depth + 1);
+            _ = try out.writeAll("<thead>\n");
+            wrote_thead = true;
+        }
+
+        _ = try renderNode(
+            child,
+            out,
+            options,
+            .{
+                .depth = f.depth + 2,
+                .begin_line = true,
+            },
+            r,
+        );
+        _ = try out.writeAll("\n");
+    } else table.children.len;
+
+    if (wrote_thead) {
         try printIndent(out, options, f.depth + 1);
-        _ = try out.writeAll("<thead>\n");
-        for (table.children[0..1]) |child| {
+        _ = try out.writeAll("</thead>\n");
+    }
+
+    try printIndent(out, options, f.depth + 1);
+    _ = try out.writeAll("<tbody>\n");
+    if (table.children.len > next_row_i) {
+        for (table.children[next_row_i..]) |child| {
             _ = try renderNode(
                 child,
                 out,
@@ -1241,29 +1274,9 @@ fn renderTable(
             );
             _ = try out.writeAll("\n");
         }
-        try printIndent(out, options, f.depth + 1);
-        _ = try out.writeAll("</thead>\n");
-
-        if (table.children.len > 1) {
-            try printIndent(out, options, f.depth + 1);
-            _ = try out.writeAll("<tbody>\n");
-            for (table.children[1..]) |child| {
-                _ = try renderNode(
-                    child,
-                    out,
-                    options,
-                    .{
-                        .depth = f.depth + 2,
-                        .begin_line = true,
-                    },
-                    r,
-                );
-                _ = try out.writeAll("\n");
-            }
-            try printIndent(out, options, f.depth + 1);
-            _ = try out.writeAll("</tbody>\n");
-        }
     }
+    try printIndent(out, options, f.depth + 1);
+    _ = try out.writeAll("</tbody>\n");
 
     try printIndent(out, options, f.depth);
     _ = try out.writeAll("</table>");
