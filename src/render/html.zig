@@ -992,7 +992,15 @@ fn renderNode(
 
             _ = try out.writeAll("<a href=\"#");
             try printHTMLEscapedAttrValue(out, n.identifier);
-            _ = try out.writeAll("\">");
+            _ = try out.writeAll("\"");
+
+            if (n.title) |title| {
+                _ = try out.writeAll(" title=\"");
+                try printHTMLEscapedAttrValue(out, title);
+                _ = try out.writeAll("\"");
+            }
+
+            _ = try out.writeAll(">");
 
             for (n.children) |child| {
                 _ = try renderNode(

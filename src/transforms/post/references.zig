@@ -115,8 +115,10 @@ fn transformLinksToRef(
                 // We check to see if the link URL could be a cross reference.
                 const maybe_ref_id = blk: {
                     // First check if the URL is a valid identifier
-                    const ref_id = linkURLToReferenceID(n.url) orelse
-                        break :blk null;
+                    const ref_id = try linkURLToReferenceID(
+                        scratch,
+                        n.url,
+                    ) orelse break :blk null;
                     // Then check if there's a matching target
                     if (!target_map.contains(ref_id))
                         break :blk null;
@@ -278,7 +280,7 @@ fn fillTargetMap(alloc: Allocator, node: *ast.Node, map: *TargetMap) !void {
 /// fragment, i.e. has to start with "#". In MyST 0.0.5, this isn't true. So we
 /// consider just a plain string, even if it doesn't start with "#", to be a
 /// fragment, so long as it doesn't look like an absolute or relative URL.
-fn linkURLToReferenceID(url: []const u8) ?[]const u8 {
+fn linkURLToReferenceID(alloc: Allocator, url: []const u8) !?[]const u8 {
     if (url.len == 0)
         return null;
 
@@ -291,14 +293,18 @@ fn linkURLToReferenceID(url: []const u8) ?[]const u8 {
     if (url[0] == '/' or std.mem.startsWith(u8, url, "./"))
         return null;
 
-    // If it starts with "#", we have a fragment, strip the "#" to get the
-    // reference ID
-    if (url[0] == '#') {
-        return if (url.len > 1) url[1..] else null;
-    }
+    const unnormalized = blk: {
+        // If it starts with "#", we have a fragment, strip the "#" to get the
+        // reference ID
+        if (url[0] == '#') {
+            if (url.len == 1) return null;
+            break :blk url[1..];
+        }
 
-    // We have a plain string that we'll pretend is a fragment
-    return url;
+        // We have a plain string that we'll pretend is a fragment
+        break :blk url;
+    };
+    return try myst.references.normalizeIdentifier(alloc, unnormalized);
 }
 
 /// For cross refs to headings, the default link text is the text of the
