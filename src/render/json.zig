@@ -345,6 +345,11 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
 
                 try stringify.objectField("value");
                 try stringify.write(n.value);
+
+                if (n.enumerator) |enumerator| {
+                    try stringify.objectField("enumerator");
+                    try stringify.write(enumerator);
+                }
             },
             .@"break", .thematic_break => {},
             .block_break => |n| {

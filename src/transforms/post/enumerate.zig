@@ -13,69 +13,73 @@ pub fn transform(
 ) !*ast.Node {
     var node = original_node;
 
-    node = try enumerateContainers(alloc, node);
+    node = try enumerateNodeType(alloc, node, .container);
+    node = try enumerateNodeType(alloc, node, .math);
     node = try enumerateFootnotes(alloc, scratch, node);
 
     return node;
 }
 
-fn enumerateContainers(
+/// Assigns numbers to all nodes of the given type (with `enumerated` set to
+/// `true`) in the order they appear in the AST.
+fn enumerateNodeType(
     alloc: Allocator,
     original_node: *ast.Node,
+    comptime node_type: ast.NodeType,
 ) !*ast.Node {
     var counter: u32 = 1;
-    return try enumerateContainersInner(
+    return try enumerateNodeTypeInner(
         alloc,
         original_node,
         &counter,
+        node_type,
     );
 }
 
-fn enumerateContainersInner(
+fn enumerateNodeTypeInner(
     alloc: Allocator,
     original_node: *ast.Node,
     counter: *u32,
+    comptime node_type: ast.NodeType,
 ) !*ast.Node {
+    if (@as(ast.NodeType, original_node.*) == node_type) {
+        // Accesses the active field in the union based on the given comptime
+        // node type.
+        var n = &@field(original_node, @tagName(node_type));
+        if (n.enumerated) {
+            n.enumerator = try std.fmt.allocPrintSentinel(
+                alloc,
+                "{d}",
+                .{counter.*},
+                0,
+            );
+            counter.* += 1;
+        }
+    }
+
     switch (original_node.allowedChildren()) {
         .yes => |branch_node| switch (branch_node) {
-            .container => |n| {
-                // Enumeration for containers
-                // Want to do this in pre-order
-                if (n.enumerated) {
-                    n.enumerator = try std.fmt.allocPrintSentinel(
-                        alloc,
-                        "{d}",
-                        .{counter.*},
-                        0,
-                    );
-                    counter.* += 1;
-                }
-
-                for (0..n.children.len) |i| {
-                    n.children[i] = try enumerateContainersInner(
-                        alloc,
-                        n.children[i],
-                        counter,
-                    );
-                }
-                return original_node;
-            },
             inline else => |n| {
                 for (0..n.children.len) |i| {
-                    n.children[i] = try enumerateContainersInner(
+                    n.children[i] = try enumerateNodeTypeInner(
                         alloc,
                         n.children[i],
                         counter,
+                        node_type,
                     );
                 }
-                return original_node;
             },
         },
-        .no => return original_node,
+        .no => {},
     }
+
+    return original_node;
 }
 
 /// Assigns numbers to footnote references and definitions.
+///
+/// These have to be numbered together in the order that the references appear
+/// in the AST.
 fn enumerateFootnotes(
     alloc: Allocator,
     scratch: Allocator,

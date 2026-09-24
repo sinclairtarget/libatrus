@@ -795,6 +795,8 @@ pub const Math = struct {
     value: [:0]const u8,
     identifier: ?[:0]const u8 = null,
     label: ?[:0]const u8 = null,
+    enumerated: bool = true,
+    enumerator: ?[:0]const u8 = null,
 
     pub fn clone(self: Math, alloc: Allocator) !Math {
         return .{
@@ -807,6 +809,11 @@ pub const Math = struct {
                 try alloc.dupeZ(u8, label)
             else
                 null,
+            .enumerated = self.enumerated,
+            .enumerator = if (self.enumerator) |enumerator|
+                try alloc.dupeZ(u8, enumerator)
+            else
+                null,
         };
     }
 
@@ -814,6 +821,7 @@ pub const Math = struct {
         alloc.free(self.value);
         if (self.identifier) |identifier| alloc.free(identifier);
         if (self.label) |label| alloc.free(label);
+        if (self.enumerator) |enumerator| alloc.free(enumerator);
     }
 };
 
