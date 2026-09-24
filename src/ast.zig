@@ -914,7 +914,7 @@ pub const CrossReference = struct {
     }
 };
 
-fn cloneChildren(alloc: Allocator, children: []*Node) ![]*Node {
+pub fn cloneChildren(alloc: Allocator, children: []*Node) ![]*Node {
     const new_children = try alloc.alloc(*Node, children.len);
     for (children, 0..) |child, i| {
         new_children[i] = try alloc.create(Node);

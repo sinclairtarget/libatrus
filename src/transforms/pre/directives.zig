@@ -211,6 +211,12 @@ fn transformAdmonition(
     return node;
 }
 
+/// Implements the {figure} directive.
+///
+/// * The image URL for a figure is given as the argument to the directive.
+/// * Alt text can be specified using an `alt` option.
+/// * A label can be given using the `name` option.
+/// * The body of the directive is used to create the caption and legend.
 fn transformFigure(
     alloc: Allocator,
     scratch: Allocator,

@@ -204,6 +204,10 @@ fn transformResolve(
                         alloc.free(n.kind);
                         n.kind = try alloc.dupeZ(u8, "equation");
                     },
+                    .container => |target_n| {
+                        alloc.free(n.kind);
+                        n.kind = try alloc.dupeZ(u8, target_n.kind);
+                    },
                     // TODO: Handle other cases
                     else => @panic("not yet implemented"),
                 }
@@ -224,6 +228,13 @@ fn transformResolve(
                     },
                     .math => |target_n| {
                         try generateEquationCrossRefLinkText(
+                            alloc,
+                            n,
+                            target_n,
+                        );
+                    },
+                    .container => |target_n| {
+                        try generateContainerCrossRefLinkText(
                             alloc,
                             n,
                             target_n,
@@ -331,20 +342,12 @@ fn generateHeadingCrossRefLinkText(
     heading: ast.Heading,
 ) !void {
     std.debug.assert(cross_ref.children.len == 0);
-
-    const new_children = try alloc.alloc(*ast.Node, heading.children.len);
-    for (heading.children, 0..) |child, i| {
-        const copy_node = try alloc.create(ast.Node);
-        copy_node.* = try child.clone(alloc);
-        new_children[i] = copy_node;
-    }
-
-    cross_ref.children = new_children;
+    cross_ref.children = try ast.cloneChildren(alloc, heading.children);
 }
 
 /// For cross refs to equations, the default link text is the equation number
 /// in parentheses. If the target node is for some reason not enumerated, then
-/// we fall back to just `Equation`.
+/// we fall back to just "Equation".
 fn generateEquationCrossRefLinkText(
     alloc: Allocator,
     cross_ref: *ast.CrossReference,
@@ -364,6 +367,70 @@ fn generateEquationCrossRefLinkText(
 
     const new_children = try alloc.alloc(*ast.Node, 1);
     new_children[0] = text_node;
+
+    cross_ref.children = new_children;
+}
+
+/// For cross refs to containers, the default link text depends on the
+/// container type.
+///
+/// Figures:
+///   If enumerated, should be text reading "Figure x".
+///   If not enumerated, should be the caption. If no caption, just "Figure".
+///
+/// Tables:
+///   If enumerated, should be text reading "Table x".
+///   If not enumerated, should be just "Table".
+fn generateContainerCrossRefLinkText(
+    alloc: Allocator,
+    cross_ref: *ast.CrossReference,
+    container: ast.Container,
+) !void {
+    std.debug.assert(cross_ref.children.len == 0);
+
+    const new_children = blk: {
+        if (std.mem.eql(u8, container.kind, "figure")) {
+            if (container.children.len > 1 and
+                @as(ast.NodeType, container.children[1].*) == .caption)
+            {
+                const caption_node = container.children[1];
+                const children_to_clone = children_blk: {
+                    if (caption_node.caption.children.len > 0) {
+                        const child_node = caption_node.caption.children[0];
+                        if (@as(ast.NodeType, child_node.*) == .paragraph) {
+                            break :children_blk child_node.paragraph.children;
+                        }
+                    }
+
+                    break :children_blk caption_node.caption.children;
+                };
+
+                // Clone base node children to use as link text
+                break :blk try ast.cloneChildren(alloc, children_to_clone);
+            } else {
+                const owned_value = if (container.enumerator) |enumerator|
+                    try std.fmt.allocPrintSentinel(
+                        alloc,
+                        "Figure {s}",
+                        .{enumerator},
+                        0,
+                    )
+                else
+                    try alloc.dupeZ(u8, "Figure");
+
+                const text_node = try alloc.create(ast.Node);
+                text_node.* = .{
+                    .text = .{ .value = owned_value },
+                };
+
+                const new_children = try alloc.alloc(*ast.Node, 1);
+                new_children[0] = text_node;
+                break :blk new_children;
+            }
+        }
+
+        @panic("not yet implemented");
+    };
 
     cross_ref.children = new_children;
 }

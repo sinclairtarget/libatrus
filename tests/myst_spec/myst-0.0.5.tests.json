@@ -20491,7 +20491,6 @@
   },
   {
     "title": "references.figures: Link-style figure reference with default ref",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -20563,11 +20562,12 @@
       ]
     },
     "myst": "see [](my-figure \"Figure title\")\n\n```{figure} fig.jpg\n:name: my-figure\n\nCool *caption*!\n```",
+    "skip_html": true,
+    "html_indented": true,
     "html": "<p>see <a href=\"#my-figure\" title=\"Figure title\">Cool <em>caption</em>!</a></p>\n<figure id=\"my-figure\" class=\"numbered\">\n  <img src=\"fig.jpg\">\n  <figcaption>\n    <p><span class=\"caption-number\">Figure 1</span>Cool <em>caption</em>!</p>\n  </figcaption>\n</figure>\n"
   },
   {
     "title": "references.figures: Link-style figure reference with custom ref",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -20652,6 +20652,8 @@
       ]
     },
     "myst": "see [Custom *caption*](my-figure)\n\n```{figure} fig.jpg\n:name: my-figure\n\nCool *caption*!\n```",
+    "skip_html": true,
+    "html_indented": true,
     "html": "<p>see <a href=\"#my-figure\">Custom <em>caption</em></a></p>\n<figure id=\"my-figure\" class=\"numbered\">\n  <img src=\"fig.jpg\">\n  <figcaption>\n    <p><span class=\"caption-number\">Figure 1</span>Cool <em>caption</em>!</p>\n  </figcaption>\n</figure>\n"
   },
   {
