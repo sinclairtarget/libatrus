@@ -19915,7 +19915,6 @@
   },
   {
     "title": "references.equations: Invalid equation reference",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -19981,11 +19980,12 @@
       ]
     },
     "myst": "\nsee {eq}`  matrix  `\n\n```{figure} fig.jpg\n:name: matrix\n\nCool caption!\n```",
+    "html_indented": true,
+    "skip_html_reason": "img alt attr",
     "html": "<p>see <span class=\"reference role unhandled\"><code class=\"kind\">{eq}</code><code>matrix</code></span></p>\n<figure id=\"matrix\" class=\"numbered\">\n  <img src=\"fig.jpg\">\n  <figcaption>\n    <p><span class=\"caption-number\">Figure 1</span>Cool caption!</p>\n  </figcaption>\n</figure>\n"
   },
   {
     "title": "references.equations: Default equation reference",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [

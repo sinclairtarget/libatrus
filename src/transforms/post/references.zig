@@ -192,28 +192,39 @@ fn transformResolve(
                 const target_node = target_map.get(n.identifier) orelse
                     return original_node; // TODO: Anything more to do here?
 
-                n.resolved = true;
-
-                // Assign kind.
-                // Unclear exactly what these values should be. Not part of the
-                // MyST spec.
-                switch (target_node.*) {
-                    .heading => {
-                        alloc.free(n.kind);
-                        n.kind = try alloc.dupeZ(u8, "heading");
-                    },
-                    .math => {
-                        alloc.free(n.kind);
-                        n.kind = try alloc.dupeZ(u8, "equation");
-                    },
-                    .container => |target_n| {
-                        alloc.free(n.kind);
-                        n.kind = try alloc.dupeZ(u8, target_n.kind);
-                    },
-                    // TODO: Handle other cases
-                    else => @panic("not yet implemented"),
+                if (std.mem.eql(u8, n.kind, "eq")) {
+                    switch (target_node.*) {
+                        .math => {
+                            alloc.free(n.kind);
+                            n.kind = try alloc.dupeZ(u8, "equation");
+                        },
+                        // Not a match, don't resolve the reference
+                        else => return original_node,
+                    }
+                } else if (std.mem.eql(u8, n.kind, "ref")) {
+                    // Assign kind. Unclear exactly what these values should
+                    // be. Not part of the MyST spec.
+                    switch (target_node.*) {
+                        .heading => {
+                            alloc.free(n.kind);
+                            n.kind = try alloc.dupeZ(u8, "heading");
+                        },
+                        .math => {
+                            alloc.free(n.kind);
+                            n.kind = try alloc.dupeZ(u8, "equation");
+                        },
+                        .container => |target_n| {
+                            alloc.free(n.kind);
+                            n.kind = try alloc.dupeZ(u8, target_n.kind);
+                        },
+                        // TODO: Handle other cases
+                        else => @panic("not yet implemented"),
+                    }
+                } else {
+                    @panic("not yet implemented");
                 }
 
+                n.resolved = true;
                 if (n.children.len > 0) {
                     // exit early, no need to add default link text
                     return original_node;
