@@ -21266,7 +21266,6 @@
   },
   {
     "title": "references.tables: Link-style table figure reference with default ref",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -21353,11 +21352,12 @@
       ]
     },
     "myst": "see [](my-table)\n\n```{list-table}  Caption text\n:name: my-table\n\n*   - Head 1\n*   - Row 1",
+    "html_indented": true,
+    "skip_html_reason": "thead for non-header cells",
     "html": "<p>see <a href=\"#my-table\">Caption text</a></p>\n<figure id=\"my-table\" class=\"numbered\">\n  <figcaption>\n    <p><span class=\"caption-number\">Table 1</span>Caption text</p>\n  </figcaption>\n  <table>\n    <thead>\n      <tr>\n        <th>Head 1</th>\n      </tr>\n    </thead>\n    <tbody>\n      <tr>\n        <td>Row 1</td>\n      </tr>\n    </tbody>\n  </table>\n</figure>\n"
   },
   {
     "title": "references.tables: Link-style table figure reference with custom ref",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -21459,6 +21459,8 @@
       ]
     },
     "myst": "see [My *Table*](my-table \"different title\")\n\n```{list-table}  Caption text\n:name: my-table\n\n*   - Head 1\n*   - Row 1",
+    "html_indented": true,
+    "skip_html_reason": "thead for non-header cells",
     "html": "<p>see <a href=\"#my-table\" title=\"different title\">My <em>Table</em></a></p>\n<figure id=\"my-table\" class=\"numbered\">\n  <figcaption>\n    <p><span class=\"caption-number\">Table 1</span>Caption text</p>\n  </figcaption>\n  <table>\n    <thead>\n      <tr>\n        <th>Head 1</th>\n      </tr>\n    </thead>\n    <tbody>\n      <tr>\n        <td>Row 1</td>\n      </tr>\n    </tbody>\n  </table>\n</figure>\n"
   },
   {

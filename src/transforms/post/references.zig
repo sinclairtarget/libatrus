@@ -374,13 +374,15 @@ fn generateEquationCrossRefLinkText(
 /// For cross refs to containers, the default link text depends on the
 /// container type.
 ///
-/// Figures:
+/// Figures (MyST 0.0.5):
+///   If captioned, use the caption.
 ///   If enumerated, should be text reading "Figure x".
-///   If not enumerated, should be the caption. If no caption, just "Figure".
+///   Otherwise, just "Figure".
 ///
-/// Tables:
+/// Tables (MyST 0.0.5):
+///   If captioned, use the caption.
 ///   If enumerated, should be text reading "Table x".
-///   If not enumerated, should be just "Table".
+///   Otherwise, just "Table".
 fn generateContainerCrossRefLinkText(
     alloc: Allocator,
     cross_ref: *ast.CrossReference,
@@ -388,48 +390,54 @@ fn generateContainerCrossRefLinkText(
 ) !void {
     std.debug.assert(cross_ref.children.len == 0);
 
-    const new_children = blk: {
+    const title_case_kind, const caption_child_i: usize = blk: {
         if (std.mem.eql(u8, container.kind, "figure")) {
-            if (container.children.len > 1 and
-                @as(ast.NodeType, container.children[1].*) == .caption)
-            {
-                const caption_node = container.children[1];
-                const children_to_clone = children_blk: {
-                    if (caption_node.caption.children.len > 0) {
-                        const child_node = caption_node.caption.children[0];
-                        if (@as(ast.NodeType, child_node.*) == .paragraph) {
-                            break :children_blk child_node.paragraph.children;
-                        }
-                    }
-
-                    break :children_blk caption_node.caption.children;
-                };
-
-                // Clone base node children to use as link text
-                break :blk try ast.cloneChildren(alloc, children_to_clone);
-            } else {
-                const owned_value = if (container.enumerator) |enumerator|
-                    try std.fmt.allocPrintSentinel(
-                        alloc,
-                        "Figure {s}",
-                        .{enumerator},
-                        0,
-                    )
-                else
-                    try alloc.dupeZ(u8, "Figure");
-
-                const text_node = try alloc.create(ast.Node);
-                text_node.* = .{
-                    .text = .{ .value = owned_value },
-                };
-
-                const new_children = try alloc.alloc(*ast.Node, 1);
-                new_children[0] = text_node;
-                break :blk new_children;
-            }
+            break :blk .{"Figure", 1};
+        } else if (std.mem.eql(u8, container.kind, "table")) {
+            break :blk .{"Table", 0};
+        } else {
+            @panic("not yet implemented");
         }
+    };
 
-        @panic("not yet implemented");
+    const new_children = blk: {
+        if (container.children.len > 1 and
+            @as(ast.NodeType, container.children[caption_child_i].*) == .caption)
+        {
+            const caption_node = container.children[caption_child_i];
+            const children_to_clone = children_blk: {
+                if (caption_node.caption.children.len > 0) {
+                    const child_node = caption_node.caption.children[0];
+                    if (@as(ast.NodeType, child_node.*) == .paragraph) {
+                        break :children_blk child_node.paragraph.children;
+                    }
+                }
+
+                break :children_blk caption_node.caption.children;
+            };
+
+            // Clone base node children to use as link text
+            break :blk try ast.cloneChildren(alloc, children_to_clone);
+        } else {
+            const owned_value = if (container.enumerator) |enumerator|
+                try std.fmt.allocPrintSentinel(
+                    alloc,
+                    "{s} {s}",
+                    .{ title_case_kind, enumerator },
+                    0,
+                )
+            else
+                try alloc.dupeZ(u8, title_case_kind);
+
+            const text_node = try alloc.create(ast.Node);
+            text_node.* = .{
+                .text = .{ .value = owned_value },
+            };
+
+            const new_children = try alloc.alloc(*ast.Node, 1);
+            new_children[0] = text_node;
+            break :blk new_children;
+        }
     };
 
     cross_ref.children = new_children;
