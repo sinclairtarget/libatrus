@@ -420,6 +420,24 @@ test "handle reference target with no next sibling" {
 }
 
 test "link to ref" {
+    const heading_text_node = try testing.allocator.create(ast.Node);
+    heading_text_node.* = .{
+        .text = .{ .value = try testing.allocator.dupeZ(u8, "My Heading") },
+    };
+
+    const heading_node = try testing.allocator.create(ast.Node);
+    heading_node.* = .{
+        .heading = .{
+            .depth = 1,
+            .children = try testing.allocator.dupe(
+                *ast.Node,
+                &.{heading_text_node},
+            ),
+            .label = try testing.allocator.dupeZ(u8, "pasta"),
+            .identifier = try testing.allocator.dupeZ(u8, "pasta"),
+        },
+    };
+
     const link_text_node = try testing.allocator.create(ast.Node);
     link_text_node.* = .{
         .text = .{ .value = try testing.allocator.dupeZ(u8, "Bucatini") },
@@ -464,7 +482,10 @@ test "link to ref" {
     const root_node = try testing.allocator.create(ast.Node);
     root_node.* = .{
         .root = .{
-            .children = try testing.allocator.dupe(*ast.Node, &.{p_node}),
+            .children = try testing.allocator.dupe(
+                *ast.Node,
+                &.{ heading_node, p_node },
+            ),
         },
     };
 
@@ -479,15 +500,15 @@ test "link to ref" {
     defer post_node.deinit(testing.allocator);
 
     try testing.expectEqual(.root, @as(ast.NodeType, post_node.*));
-    try testing.expectEqual(1, post_node.root.children.len);
+    try testing.expectEqual(2, post_node.root.children.len);
 
-    const post_p_node = post_node.root.children[0];
+    const post_p_node = post_node.root.children[1];
     try testing.expectEqual(.paragraph, @as(ast.NodeType, post_p_node.*));
     try testing.expectEqual(3, post_p_node.paragraph.children.len);
 
     const ref_node = post_p_node.paragraph.children[0];
     try testing.expectEqual(.cross_reference, @as(ast.NodeType, ref_node.*));
-    try testing.expectEqualStrings("ref", ref_node.cross_reference.kind);
+    try testing.expectEqualStrings("heading", ref_node.cross_reference.kind);
     try testing.expectEqualStrings("pasta", ref_node.cross_reference.label);
     try testing.expectEqualStrings(
         "pasta",
