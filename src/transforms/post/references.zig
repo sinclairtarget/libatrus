@@ -192,14 +192,20 @@ fn transformResolve(
                 const target_node = target_map.get(n.identifier) orelse
                     return original_node; // TODO: Anything more to do here?
 
-                // Assign kind
+                // Assign kind.
+                // Unclear exactly what these values should be. Not part of the
+                // MyST spec.
                 switch (target_node.*) {
                     .heading => {
                         alloc.free(n.kind);
                         n.kind = try alloc.dupeZ(u8, "heading");
                     },
+                    .math => {
+                        alloc.free(n.kind);
+                        n.kind = try alloc.dupeZ(u8, "equation");
+                    },
                     // TODO: Handle other cases
-                    else => {},
+                    else => @panic("not yet implemented"),
                 }
 
                 if (n.children.len > 0) {
@@ -216,8 +222,15 @@ fn transformResolve(
                             target_n,
                         );
                     },
+                    .math => |target_n| {
+                        try generateEquationCrossRefLinkText(
+                            alloc,
+                            n,
+                            target_n,
+                        );
+                    },
                     // TODO: Handle other cases
-                    else => {},
+                    else => @panic("not yet implemented"),
                 }
             },
             inline else => |n| {
@@ -325,6 +338,32 @@ fn generateHeadingCrossRefLinkText(
         copy_node.* = try child.clone(alloc);
         new_children[i] = copy_node;
     }
+
+    cross_ref.children = new_children;
+}
+
+/// For cross refs to equations, the default link text is the equation number
+/// in parentheses. If the target node is for some reason not enumerated, then
+/// we fall back to just `Equation`.
+fn generateEquationCrossRefLinkText(
+    alloc: Allocator,
+    cross_ref: *ast.CrossReference,
+    math: ast.Math,
+) !void {
+    std.debug.assert(cross_ref.children.len == 0);
+
+    const owned_value = if (math.enumerator) |enumerator|
+        try std.fmt.allocPrintSentinel(alloc, "({s})", .{enumerator}, 0)
+    else
+        try alloc.dupeZ(u8, "Equation");
+
+    const text_node = try alloc.create(ast.Node);
+    text_node.* = .{
+        .text = .{ .value = owned_value },
+    };
+
+    const new_children = try alloc.alloc(*ast.Node, 1);
+    new_children[0] = text_node;
 
     cross_ref.children = new_children;
 }

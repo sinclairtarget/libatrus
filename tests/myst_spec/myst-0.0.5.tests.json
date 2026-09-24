@@ -20034,7 +20034,6 @@
   },
   {
     "title": "references.equations: Link-style equation reference",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
