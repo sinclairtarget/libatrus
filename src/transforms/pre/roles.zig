@@ -2,6 +2,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const ast = @import("../../ast.zig");
+const myst = @import("../../myst/myst.zig");
 const util = @import("../../util/util.zig");
 
 pub fn transform(
@@ -49,16 +50,20 @@ fn transformBuiltin(
     name: []const u8,
     value: []const u8,
 ) !*ast.Node {
-    _ = scratch;
-
-    if (std.mem.eql(u8, name, "sub") or std.mem.eql(u8, name, "subscript")) {
+    if (std.mem.eql(u8, name, "sub") or
+        std.mem.eql(u8, name, "subscript"))
+    {
         return try transformSubscript(alloc, node, value);
-    } else if (std.mem.eql(u8, name, "sup") or std.mem.eql(u8, name, "superscript")) {
+    } else if (std.mem.eql(u8, name, "sup") or
+        std.mem.eql(u8, name, "superscript"))
+    {
         return try transformSuperscript(alloc, node, value);
     } else if (std.mem.eql(u8, name, "abbr")) {
         return try transformAbbreviation(alloc, node, value);
     } else if (std.mem.eql(u8, name, "math")) {
         return try transformInlineMath(alloc, node, value);
+    } else if (std.mem.eql(u8, name, "eq")) {
+        return try transformEq(alloc, scratch, node, value);
     }
 
     return node;
@@ -212,6 +217,34 @@ fn transformInlineMath(
     std.debug.assert(@as(ast.NodeType, node.*) == .myst_role);
     std.debug.assert(node.myst_role.children.len == 0);
     try node.appendChild(alloc, math_node);
+
+    return node;
+}
+
+/// Implements the {eq} role.
+///
+/// Adds an unresolved cross reference node as a child of the directive.
+fn transformEq(
+    alloc: Allocator,
+    scratch: Allocator,
+    node: *ast.Node,
+    value: []const u8,
+) !*ast.Node {
+    const identifier = try myst.references.normalizeIdentifier(scratch, value);
+
+    const cross_ref_node = try alloc.create(ast.Node);
+    cross_ref_node.* = .{
+        .cross_reference = .{
+            .children = &.{},
+            .kind = try alloc.dupeZ(u8, "eq"),
+            .label = try alloc.dupeZ(u8, value),
+            .identifier = try alloc.dupeZ(u8, identifier),
+        },
+    };
+
+    std.debug.assert(@as(ast.NodeType, node.*) == .myst_role);
+    std.debug.assert(node.myst_role.children.len == 0);
+    try node.appendChild(alloc, cross_ref_node);
 
     return node;
 }
