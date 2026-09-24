@@ -96,6 +96,11 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
                     try stringify.write(f);
                 }
 
+                if (n.enumerator) |enumerator| {
+                    try stringify.objectField("enumerator");
+                    try stringify.write(enumerator);
+                }
+
                 if (n.children.len > 0) {
                     try renderChildren(stringify, n);
                 }
