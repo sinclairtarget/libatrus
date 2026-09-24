@@ -17918,7 +17918,7 @@
       ]
     },
     "myst": "Something\n% A comment\nSomething else",
-    "skip_html": true,
+    "skip_html_reason": "unknown",
     "html": "<p>Something</p><!--A comment-->\n<p>Something else</p>\n"
   },
   {
@@ -17951,12 +17951,12 @@
       ]
     },
     "myst": "Something\n% A comment --> <script>\nSomething else",
-    "skip_html": true,
+    "skip_html_reason": "unknown",
     "html": "<p>Something</p><!--A comment --&#x3E; <script>-->\n<p>Something else</p>\n"
   },
   {
     "title": "commonmark.breaks: CommonMark hard breaks",
-    "skip_html": true,
+    "skip_html_reason": "unknown",
     "mdast": {
       "type": "root",
       "children": [
@@ -17983,7 +17983,7 @@
   },
   {
     "title": "commonmark.breaks: CommonMark thematic breaks",
-    "skip_html": true,
+    "skip_html_reason": "unknown",
     "mdast": {
       "type": "root",
       "children": [
@@ -18188,7 +18188,7 @@
   },
   {
     "title": "commonmark.links: CommonMark inline image",
-    "skip_html": true,
+    "skip_html_reason": "unknown",
     "mdast": {
       "type": "root",
       "children": [
@@ -19182,7 +19182,7 @@
     },
     "myst": "```{figure} https://via.placeholder.com/150\nThis is the figure caption!\n\nSomething! A legend!?\n```",
     "html_indented": true,
-    "skip_html": true,
+    "skip_html_reason": "unknown",
     "html": "<figure class=\"numbered\">\n  <img src=\"https://via.placeholder.com/150\">\n  <figcaption>\n    <p>This is the figure caption!</p>\n  </figcaption>\n  <div class=\"legend\">\n    <p>Something! A legend!?</p>\n  </div>\n</figure>\n"
   },
   {
@@ -19233,7 +19233,7 @@
     },
     "myst": "```{figure} https://via.placeholder.com/150\n:name: myFigure\n:alt: Placeholder\n\nThis is the figure caption!\n```",
     "html_indented": true,
-    "skip_html": true,
+    "skip_html_reason": "unknown",
     "html": "<figure id=\"myfigure\" class=\"numbered\">\n  <img src=\"https://via.placeholder.com/150\" alt=\"Placeholder\">\n  <figcaption>\n    <p><span class=\"caption-number\">Figure 1</span>This is the figure caption!</p>\n  </figcaption>\n</figure>\n"
   },
   {
@@ -19282,7 +19282,7 @@
     },
     "myst": "```{figure} https://via.placeholder.com/150\n:name: myFigure\n\nThis is the figure caption!\n```",
     "html_indented": true,
-    "skip_html": true,
+    "skip_html_reason": "unknown",
     "html": "<figure id=\"myfigure\" class=\"numbered\">\n  <img src=\"https://via.placeholder.com/150\">\n  <figcaption>\n    <p><span class=\"caption-number\">Figure 1</span>This is the figure caption!</p>\n  </figcaption>\n</figure>\n"
   },
   {
@@ -19331,7 +19331,7 @@
     },
     "myst": "```{figure} https://via.placeholder.com/150\n:name: myFigure\nThis is the figure caption!\n```",
     "html_indented": true,
-    "skip_html": true,
+    "skip_html_reason": "unknown",
     "html": "<figure id=\"myfigure\" class=\"numbered\">\n  <img src=\"https://via.placeholder.com/150\">\n  <figcaption>\n    <p><span class=\"caption-number\">Figure 1</span>This is the figure caption!</p>\n  </figcaption>\n</figure>\n"
   },
   {
@@ -19417,7 +19417,7 @@
     },
     "myst": "```{figure} https://via.placeholder.com/150\n:name: myFigure\n\nThis is the figure caption!\n```\n```{figure} https://via.placeholder.com/151\n:name: myOtherFigure\n\nThis is another caption!\n```",
     "html_indented": true,
-    "skip_html": true,
+    "skip_html_reason": "unknown",
     "html": "<figure id=\"myfigure\" class=\"numbered\">\n  <img src=\"https://via.placeholder.com/150\">\n  <figcaption>\n    <p><span class=\"caption-number\">Figure 1</span>This is the figure caption!</p>\n  </figcaption>\n</figure>\n<figure id=\"myotherfigure\" class=\"numbered\">\n  <img src=\"https://via.placeholder.com/151\">\n  <figcaption>\n    <p><span class=\"caption-number\">Figure 2</span>This is another caption!</p>\n  </figcaption>\n</figure>\n"
   },
   {
@@ -19471,7 +19471,7 @@
       ]
     },
     "myst": "![fishy](fun-fish.png)",
-    "skip_html": true,
+    "skip_html_reason": "unknown",
     "html": "<p>\n  <img src=\"fun-fish.png\" alt=\"fishy\">\n</p>\n"
   },
   {
@@ -19503,7 +19503,7 @@
       ]
     },
     "myst": "```{image} fun-fish.png\n:alt: fishy\n:class: bg-primary mb-1\n:width: 200px\n:align: center\n```",
-    "skip_html": true,
+    "skip_html_reason": "unknown",
     "html": "<img src=\"fun-fish.png\" alt=\"fishy\" class=\"align-center bg-primary mb-1\" width=\"200px\">\n"
   },
   {
@@ -19531,7 +19531,7 @@
       ]
     },
     "myst": "```{image} fun-fish.png\n:alt: fishy\n:align: left\n```",
-    "skip_html": true,
+    "skip_html_reason": "unknown",
     "html": "<img src=\"fun-fish.png\" alt=\"fishy\" class=\"align-left\">\n"
   },
   {
@@ -20562,7 +20562,7 @@
       ]
     },
     "myst": "see [](my-figure \"Figure title\")\n\n```{figure} fig.jpg\n:name: my-figure\n\nCool *caption*!\n```",
-    "skip_html": true,
+    "skip_html_reason": "img alt attr",
     "html_indented": true,
     "html": "<p>see <a href=\"#my-figure\" title=\"Figure title\">Cool <em>caption</em>!</a></p>\n<figure id=\"my-figure\" class=\"numbered\">\n  <img src=\"fig.jpg\">\n  <figcaption>\n    <p><span class=\"caption-number\">Figure 1</span>Cool <em>caption</em>!</p>\n  </figcaption>\n</figure>\n"
   },
@@ -20652,7 +20652,7 @@
       ]
     },
     "myst": "see [Custom *caption*](my-figure)\n\n```{figure} fig.jpg\n:name: my-figure\n\nCool *caption*!\n```",
-    "skip_html": true,
+    "skip_html_reason": "img alt attr",
     "html_indented": true,
     "html": "<p>see <a href=\"#my-figure\">Custom <em>caption</em></a></p>\n<figure id=\"my-figure\" class=\"numbered\">\n  <img src=\"fig.jpg\">\n  <figcaption>\n    <p><span class=\"caption-number\">Figure 1</span>Cool <em>caption</em>!</p>\n  </figcaption>\n</figure>\n"
   },

@@ -79,7 +79,7 @@ const Test = struct {
             &reader,
             .{ .parse_level = .post },
         );
-        if (self.case.html != null and !self.case.skip_html) {
+        if (self.case.html != null and self.case.skip_html_reason == null) {
             const expected_html = self.case.html.?;
             outbuf = Io.Writer.Allocating.init(alloc);
             try atrus.renderHTML(
@@ -209,7 +209,14 @@ pub fn main() !void {
         };
 
         // show success in green
-        const extra = if (t.case.skip_html) " (skipped html)" else "";
+        const extra = if (t.case.skip_html_reason) |reason|
+            try std.fmt.allocPrint(
+                scratch,
+                " (skipped html, reason: \"{s}\")",
+                .{reason},
+            )
+        else
+            "";
         print(
             "{d}/{d} \x1b[32m{s}\x1b[0m{s}\n",
             .{ i, tests.len, t.case.title, extra },

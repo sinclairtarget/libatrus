@@ -9,9 +9,12 @@ pub const TestCase = struct {
     myst: []const u8,
     mdast: json.Value,
     html: ?[]const u8 = null,
-    html_indented: bool = false, // Rendered HTML should be indented this case
-    skip: bool = false, // Skip this entire case
-    skip_html: bool = false, // Skip only the HTML comparison
+    /// Rendered HTML should be indented this case
+    html_indented: bool = false,
+    /// Skip this entire case
+    skip: bool = false,
+    /// Skip only the HTML comparison if non-null
+    skip_html_reason: ?[]const u8 = null,
 };
 
 pub fn readTestCases(alloc: Allocator, path: []const u8) ![]const TestCase {
