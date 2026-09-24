@@ -192,6 +192,8 @@ fn transformResolve(
                 const target_node = target_map.get(n.identifier) orelse
                     return original_node; // TODO: Anything more to do here?
 
+                n.resolved = true;
+
                 // Assign kind.
                 // Unclear exactly what these values should be. Not part of the
                 // MyST spec.

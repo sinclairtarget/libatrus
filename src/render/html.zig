@@ -990,32 +990,43 @@ fn renderNode(
                 try printIndent(out, options, f.depth);
             }
 
-            _ = try out.writeAll("<a href=\"#");
-            try printHTMLEscapedAttrValue(out, n.identifier);
-            _ = try out.writeAll("\"");
-
-            if (n.title) |title| {
-                _ = try out.writeAll(" title=\"");
-                try printHTMLEscapedAttrValue(out, title);
+            if (n.resolved) {
+                _ = try out.writeAll("<a href=\"#");
+                try printHTMLEscapedAttrValue(out, n.identifier);
                 _ = try out.writeAll("\"");
-            }
 
-            _ = try out.writeAll(">");
+                if (n.title) |title| {
+                    _ = try out.writeAll(" title=\"");
+                    try printHTMLEscapedAttrValue(out, title);
+                    _ = try out.writeAll("\"");
+                }
 
-            for (n.children) |child| {
-                _ = try renderNode(
-                    child,
-                    out,
-                    options,
-                    .{
-                        .depth = f.depth,
-                        .begin_line = false,
-                    },
-                    r,
+                _ = try out.writeAll(">");
+
+                for (n.children) |child| {
+                    _ = try renderNode(
+                        child,
+                        out,
+                        options,
+                        .{
+                            .depth = f.depth,
+                            .begin_line = false,
+                        },
+                        r,
+                    );
+                }
+
+                _ = try out.writeAll("</a>");
+            } else {
+                _ = try out.writeAll(
+                    "<span class=\"reference role unhandled\">" ++
+                    "<code class=\"kind\">{"
                 );
+                try printHTMLEscapedContent(out, n.kind);
+                _ = try out.writeAll("}</code><code>");
+                try printHTMLEscapedContent(out, n.identifier);
+                _ = try out.writeAll("</code></span>");
             }
-
-            _ = try out.writeAll("</a>");
         },
         .definition, .target => {}, // Don't get rendered
     }
@@ -1697,6 +1708,7 @@ test "render cross reference" {
                 .kind = "ref",
                 .label = "Foobar",
                 .identifier = "foobar",
+                .resolved = true,
                 .children = &children,
             },
         };

@@ -889,6 +889,7 @@ pub const CrossReference = struct {
     label: [:0]const u8,
     identifier: [:0]const u8,
     title: ?[:0]const u8 = null,
+    resolved: bool = false,
 
     pub fn clone(self: CrossReference, alloc: Allocator) !CrossReference {
         return .{
@@ -900,6 +901,7 @@ pub const CrossReference = struct {
                 try alloc.dupeZ(u8, title)
             else
                 null,
+            .resolved = self.resolved,
         };
     }
 
