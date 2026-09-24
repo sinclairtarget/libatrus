@@ -64,6 +64,8 @@ fn transformBuiltin(
         return try transformInlineMath(alloc, node, value);
     } else if (std.mem.eql(u8, name, "eq")) {
         return try transformEq(alloc, scratch, node, value);
+    } else if (std.mem.eql(u8, name, "ref")) {
+        return try transformRef(alloc, scratch, node, value);
     }
 
     return node;
@@ -140,7 +142,8 @@ fn transformAbbreviation(
 ) !*ast.Node {
     // Search from back to get last occurence
     const open_i = std.mem.lastIndexOfScalar(u8, value, '(') orelse 0;
-    const close_i = open_i + (std.mem.indexOfScalar(u8, value[open_i..], ')') orelse 0);
+    const close_i = open_i +
+        (std.mem.indexOfScalar(u8, value[open_i..], ')') orelse 0);
 
     const abbr_title = blk: {
         if (open_i == 0) {
@@ -238,6 +241,76 @@ fn transformEq(
             .children = &.{},
             .kind = try alloc.dupeZ(u8, "eq"),
             .label = try alloc.dupeZ(u8, value),
+            .identifier = try alloc.dupeZ(u8, identifier),
+        },
+    };
+
+    std.debug.assert(@as(ast.NodeType, node.*) == .myst_role);
+    std.debug.assert(node.myst_role.children.len == 0);
+    try node.appendChild(alloc, cross_ref_node);
+
+    return node;
+}
+
+/// Implements the {ref} role.
+///
+/// The value for the ref role can be just the label, or it can be link text
+/// with the label following between `<` and `>`.
+fn transformRef(
+    alloc: Allocator,
+    scratch: Allocator,
+    node: *ast.Node,
+    value: []const u8,
+) !*ast.Node {
+    // Search from back to get last occurence
+    const open_i = std.mem.lastIndexOfScalar(u8, value, '<') orelse 0;
+    const close_i = open_i +
+        (std.mem.indexOfScalar(u8, value[open_i..], '>') orelse 0);
+
+    const in_angle_brackets = blk: {
+        if (open_i == 0) {
+            break :blk "";
+        }
+
+        if (close_i <= open_i) {
+            break :blk "";
+        }
+
+        if (close_i < value.len - 1) {
+            // Close bracket not last char; means no title
+            break :blk "";
+        }
+
+        break :blk std.mem.trim(u8, value[open_i + 1 .. close_i], " \t");
+    };
+
+    const label = if (open_i > 0) in_angle_brackets else value;
+    const identifier = try myst.references.normalizeIdentifier(scratch, label);
+    const maybe_link_text: ?[]const u8 = if (open_i > 0)
+        std.mem.trim(u8, value[0..open_i], " \t")
+    else
+        null;
+
+    const cross_ref_children: []*ast.Node = blk: {
+        if (maybe_link_text) |link_text| {
+            const text_node = try alloc.create(ast.Node);
+            text_node.* = .{
+                .text = .{ .value = try alloc.dupeZ(u8, link_text) },
+            };
+            const children = try alloc.alloc(*ast.Node, 1);
+            children[0] = text_node;
+            break :blk children;
+        } else {
+            break :blk &.{};
+        }
+    };
+
+    const cross_ref_node = try alloc.create(ast.Node);
+    cross_ref_node.* = .{
+        .cross_reference = .{
+            .children = cross_ref_children,
+            .kind = try alloc.dupeZ(u8, "ref"),
+            .label = try alloc.dupeZ(u8, label),
             .identifier = try alloc.dupeZ(u8, identifier),
         },
     };
