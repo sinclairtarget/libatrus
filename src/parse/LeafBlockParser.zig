@@ -2683,13 +2683,25 @@ fn parseGFMTable(
     const delimiter_row = try self.parseGFMTableDelimiterRow(scratch) orelse
         return null;
 
-    if (header_row_node.table_row.children.len != delimiter_row.num_cells)
+    if (header_row_node.table_row.children.len != delimiter_row.numCells())
         return null;
+
+    // Retroactively update alignment of header cells
+    for (header_row_node.table_row.children, 0..) |cell, i| {
+        const alignment = delimiter_row.cell_alignments[i];
+        const alignment_str = switch (alignment) {
+            inline else => |t| @tagName(t),
+        };
+        cell.table_cell.@"align" = if (alignment != .left)
+            try alloc.dupeZ(u8, alignment_str)
+        else
+            null;
+    }
 
     while (try self.parseGFMTableDataRow(
         alloc,
         scratch,
-        delimiter_row.num_cells,
+        delimiter_row,
     )) |row| {
         try rows.append(alloc, row);
     }
@@ -2771,8 +2783,19 @@ fn parseGFMTableHeaderRow(
     return row_node;
 }
 
+// TODO: This should be moved to ast.zig.
+const TableCellAlignment = enum {
+    left,
+    right,
+    center,
+};
+
 const GFMTableDelimiterRow = struct {
-    num_cells: usize,
+    cell_alignments: []TableCellAlignment,
+
+    fn numCells(self: GFMTableDelimiterRow) usize {
+        return self.cell_alignments.len;
+    }
 };
 
 fn parseGFMTableDelimiterRow(
@@ -2785,7 +2808,7 @@ fn parseGFMTableDelimiterRow(
         self.it.backtrack(checkpoint_index);
     };
 
-    var num_cells: usize = 0;
+    var cell_alignments: ArrayList(TableCellAlignment) = .empty;
 
     _ = try self.it.consumeWhitespaceUpTo(scratch, 3);
     _ = try self.it.consume(scratch, &.{.pipe});
@@ -2800,7 +2823,7 @@ fn parseGFMTableDelimiterRow(
         .pipe => {
             while (try self.it.peek(scratch)) |token| {
                 switch (token.token_type) {
-                    .hyphen => continue :fsm .cell_content,
+                    .hyphen, .colon => continue :fsm .cell_content,
                     .space, .tab => {
                         continue :fsm .cell_leading_ws;
                     },
@@ -2813,10 +2836,7 @@ fn parseGFMTableDelimiterRow(
         .cell_leading_ws => {
             while (try self.it.peek(scratch)) |token| {
                 switch (token.token_type) {
-                    .hyphen => {
-                        _ = try self.it.consume(scratch, &.{.hyphen});
-                        continue :fsm .cell_content;
-                    },
+                    .hyphen, .colon => continue :fsm .cell_content,
                     .space, .tab => |t| {
                         _ = try self.it.consume(scratch, &.{t});
                     },
@@ -2825,19 +2845,37 @@ fn parseGFMTableDelimiterRow(
             }
         },
         .cell_content => {
-            num_cells += 1;
+            const saw_leading_colon = try self.it.consume(
+                scratch,
+                &.{.colon},
+            ) != null;
 
             while (try self.it.peek(scratch)) |token| {
                 switch (token.token_type) {
                     .hyphen => |t| {
                         _ = try self.it.consume(scratch, &.{t});
                     },
-                    .space, .tab => continue :fsm .cell_trailing_ws,
+                    .colon => {
+                        _ = try self.it.consume(scratch, &.{.colon});
+                        try cell_alignments.append(
+                            scratch,
+                            if (saw_leading_colon) .center else .right,
+                        );
+                        continue :fsm .cell_trailing_ws;
+                    },
+                    .space, .tab => {
+                        try cell_alignments.append(scratch, .left);
+                        continue :fsm .cell_trailing_ws;
+                    },
                     .pipe => {
                         _ = try self.it.consume(scratch, &.{.pipe});
+                        try cell_alignments.append(scratch, .left);
                         continue :fsm .pipe;
                     },
-                    .newline => break :fsm,
+                    .newline => {
+                        try cell_alignments.append(scratch, .left);
+                        break :fsm;
+                    },
                     else => return null,
                 }
             }
@@ -2845,7 +2883,6 @@ fn parseGFMTableDelimiterRow(
         .cell_trailing_ws => {
             while (try self.it.peek(scratch)) |token| {
                 switch (token.token_type) {
-                    .hyphen => return null,
                     .space, .tab => |t| {
                         _ = try self.it.consume(scratch, &.{t});
                     },
@@ -2862,12 +2899,12 @@ fn parseGFMTableDelimiterRow(
 
     _ = try self.it.consume(scratch, &.{.newline}) orelse return null;
 
-    if (num_cells == 0)
+    if (cell_alignments.items.len == 0)
         return null;
 
     did_parse = true;
     return .{
-        .num_cells = num_cells,
+        .cell_alignments = try cell_alignments.toOwnedSlice(scratch),
     };
 }
 
@@ -2875,7 +2912,7 @@ fn parseGFMTableDataRow(
     self: *Self,
     alloc: Allocator,
     scratch: Allocator,
-    expected_num_cells: usize,
+    delimiter_row: GFMTableDelimiterRow,
 ) !?*ast.Node {
     var did_parse = false;
     const checkpoint_index = self.it.checkpoint();
@@ -2921,6 +2958,7 @@ fn parseGFMTableDataRow(
     } else @panic(util.safety.loop_bound_panic_msg);
 
     // Add empty cells up to expected number of cells
+    const expected_num_cells = delimiter_row.numCells();
     if (expected_num_cells > header_cell_content.items.len) {
         const needed = expected_num_cells - header_cell_content.items.len;
         for (0..needed) |_| {
@@ -2934,10 +2972,15 @@ fn parseGFMTableDataRow(
         return null;
 
     var cells: ArrayList(*ast.Node) = .empty;
-    for (header_cell_content.items[0..expected_num_cells]) |content| {
+    for (header_cell_content.items[0..expected_num_cells], 0..) |content, i| {
         const text_node = try alloc.create(ast.Node);
         text_node.* = .{
             .text = .{ .value = try alloc.dupeZ(u8, content) },
+        };
+
+        const alignment = delimiter_row.cell_alignments[i];
+        const alignment_str = switch (alignment) {
+            inline else => |t| @tagName(t),
         };
 
         const cell_node = try alloc.create(ast.Node);
@@ -2945,6 +2988,10 @@ fn parseGFMTableDataRow(
             .table_cell = .{
                 .children = try alloc.dupe(*ast.Node, &.{text_node}),
                 .header = false,
+                .@"align" = if (alignment != .left)
+                    try alloc.dupeZ(u8, alignment_str)
+                else
+                    null,
             },
         };
         try cells.append(alloc, cell_node);
