@@ -191,6 +191,7 @@ fn transformResolve(
             .cross_reference => |n| {
                 const target_node = target_map.get(n.identifier) orelse
                     return original_node; // TODO: Anything more to do here?
+                const prefer_numref = std.mem.eql(u8, n.kind, "numref");
 
                 if (std.mem.eql(u8, n.kind, "eq")) {
                     switch (target_node.*) {
@@ -202,13 +203,24 @@ fn transformResolve(
                         else => return original_node,
                     }
                 } else if (std.mem.eql(u8, n.kind, "ref")) {
-                    // Assign kind. Unclear exactly what these values should
-                    // be. Not part of the MyST spec.
                     switch (target_node.*) {
                         .heading => {
                             alloc.free(n.kind);
                             n.kind = try alloc.dupeZ(u8, "heading");
                         },
+                        .math => {
+                            alloc.free(n.kind);
+                            n.kind = try alloc.dupeZ(u8, "equation");
+                        },
+                        .container => |target_n| {
+                            alloc.free(n.kind);
+                            n.kind = try alloc.dupeZ(u8, target_n.kind);
+                        },
+                        // TODO: Handle other cases
+                        else => @panic("not yet implemented"),
+                    }
+                } else if (std.mem.eql(u8, n.kind, "numref")) {
+                    switch (target_node.*) {
                         .math => {
                             alloc.free(n.kind);
                             n.kind = try alloc.dupeZ(u8, "equation");
@@ -251,6 +263,7 @@ fn transformResolve(
                             alloc,
                             n,
                             target_n,
+                            prefer_numref,
                         );
                     },
                     // TODO: Handle other cases
@@ -388,11 +401,13 @@ fn generateEquationCrossRefLinkText(
 /// container type.
 ///
 /// Figures (MyST 0.0.5):
+///   If we prefer a num ref and enumerated, should be text reading "Figure x".
 ///   If captioned, use the caption.
 ///   If enumerated, should be text reading "Figure x".
 ///   Otherwise, just "Figure".
 ///
 /// Tables (MyST 0.0.5):
+///   If we prefer a num ref and enumerated, should be text reading "Table x".
 ///   If captioned, use the caption.
 ///   If enumerated, should be text reading "Table x".
 ///   Otherwise, just "Table".
@@ -400,6 +415,7 @@ fn generateContainerCrossRefLinkText(
     alloc: Allocator,
     cross_ref: *ast.CrossReference,
     container: ast.Container,
+    prefer_numref: bool,
 ) !void {
     std.debug.assert(cross_ref.children.len == 0);
 
@@ -414,7 +430,7 @@ fn generateContainerCrossRefLinkText(
     };
 
     const new_children = blk: {
-        if (container.children.len > 1 and
+        if (!prefer_numref and container.children.len > 1 and
             @as(ast.NodeType, container.children[caption_child_i].*) == .caption)
         {
             const caption_node = container.children[caption_child_i];

@@ -66,6 +66,8 @@ fn transformBuiltin(
         return try transformEq(alloc, scratch, node, value);
     } else if (std.mem.eql(u8, name, "ref")) {
         return try transformRef(alloc, scratch, node, value);
+    } else if (std.mem.eql(u8, name, "numref")) {
+        return try transformNumref(alloc, scratch, node, value);
     }
 
     return node;
@@ -311,6 +313,31 @@ fn transformRef(
             .children = cross_ref_children,
             .kind = try alloc.dupeZ(u8, "ref"),
             .label = try alloc.dupeZ(u8, label),
+            .identifier = try alloc.dupeZ(u8, identifier),
+        },
+    };
+
+    std.debug.assert(@as(ast.NodeType, node.*) == .myst_role);
+    std.debug.assert(node.myst_role.children.len == 0);
+    try node.appendChild(alloc, cross_ref_node);
+
+    return node;
+}
+
+fn transformNumref(
+    alloc: Allocator,
+    scratch: Allocator,
+    node: *ast.Node,
+    value: []const u8,
+) !*ast.Node {
+    const identifier = try myst.references.normalizeIdentifier(scratch, value);
+
+    const cross_ref_node = try alloc.create(ast.Node);
+    cross_ref_node.* = .{
+        .cross_reference = .{
+            .children = &.{},
+            .kind = try alloc.dupeZ(u8, "numref"),
+            .label = try alloc.dupeZ(u8, value),
             .identifier = try alloc.dupeZ(u8, identifier),
         },
     };

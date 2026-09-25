@@ -20074,7 +20074,6 @@
   },
   {
     "title": "references.figures: Invalid figure reference without value",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -20173,7 +20172,6 @@
   },
   {
     "title": "references.figures: Figure reference with default numref",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -20239,6 +20237,8 @@
       ]
     },
     "myst": "see {numref}`my-figure`\n\n```{figure} fig.jpg\n:name: my-figure\n\nCool caption!\n```",
+    "html_indented": true,
+    "skip_html_reason": "img alt attr",
     "html": "<p>see <a href=\"#my-figure\">Figure 1</a></p>\n<figure id=\"my-figure\" class=\"numbered\">\n  <img src=\"fig.jpg\">\n  <figcaption>\n    <p><span class=\"caption-number\">Figure 1</span>Cool caption!</p>\n  </figcaption>\n</figure>\n"
   },
   {
@@ -20319,7 +20319,6 @@
   },
   {
     "title": "references.figures: Figure reference with default ref",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -20398,11 +20397,12 @@
       ]
     },
     "myst": "see {ref}`my-figure`\n\n```{figure} fig.jpg\n:name: my-figure\n\nCool *caption*!\n```",
+    "html_indented": true,
+    "skip_html_reason": "img alt attr",
     "html": "<p>see <a href=\"#my-figure\">Cool <em>caption</em>!</a></p>\n<figure id=\"my-figure\" class=\"numbered\">\n  <img src=\"fig.jpg\">\n  <figcaption>\n    <p><span class=\"caption-number\">Figure 1</span>Cool <em>caption</em>!</p>\n  </figcaption>\n</figure>\n"
   },
   {
     "title": "references.figures: Figure reference with custom ref",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -20487,6 +20487,8 @@
       ]
     },
     "myst": "see {ref}`Custom *caption* <my-figure>`\n\n```{figure} fig.jpg\n:name: my-figure\n\nCool *caption*!\n```",
+    "html_indented": true,
+    "skip_html_reason": "img alt attr",
     "html": "<p>see <a href=\"#my-figure\">Custom *caption*</a></p>\n<figure id=\"my-figure\" class=\"numbered\">\n  <img src=\"fig.jpg\">\n  <figcaption>\n    <p><span class=\"caption-number\">Figure 1</span>Cool <em>caption</em>!</p>\n  </figcaption>\n</figure>\n"
   },
   {
@@ -20856,7 +20858,6 @@
   },
   {
     "title": "references.tables: Table figure reference with default numref",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -20951,6 +20952,8 @@
       ]
     },
     "myst": "see {numref}`my-table`\n\n```{list-table}  Caption text\n:name: my-table\n\n*   - Head 1\n*   - Row 1\n```",
+    "html_indented": true,
+    "skip_html_reason": "thead for non-header cells",
     "html": "<p>see <a href=\"#my-table\">Table 1</a></p>\n<figure id=\"my-table\" class=\"numbered\">\n  <figcaption>\n    <p><span class=\"caption-number\">Table 1</span>Caption text</p>\n  </figcaption>\n  <table>\n    <thead>\n      <tr>\n        <th>Head 1</th>\n      </tr>\n    </thead>\n    <tbody>\n      <tr>\n        <td>Row 1</td>\n      </tr>\n    </tbody>\n  </table>\n</figure>\n"
   },
   {
