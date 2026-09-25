@@ -16,7 +16,14 @@ pub fn transform(
     def_store: DefStore,
 ) !*ast.Node {
     switch (original_node.*) {
-        inline .root, .block, .blockquote, .list, .footnote_definition => |n| {
+        inline .root,
+        .block,
+        .blockquote,
+        .list,
+        .footnote_definition,
+        .table,
+        .table_row,
+        => |n| {
             for (0..n.children.len) |i| {
                 n.children[i] = try transform(
                     alloc,
@@ -54,6 +61,38 @@ pub fn transform(
                 .list_item = .{
                     .children = new_children,
                     .spread = n.spread,
+                },
+            };
+            return node;
+        },
+        .table_cell => |n| {
+            for (0..n.children.len) |i| {
+                n.children[i] = try transform(
+                    alloc,
+                    scratch_arena,
+                    n.children[i],
+                    def_store,
+                );
+            }
+
+            const new_children = try parseInline(
+                alloc,
+                scratch_arena,
+                n.children,
+                def_store,
+            );
+            if (new_children.ptr == n.children.ptr) {
+                return original_node; // nothing was changed
+            }
+            defer alloc.free(n.children);
+            defer alloc.destroy(original_node);
+
+            const node = try alloc.create(ast.Node);
+            node.* = .{
+                .table_cell = .{
+                    .children = new_children,
+                    .header = n.header,
+                    .@"align" = n.@"align",
                 },
             };
             return node;
@@ -177,4 +216,77 @@ fn parseInline(
     }
 
     return nodes.toOwnedSlice(alloc);
+}
+
+// ----------------------------------------------------------------------------
+// Unit Tests
+// ----------------------------------------------------------------------------
+const testing = std.testing;
+
+test "parse inlines within tables" {
+    const text_node = try testing.allocator.create(ast.Node);
+    text_node.* = .{
+        .text = .{ .value = try testing.allocator.dupeZ(u8, "*foobar*") },
+    };
+    const table_cell_node = try testing.allocator.create(ast.Node);
+    table_cell_node.* = .{
+        .table_cell = .{
+            .children = try testing.allocator.dupe(*ast.Node, &.{text_node}),
+            .header = false,
+        },
+    };
+    const table_row_node = try testing.allocator.create(ast.Node);
+    table_row_node.* = .{
+        .table_row = .{
+            .children = try testing.allocator.dupe(
+                *ast.Node,
+                &.{table_cell_node},
+            ),
+        },
+    };
+    const table_node = try testing.allocator.create(ast.Node);
+    table_node.* = .{
+        .table = .{
+            .children = try testing.allocator.dupe(
+                *ast.Node,
+                &.{table_row_node},
+            ),
+        },
+    };
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const post_node = try transform(
+        testing.allocator,
+        &arena,
+        table_node,
+        .empty,
+    );
+    defer post_node.deinit(testing.allocator);
+
+    try testing.expectEqual(.table, @as(ast.NodeType, post_node.*));
+    try testing.expectEqual(1, post_node.table.children.len);
+
+    const post_table_row_node = post_node.table.children[0];
+    try testing.expectEqual(.table_row, @as(
+        ast.NodeType,
+        post_table_row_node.*,
+    ));
+    try testing.expectEqual(1, post_table_row_node.table_row.children.len);
+
+    const post_table_cell_node = post_table_row_node.table_row.children[0];
+    try testing.expectEqual(.table_cell, @as(
+        ast.NodeType,
+        post_table_cell_node.*,
+    ));
+    try testing.expectEqual(1, post_table_cell_node.table_cell.children.len);
+
+    const emphasis_node = post_table_cell_node.table_cell.children[0];
+    try testing.expectEqual(.emphasis, @as(ast.NodeType, emphasis_node.*));
+    try testing.expectEqual(1, emphasis_node.emphasis.children.len);
+
+    const post_text_node = emphasis_node.emphasis.children[0];
+    try testing.expectEqual(.text, @as(ast.NodeType, post_text_node.*));
+    try testing.expectEqualStrings("foobar", post_text_node.text.value);
 }
