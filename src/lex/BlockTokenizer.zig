@@ -151,6 +151,7 @@ fn matchSingleCharTokens(self: Self, scratch: Allocator) !?TokenizeResult {
         '=' => .equals,
         '%' => .percent,
         '^' => .caret,
+        '|' => .pipe,
         ' ' => .space,
         '\t' => .tab,
         else => return null,
@@ -651,6 +652,7 @@ fn matchText(self: Self, scratch: Allocator) !TokenizeResult {
                 '.',
                 '=',
                 '&',
+                '|',
                 => break :fsm,
                 '\\' => {
                     lookahead_i += 1;
@@ -1027,6 +1029,41 @@ test "MyST comment" {
         .percent,
         .space,
         .text,
+        .newline,
+    }, md);
+}
+
+test "GFM table row" {
+    // pipes can be escaped
+    const md = "| foo| \\|bar|\n";
+    try expectEqualTokens(&.{
+        .pipe,
+        .space,
+        .text,
+        .pipe,
+        .space,
+        .text,
+        .pipe,
+        .newline,
+    }, md);
+}
+
+test "GFM table delimiter row" {
+    const md = "--:|-- |: --|\n";
+    try expectEqualTokens(&.{
+        .hyphen,
+        .hyphen,
+        .colon,
+        .pipe,
+        .hyphen,
+        .hyphen,
+        .space,
+        .pipe,
+        .colon,
+        .space,
+        .hyphen,
+        .hyphen,
+        .pipe,
         .newline,
     }, md);
 }

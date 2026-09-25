@@ -24,6 +24,7 @@ pub const BlockTokenType = enum {
     percent,
     caret,
     equals,
+    pipe,
     space, // ascii space
     tab,
     exclamation_mark, // used only for HTML parsing
