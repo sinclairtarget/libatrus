@@ -237,6 +237,23 @@ fn transformResolve(
                 }
 
                 n.resolved = true;
+
+                // Handle numref replacement specifier
+                if (prefer_numref) {
+                    switch (target_node.*) {
+                        inline .math, .container => |target_n| {
+                            if (target_n.enumerator) |enumerator| {
+                                try replaceSpecifier(
+                                    alloc,
+                                    n.children,
+                                    enumerator,
+                                );
+                            }
+                        },
+                        else => {},
+                    }
+                }
+
                 if (n.children.len > 0) {
                     // exit early, no need to add default link text
                     return original_node;
@@ -357,6 +374,68 @@ fn linkURLToReferenceID(alloc: Allocator, url: []const u8) !?[]const u8 {
     return try myst.references.normalizeIdentifier(alloc, unnormalized);
 }
 
+/// For all text nodes appearing in the given slice of nodes, replaces the text
+/// value with a new one that substitues the given enumerator wherever `%s`
+/// appears.
+///
+/// MyST 0.0.5: We also allow `{number}`, which works exactly like `%s`.
+fn replaceSpecifier(
+    alloc: Allocator,
+    nodes: []*ast.Node,
+    enumerator: []const u8,
+) !void {
+    for (nodes) |node| {
+        switch (node.*) {
+            .text => |*n| {
+                const old_value = n.value;
+                defer alloc.free(old_value);
+
+                var replace_size = std.mem.replacementSize(
+                    u8,
+                    old_value,
+                    "%s",
+                    enumerator,
+                );
+                const intermediate_value = try alloc.allocSentinel(
+                    u8,
+                    replace_size,
+                    0,
+                );
+                _ = std.mem.replace(
+                    u8,
+                    old_value,
+                    "%s",
+                    enumerator,
+                    intermediate_value,
+                );
+                defer alloc.free(intermediate_value);
+
+                replace_size = std.mem.replacementSize(
+                    u8,
+                    intermediate_value,
+                    "{number}",
+                    enumerator,
+                );
+                const new_value = try alloc.allocSentinel(
+                    u8,
+                    replace_size,
+                    0,
+                );
+                _ = std.mem.replace(
+                    u8,
+                    intermediate_value,
+                    "{number}",
+                    enumerator,
+                    new_value,
+                );
+
+                n.value = new_value;
+            },
+            else => {},
+        }
+    }
+}
+
 /// For cross refs to headings, the default link text is the text of the
 /// heading itself.
 ///
@@ -421,9 +500,9 @@ fn generateContainerCrossRefLinkText(
 
     const title_case_kind, const caption_child_i: usize = blk: {
         if (std.mem.eql(u8, container.kind, "figure")) {
-            break :blk .{"Figure", 1};
+            break :blk .{ "Figure", 1 };
         } else if (std.mem.eql(u8, container.kind, "table")) {
-            break :blk .{"Table", 0};
+            break :blk .{ "Table", 0 };
         } else {
             @panic("not yet implemented");
         }
