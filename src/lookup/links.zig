@@ -92,6 +92,8 @@ pub const DefMap = struct {
     }
 };
 
+// TODO: Consolidate with normalizeIdentifier() in myst.references.
+
 /// Normalizes the given link label, writing the result into buf.
 ///
 /// To normalize a label, perform the Unicode case fold, strip leading and
