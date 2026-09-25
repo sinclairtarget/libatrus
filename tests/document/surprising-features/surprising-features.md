@@ -1,8 +1,3 @@
----
-title: Markdown Features I Didn't Know About
-description: Explaining some less commonly used Markdown syntax.
-date: 2026-02-23
----
 To get some experience using Zig, I thought it'd be fun to build a Markdown
 parser. I was feeling ambitious and decided I'd try my hand at making [my
 parser](https://github.com/sinclairtarget/libatrus) spec-compliant. I'm now

@@ -5,19 +5,6 @@
       "type": "block",
       "children": [
         {
-          "type": "thematicBreak"
-        },
-        {
-          "type": "heading",
-          "depth": 2,
-          "children": [
-            {
-              "type": "text",
-              "value": "title: Markdown Features I Didn't Know About\ndescription: Explaining some less commonly used Markdown syntax.\ndate: 2026-02-23"
-            }
-          ]
-        },
-        {
           "type": "paragraph",
           "children": [
             {
