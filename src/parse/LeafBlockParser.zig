@@ -184,6 +184,11 @@ pub fn parse(
             continue;
         }
 
+        if (try self.parseGFMTable(alloc, scratch)) |table| {
+            try children.append(table);
+            continue;
+        }
+
         // blank lines
         if (try self.parseBlankLine(scratch)) {
             try children.flush(); // Blank lines close paragraphs
@@ -2634,6 +2639,346 @@ fn parseReferenceTarget(
 
     did_parse = true;
     return node;
+}
+
+/// Parses a Github-flavored Markdown table.
+///
+/// A table consists of a header row, a delimiter row, and zero or more data
+/// rows. Pipes separates cells in a row. A leader and trailing pipe are
+/// optional.
+///
+/// The header row and delimiter row must have the same number of cells. Data
+/// rows can vary in the number of cells. If there are fewer than the header
+/// row, empty cells are inserted to make up the difference. If there are more,
+/// the excess cells are ignored.
+///
+/// The table ends at a blank line or the beginning of another block.
+///
+/// See https://github.github.com/gfm/#tables-extension-
+fn parseGFMTable(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) !?*ast.Node {
+    var did_parse = false;
+    const checkpoint_index = self.it.checkpoint();
+    defer if (!did_parse) {
+        self.it.backtrack(checkpoint_index);
+    };
+
+    var rows: ArrayList(*ast.Node) = .empty;
+    defer if (!did_parse) {
+        for (rows.items) |row| {
+            row.deinit(alloc);
+        }
+        rows.deinit(alloc);
+    };
+
+    const header_row_node = try self.parseGFMTableHeaderRow(
+        alloc,
+        scratch,
+    ) orelse return null;
+    try rows.append(alloc, header_row_node);
+
+    const delimiter_row = try self.parseGFMTableDelimiterRow(scratch) orelse
+        return null;
+
+    if (header_row_node.table_row.children.len != delimiter_row.num_cells)
+        return null;
+
+    while (try self.parseGFMTableDataRow(
+        alloc,
+        scratch,
+        delimiter_row.num_cells,
+    )) |row| {
+        try rows.append(alloc, row);
+    }
+
+    const table_node = try alloc.create(ast.Node);
+    table_node.* = .{
+        .table = .{
+            .children = try rows.toOwnedSlice(alloc),
+        },
+    };
+
+    did_parse = true;
+    return table_node;
+}
+
+fn parseGFMTableHeaderRow(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+) !?*ast.Node {
+    var did_parse = false;
+    const checkpoint_index = self.it.checkpoint();
+    defer if (!did_parse) {
+        self.it.backtrack(checkpoint_index);
+    };
+
+    var num_pipes: u32 = 0;
+
+    _ = try self.it.consumeWhitespaceUpTo(scratch, 3);
+    if (try self.it.consume(scratch, &.{.pipe})) |_| {
+        num_pipes += 1;
+    }
+
+    var header_cell_content: ArrayList([]const u8) = .empty;
+    for (0..util.safety.loop_bound) |_| {
+        const maybe_content = try self.scanGFMTableCellContent(scratch);
+        if (try self.it.consume(scratch, &.{.pipe})) |_| {
+            const content = maybe_content orelse "";
+            try header_cell_content.append(scratch, content);
+            num_pipes += 1;
+        } else {
+            if (maybe_content) |content| {
+                try header_cell_content.append(scratch, content);
+            }
+            break;
+        }
+    } else @panic(util.safety.loop_bound_panic_msg);
+
+    _ = try self.it.consume(scratch, &.{.newline}) orelse return null;
+
+    if (num_pipes == 0) // Must have at least one pipe
+        return null;
+
+    var cells: ArrayList(*ast.Node) = .empty;
+    for (header_cell_content.items) |content| {
+        const text_node = try alloc.create(ast.Node);
+        text_node.* = .{
+            .text = .{ .value = try alloc.dupeZ(u8, content) },
+        };
+
+        const cell_node = try alloc.create(ast.Node);
+        cell_node.* = .{
+            .table_cell = .{
+                .children = try alloc.dupe(*ast.Node, &.{text_node}),
+                .header = true,
+            },
+        };
+        try cells.append(alloc, cell_node);
+    }
+
+    const row_node = try alloc.create(ast.Node);
+    row_node.* = .{
+        .table_row = .{
+            .children = try cells.toOwnedSlice(alloc),
+        },
+    };
+
+    did_parse = true;
+    return row_node;
+}
+
+const GFMTableDelimiterRow = struct {
+    num_cells: usize,
+};
+
+fn parseGFMTableDelimiterRow(
+    self: *Self,
+    scratch: Allocator,
+) !?GFMTableDelimiterRow {
+    var did_parse = false;
+    const checkpoint_index = self.it.checkpoint();
+    defer if (!did_parse) {
+        self.it.backtrack(checkpoint_index);
+    };
+
+    var num_cells: usize = 0;
+
+    _ = try self.it.consumeWhitespaceUpTo(scratch, 3);
+    _ = try self.it.consume(scratch, &.{.pipe});
+
+    const State = enum {
+        pipe,
+        cell_leading_ws,
+        cell_content,
+        cell_trailing_ws,
+    };
+    fsm: switch (State.pipe) {
+        .pipe => {
+            while (try self.it.peek(scratch)) |token| {
+                switch (token.token_type) {
+                    .hyphen => continue :fsm .cell_content,
+                    .space, .tab => {
+                        continue :fsm .cell_leading_ws;
+                    },
+                    .pipe => return null,
+                    .newline => break :fsm,
+                    else => return null,
+                }
+            }
+        },
+        .cell_leading_ws => {
+            while (try self.it.peek(scratch)) |token| {
+                switch (token.token_type) {
+                    .hyphen => {
+                        _ = try self.it.consume(scratch, &.{.hyphen});
+                        continue :fsm .cell_content;
+                    },
+                    .space, .tab => |t| {
+                        _ = try self.it.consume(scratch, &.{t});
+                    },
+                    else => return null,
+                }
+            }
+        },
+        .cell_content => {
+            num_cells += 1;
+
+            while (try self.it.peek(scratch)) |token| {
+                switch (token.token_type) {
+                    .hyphen => |t| {
+                        _ = try self.it.consume(scratch, &.{t});
+                    },
+                    .space, .tab => continue :fsm .cell_trailing_ws,
+                    .pipe => {
+                        _ = try self.it.consume(scratch, &.{.pipe});
+                        continue :fsm .pipe;
+                    },
+                    .newline => break :fsm,
+                    else => return null,
+                }
+            }
+        },
+        .cell_trailing_ws => {
+            while (try self.it.peek(scratch)) |token| {
+                switch (token.token_type) {
+                    .hyphen => return null,
+                    .space, .tab => |t| {
+                        _ = try self.it.consume(scratch, &.{t});
+                    },
+                    .pipe => {
+                        _ = try self.it.consume(scratch, &.{.pipe});
+                        continue :fsm .pipe;
+                    },
+                    .newline => break :fsm,
+                    else => return null,
+                }
+            }
+        },
+    }
+
+    _ = try self.it.consume(scratch, &.{.newline}) orelse return null;
+
+    if (num_cells == 0)
+        return null;
+
+    did_parse = true;
+    return .{
+        .num_cells = num_cells,
+    };
+}
+
+fn parseGFMTableDataRow(
+    self: *Self,
+    alloc: Allocator,
+    scratch: Allocator,
+    expected_num_cells: usize,
+) !?*ast.Node {
+    var did_parse = false;
+    const checkpoint_index = self.it.checkpoint();
+    defer if (!did_parse) {
+        self.it.backtrack(checkpoint_index);
+    };
+
+    var num_pipes: u32 = 0;
+
+    _ = try self.it.consumeWhitespaceUpTo(scratch, 3);
+
+    // Make sure that we stop parsing rows when we hit another block
+    const first_token = try self.it.peek(scratch) orelse return null;
+    switch (first_token.token_type) {
+        .pipe => {
+            _ = try self.it.consume(scratch, &.{.pipe});
+            num_pipes += 1;
+        },
+        // These can interrupt tables
+        .newline,
+        .pound,
+        .percent,
+        .rule_underline,
+        .backtick_fence,
+        .tilde_fence,
+        => return null,
+        else => {},
+    }
+
+    var header_cell_content: ArrayList([]const u8) = .empty;
+    for (0..util.safety.loop_bound) |_| {
+        const maybe_content = try self.scanGFMTableCellContent(scratch);
+        if (try self.it.consume(scratch, &.{.pipe})) |_| {
+            const content = maybe_content orelse "";
+            try header_cell_content.append(scratch, content);
+            num_pipes += 1;
+        } else {
+            if (maybe_content) |content| {
+                try header_cell_content.append(scratch, content);
+            }
+            break;
+        }
+    } else @panic(util.safety.loop_bound_panic_msg);
+
+    // Add empty cells up to expected number of cells
+    if (expected_num_cells > header_cell_content.items.len) {
+        const needed = expected_num_cells - header_cell_content.items.len;
+        for (0..needed) |_| {
+            try header_cell_content.append(scratch, "");
+        }
+    }
+
+    _ = try self.it.consume(scratch, &.{.newline}) orelse return null;
+
+    if (num_pipes == 0) // Must have at least one pipe
+        return null;
+
+    var cells: ArrayList(*ast.Node) = .empty;
+    for (header_cell_content.items[0..expected_num_cells]) |content| {
+        const text_node = try alloc.create(ast.Node);
+        text_node.* = .{
+            .text = .{ .value = try alloc.dupeZ(u8, content) },
+        };
+
+        const cell_node = try alloc.create(ast.Node);
+        cell_node.* = .{
+            .table_cell = .{
+                .children = try alloc.dupe(*ast.Node, &.{text_node}),
+                .header = false,
+            },
+        };
+        try cells.append(alloc, cell_node);
+    }
+
+    const row_node = try alloc.create(ast.Node);
+    row_node.* = .{
+        .table_row = .{
+            .children = try cells.toOwnedSlice(alloc),
+        },
+    };
+
+    did_parse = true;
+    return row_node;
+}
+
+fn scanGFMTableCellContent(self: *Self, scratch: Allocator) !?[]const u8 {
+    var running_text = Io.Writer.Allocating.init(scratch);
+    while (try self.it.peek(scratch)) |token| {
+        switch (token.token_type) {
+            .pipe, .newline => break,
+            else => |t| {
+                _ = try running_text.writer.write(token.lexeme);
+                _ = try self.it.consume(scratch, &.{t});
+            },
+        }
+    }
+
+    const trimmed = std.mem.trim(u8, running_text.written(), " \t");
+    if (trimmed.len == 0) {
+        return null;
+    }
+
+    return trimmed;
 }
 
 fn parseBlankLine(self: *Self, scratch: Allocator) !bool {
