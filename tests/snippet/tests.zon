@@ -1,0 +1,48 @@
+.{
+    .{
+        .name = "simple paragraph",
+        .mystmd =
+            \\This is my paragraph.
+            \\
+        ,
+        .json_pre =
+            \\{
+            \\  "type": "root",
+            \\  "children": [
+            \\    {
+            \\      "type": "paragraph",
+            \\      "children": [
+            \\        {
+            \\          "type": "text",
+            \\          "value": "This is my paragraph."
+            \\        }
+            \\      ]
+            \\    }
+            \\  ]
+            \\}
+        ,
+        .json_post =
+            \\{
+            \\  "type": "root",
+            \\  "children": [
+            \\    {
+            \\      "type": "block",
+            \\      "children": [
+            \\        {
+            \\          "type": "paragraph",
+            \\          "children": [
+            \\            {
+            \\              "type": "text",
+            \\              "value": "This is my paragraph."
+            \\            }
+            \\          ]
+            \\        }
+            \\      ]
+            \\    }
+            \\  ]
+            \\}
+        ,
+        .html = "<p>This is my paragraph.</p>\n",
+        .typst = "This is my paragraph.\n",
+    },
+}
