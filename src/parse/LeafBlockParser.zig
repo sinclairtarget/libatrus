@@ -2692,10 +2692,7 @@ fn parseGFMTable(
         const alignment_str = switch (alignment) {
             inline else => |t| @tagName(t),
         };
-        cell.table_cell.@"align" = if (alignment != .left)
-            try alloc.dupeZ(u8, alignment_str)
-        else
-            null;
+        cell.table_cell.@"align" = try alloc.dupeZ(u8, alignment_str);
     }
 
     while (try self.parseGFMTableDataRow(
@@ -2988,10 +2985,7 @@ fn parseGFMTableDataRow(
             .table_cell = .{
                 .children = try alloc.dupe(*ast.Node, &.{text_node}),
                 .header = false,
-                .@"align" = if (alignment != .left)
-                    try alloc.dupeZ(u8, alignment_str)
-                else
-                    null,
+                .@"align" = try alloc.dupeZ(u8, alignment_str),
             },
         };
         try cells.append(alloc, cell_node);

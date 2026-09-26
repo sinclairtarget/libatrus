@@ -19583,7 +19583,6 @@
   },
   {
     "title": "directives.table: Basic table",
-    "skip": true,
     "mdast": {
       "type": "root",
       "children": [
@@ -19647,6 +19646,7 @@
       ]
     },
     "myst": "| header 1 | header 2 |\n|:---|---:|\n| 3 | 4 |",
+    "html_indented": true,
     "html": "<table>\n  <thead>\n    <tr>\n      <th>header 1</th>\n      <th>header 2</th>\n    </tr>\n  </thead>\n  <tbody>\n    <tr>\n      <td>3</td>\n      <td>4</td>\n    </tr>\n  </tbody>\n</table>\n"
   },
   {

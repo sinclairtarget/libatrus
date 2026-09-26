@@ -75,7 +75,7 @@ Much more work remains:
 - [x] Get basic C API working
 - [x] Expose AST via C API
 - [x] Finish implementing commonmark spec
-- [ ] Finish implementing MyST extensions
+- [x] Finish implementing MyST extensions
 - [ ] Implement JSON AST parser
 - [ ] Add benchmarks
 - [ ] Add fuzzing tests
