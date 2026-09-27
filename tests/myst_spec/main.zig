@@ -92,6 +92,9 @@ const Test = struct {
                         .indent_none,
                 },
             );
+            if (outbuf.written().len > 0)
+                _ = try outbuf.writer.writeAll("\n");
+
             const actual_html = outbuf.written();
             if (!std.mem.eql(u8, expected_html, actual_html)) {
                 if (options.verbose) {

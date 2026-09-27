@@ -47,6 +47,8 @@ pub const TestCase = struct {
             &outbuf.writer,
             .{ .whitespace = .indent_2 },
         );
+        _ = try outbuf.writer.writeAll("\n");
+
         const expected_html = try slurpFile(alloc, rootdir, self.html_path);
         expectEqualStrings(expected_html, outbuf.written()) catch {
             return error.HTMLNotEqual;

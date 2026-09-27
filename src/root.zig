@@ -336,7 +336,6 @@ test renderHTML {
     const expected =
         \\<h1>I am a heading</h1>
         \\<p>I am a paragraph containing <em>emphasis</em>.</p>
-        \\
     ;
 
     var in: Io.Reader = .fixed(md);
@@ -414,7 +413,6 @@ test renderTypst {
     const expected =
         \\= I am a heading
         \\I am a paragraph with #link("http://coolpage.com")[a link].
-        \\
     ;
 
     var in: Io.Reader = .fixed(md);

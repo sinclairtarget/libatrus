@@ -48,7 +48,7 @@ pub fn render(
 ) Io.Writer.Error!void {
     var render_state: RenderState = .{};
 
-    var rendered_anything = try renderNode(
+    const rendered_anything = try renderNode(
         node,
         out,
         .{
@@ -58,13 +58,29 @@ pub fn render(
         .start,
         &render_state,
     );
-    if (rendered_anything) {
-        _ = try out.print("\n", .{}); // add trailing newline
-    }
 
-    if (@as(ast.NodeType, node.*) == .root) {
-        // Only render footnotes if we are rendering a full tree.
-        rendered_anything = try renderFootnotes(
+    const num_footnotes: u32 = blk: {
+        if (@as(ast.NodeType, node.*) != .root) {
+            // Can only render footnotes if we are rendering a full tree.
+            break :blk 0;
+        }
+
+        var count: u32 = 0;
+        for (node.root.children) |child| {
+            if (@as(ast.NodeType, child.*) == .footnote_definition) {
+                count += 1;
+            }
+        }
+
+        break :blk count;
+    };
+
+    if (num_footnotes > 0) {
+        if (rendered_anything) {
+            _ = try out.print("\n", .{}); // add trailing newline
+        }
+
+        try renderFootnotes(
             node,
             out,
             .{
@@ -74,9 +90,6 @@ pub fn render(
             .start,
             &render_state,
         );
-        if (rendered_anything) {
-            _ = try out.print("\n", .{});
-        }
     }
 
     try out.flush();
@@ -1299,18 +1312,7 @@ fn renderFootnotes(
     options: InternalOptions,
     f: FormattingState,
     r: *RenderState,
-) !bool {
-    var num_footnotes: u32 = 0;
-    for (node.root.children) |child| {
-        if (@as(ast.NodeType, child.*) == .footnote_definition) {
-            num_footnotes += 1;
-        }
-    }
-
-    if (num_footnotes == 0) {
-        return false;
-    }
-
+) !void {
     _ = try out.writeAll("<section data-footnotes class=\"footnotes\">\n");
 
     try printIndent(out, options, f.depth + 1);
@@ -1340,8 +1342,6 @@ fn renderFootnotes(
     try printIndent(out, options, f.depth + 1);
     _ = try out.writeAll("</ol>\n");
     _ = try out.writeAll("</section>");
-
-    return true;
 }
 
 fn willRenderAnything(
@@ -1525,7 +1525,6 @@ test "render without indentation" {
         \\<p>This should be indented two levels.</p>
         \\</blockquote>
         \\</blockquote>
-        \\
     ;
 
     try renderAndCompare(&root_node, .{}, expected);
@@ -1566,7 +1565,6 @@ test "render with indentation" {
         \\    <p>This should be indented two levels.</p>
         \\  </blockquote>
         \\</blockquote>
-        \\
     ;
 
     try renderAndCompare(&root_node, .{ .whitespace = .indent_2 }, expected);
@@ -1646,7 +1644,6 @@ test "render list with indentation" {
         \\  </li>
         \\  <li>Eggs</li>
         \\</ul>
-        \\
     ;
 
     try renderAndCompare(&root_node, .{ .whitespace = .indent_2 }, expected);
@@ -1667,7 +1664,6 @@ test "render comment escaping" {
 
     const expected =
         \\<!--&lt;!- -&gt; <script> --&gt; --!&gt;-->
-        \\
     ;
 
     try renderAndCompare(&root_node, .{}, expected);
@@ -1691,7 +1687,6 @@ test "render block break" {
 
     const expected =
         \\<div></div>
-        \\
     ;
 
     try renderAndCompare(&root_node, .{}, expected);
@@ -1722,7 +1717,6 @@ test "render cross reference" {
 
     const expected =
         \\<a href="#foobar">hello, world</a>
-        \\
     ;
 
     try renderAndCompare(&root_node, .{}, expected);

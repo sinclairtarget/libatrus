@@ -118,7 +118,6 @@ pub fn main() !void {
                         stdout,
                         .{ .whitespace = .indent_2 },
                     );
-                    try stdout.print("\n", .{});
                 },
                 .html => {
                     try atrus.renderHTML(
@@ -129,6 +128,7 @@ pub fn main() !void {
                 },
                 .typst => try atrus.renderTypst(ast, stdout, .{}),
             }
+            try stdout.print("\n", .{});
             try stdout.flush();
             logger.info("Done.", .{});
         },

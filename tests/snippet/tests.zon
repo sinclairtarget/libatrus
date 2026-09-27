@@ -42,7 +42,7 @@
             \\  ]
             \\}
         ,
-        .html = "<p>This is my paragraph.</p>\n",
-        .typst = "This is my paragraph.\n",
+        .html = "<p>This is my paragraph.</p>",
+        .typst = "This is my paragraph.",
     },
 }
