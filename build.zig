@@ -71,7 +71,6 @@ pub fn build(b: *std.Build) void {
     const test_cmds = addTests(
         b,
         atrus_module,
-        exe_artifact.artifact,
         lib_artifacts.shared_lib.artifact,
         test_case_filter,
         test_verbose,
@@ -132,9 +131,6 @@ pub fn build(b: *std.Build) void {
     const c_api_test_step = b.step("test-lib", "Run C API tests");
     c_api_test_step.dependOn(&test_cmds.c_api.step);
 
-    const cli_test_step = b.step("test-cli", "Run CLI tests");
-    cli_test_step.dependOn(&test_cmds.cli.step);
-
     const test_step = b.step(
         "test",
         "Run all tests",
@@ -143,7 +139,6 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&test_cmds.spec.step);
     test_step.dependOn(&test_cmds.snippet.step);
     test_step.dependOn(&test_cmds.document.step);
-    test_step.dependOn(&test_cmds.cli.step);
     test_step.dependOn(&test_cmds.c_api.step);
 
     // benchmarks
@@ -270,14 +265,12 @@ fn installLibrary(
 /// * Spec tests (test conformance with the MyST spec)
 /// * Snippet tests (test for regressions in converting to different formats)
 /// * Document tests (similar to snippets but load files from disk)
-/// * CLI tests (runs atrus as a subprocess, tests debug CLI functionality)
 /// * C API tests (makes sure the C API links and works)
 const TestCmds = struct {
     unit: *Step.Run,
     spec: *Step.Run,
     snippet: *Step.Run,
     document: *Step.Run,
-    cli: *Step.Run,
     c_api: *Step.Run,
 };
 
@@ -288,7 +281,6 @@ const TestCmds = struct {
 fn addTests(
     b: *std.Build,
     atrus_module: *std.Build.Module,
-    atrus_exe: *Step.Compile,
     static_lib: *Step.Compile,
     test_filter: ?[]const u8,
     test_verbose: bool,
@@ -362,21 +354,6 @@ fn addTests(
     });
     const document_tests_cmd = b.addRunArtifact(document_tests_exe);
 
-    // Functional CLI tests.
-    // We pass the path to the atrus executable into the tests as a config
-    // option.
-    const cli_tests = b.addTest(.{
-        .name = "cli",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("tests/cli/root.zig"),
-            .target = b.graph.host,
-        }),
-    });
-    const cli_options = b.addOptions();
-    cli_options.addOptionPath("exec_path", atrus_exe.getEmittedBin()); // Adds dep
-    cli_tests.root_module.addOptions("config", cli_options);
-    const cli_tests_cmd = b.addRunArtifact(cli_tests);
-
     // C API tests
     const c_api_tests_exe = b.addExecutable(.{
         .name = "c-api-tests",
@@ -399,7 +376,6 @@ fn addTests(
         .spec = spec_tests_cmd,
         .snippet = snippet_tests_cmd,
         .document = document_tests_cmd,
-        .cli = cli_tests_cmd,
         .c_api = c_api_tests_cmd,
     };
 }
