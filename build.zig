@@ -296,17 +296,20 @@ fn addTests(
     });
     const unit_tests_cmd = b.addRunArtifact(unit_tests);
 
+    const test_helper_module = b.createModule(.{
+        .root_source_file = b.path("tests/test_helper/root.zig"),
+        .target = b.graph.host,
+    });
+
     // MyST Spec tests
     const spec_module = b.createModule(.{
         .root_source_file = b.path("tests/myst_spec/main.zig"),
         .target = b.graph.host,
         .imports = &.{
             .{ .name = "atrus", .module = atrus_module },
+            .{ .name = "test_helper", .module = test_helper_module },
         },
     });
-    const spec_options = b.addOptions();
-    spec_options.addOption(bool, "verbose", test_verbose);
-    spec_module.addOptions("config", spec_options);
     const spec_tests_exe = b.addExecutable(.{
         .name = "spec-tests",
         .root_module = spec_module,
@@ -314,6 +317,9 @@ fn addTests(
     const spec_tests_cmd = b.addRunArtifact(spec_tests_exe);
     const spec_cases_path = b.path("tests/myst_spec/myst-0.0.5.tests.json");
     spec_tests_cmd.addFileArg(spec_cases_path);
+    if (test_verbose) {
+        spec_tests_cmd.addArg("-v");
+    }
     if (test_filter) |f| {
         spec_tests_cmd.addArg(f);
     }
@@ -324,16 +330,20 @@ fn addTests(
         .target = b.graph.host,
         .imports = &.{
             .{ .name = "atrus", .module = atrus_module },
+            .{ .name = "test_helper", .module = test_helper_module },
         },
     });
-    const snippet_options = b.addOptions();
-    snippet_options.addOption(bool, "verbose", test_verbose);
-    snippet_module.addOptions("config", snippet_options);
     const snippet_tests_exe = b.addExecutable(.{
         .name = "snippet-tests",
         .root_module = snippet_module,
     });
     const snippet_tests_cmd = b.addRunArtifact(snippet_tests_exe);
+    if (test_verbose) {
+        snippet_tests_cmd.addArg("-v");
+    }
+    if (test_filter) |f| {
+        snippet_tests_cmd.addArg(f);
+    }
 
     // Document tests
     const document_module = b.createModule(.{
@@ -341,11 +351,11 @@ fn addTests(
         .target = b.graph.host,
         .imports = &.{
             .{ .name = "atrus", .module = atrus_module },
+            .{ .name = "test_helper", .module = test_helper_module },
         },
     });
     const document_tests_dir = b.path("tests/document");
     const document_options = b.addOptions();
-    document_options.addOption(bool, "verbose", test_verbose);
     document_options.addOptionPath("tests_dirpath", document_tests_dir);
     document_module.addOptions("config", document_options);
     const document_tests_exe = b.addExecutable(.{
@@ -353,6 +363,12 @@ fn addTests(
         .root_module = document_module,
     });
     const document_tests_cmd = b.addRunArtifact(document_tests_exe);
+    if (test_verbose) {
+        document_tests_cmd.addArg("-v");
+    }
+    if (test_filter) |f| {
+        document_tests_cmd.addArg(f);
+    }
 
     // C API tests
     const c_api_tests_exe = b.addExecutable(.{

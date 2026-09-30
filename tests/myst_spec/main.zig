@@ -6,7 +6,7 @@
 //! failure of the test suite.
 //!
 //! The MyST spec tests verify that the "pre" AST output by libatrus is
-//! correct.
+//! correct. We also make some attempt to match on rendered HTML too.
 
 const std = @import("std");
 const json = std.json;
@@ -18,115 +18,9 @@ const AutoHashMap = std.AutoHashMap;
 const Io = std.Io;
 
 const atrus = @import("atrus");
-const config = @import("config");
-const spec = @import("spec.zig");
+const test_helper = @import("test_helper");
 
-const Test = struct {
-    case: spec.TestCase,
-
-    const Self = @This();
-
-    // Run test case.
-    //
-    // We parse the myst, rendering the AST as JSON to a buffer. Then we parse
-    // that AST as a dynamic JSON value and compare it to the dynamic JSON
-    // value for the AST we loaded from the spec test cases.
-    //
-    // If there is an expected HTML rendering we test that too.
-    pub fn run(
-        self: Self,
-        alloc: Allocator,
-        options: struct { verbose: bool = false },
-    ) !void {
-        var buf = Io.Writer.Allocating.init(alloc);
-        var stringify = json.Stringify{
-            .writer = &buf.writer,
-            .options = .{
-                .whitespace = .indent_2,
-            },
-        };
-        try stringify.write(self.case.mdast);
-        const expected = buf.written();
-
-        var reader = Io.Reader.fixed(self.case.myst);
-        const ast = try atrus.parse(
-            alloc,
-            &reader,
-            .{ .parse_level = .pre }, // testing only the "pre" AST
-        );
-
-        var outbuf = Io.Writer.Allocating.init(alloc);
-        try atrus.renderJSON(
-            ast,
-            &outbuf.writer,
-            .{ .whitespace = .indent_2 },
-        );
-        const actual = outbuf.written();
-
-        if (!std.mem.eql(u8, expected, actual)) {
-            if (options.verbose) {
-                std.debug.print("myst:\n{s}\n", .{self.case.myst});
-                std.debug.print("expected json:\n{s}\n", .{expected});
-                std.debug.print("actual json:\n{s}\n", .{actual});
-            }
-            return error.NotEqual;
-        }
-
-        // html
-        reader = Io.Reader.fixed(self.case.myst);
-        const post_ast = try atrus.parse(
-            alloc,
-            &reader,
-            .{ .parse_level = .post },
-        );
-        if (self.case.html != null and self.case.skip_html_reason == null) {
-            const expected_html = self.case.html.?;
-            outbuf = Io.Writer.Allocating.init(alloc);
-            try atrus.renderHTML(
-                post_ast,
-                &outbuf.writer,
-                .{
-                    .whitespace = if (self.case.html_indented)
-                        .indent_2
-                    else
-                        .indent_none,
-                },
-            );
-            if (outbuf.written().len > 0)
-                _ = try outbuf.writer.writeAll("\n");
-
-            const actual_html = outbuf.written();
-            if (!std.mem.eql(u8, expected_html, actual_html)) {
-                if (options.verbose) {
-                    std.debug.print("expected html:\n{s}\n", .{expected_html});
-                    std.debug.print("actual html:\n{s}\n", .{actual_html});
-                }
-                return error.HTMLNotEqual;
-            }
-        }
-    }
-};
-
-fn gatherTests(
-    alloc: Allocator,
-    path: []const u8,
-    filter: ?[]const u8,
-) ![]Test {
-    const cases = try spec.readTestCases(alloc, path);
-
-    var tests: ArrayList(Test) = .empty;
-    for (cases) |case| {
-        if (filter) |f| {
-            if (std.ascii.indexOfIgnoreCase(case.title, f) == null) {
-                continue;
-            }
-        }
-
-        try tests.append(alloc, .{ .case = case });
-    }
-
-    return tests.toOwnedSlice(alloc);
-}
+const TestCase = @import("test.zig").TestCase;
 
 pub const std_options: std.Options = .{
     .log_level = .err,
@@ -150,21 +44,13 @@ pub fn main() !void {
     }
 
     const path = args[1];
-    var filter: ?[]const u8 = null;
-    if (args.len >= 3) {
-        filter = args[2];
-    }
+    const verbose, const filter = test_helper.extractTestArgs(args[2..]);
 
-    const tests = gatherTests(scratch, path, filter) catch |err| {
+    const test_cases_to_run = gatherTests(scratch, path, filter) catch |err| {
         std.debug.print("failed to gather tests\n", .{});
         return err;
     };
-
-    if (tests.len == 1) {
-        const t = tests[0];
-        try t.run(scratch, .{ .verbose = true });
-        return;
-    }
+    const print_detailed_error: bool = verbose and test_cases_to_run.len == 1;
 
     var map = AutoHashMap(anyerror, u16).init(scratch);
     defer map.deinit();
@@ -172,33 +58,15 @@ pub fn main() !void {
     var per_test_arena = ArenaAllocator.init(gpa);
     defer per_test_arena.deinit();
 
-    var num_succeeded: u32 = 0;
-    var num_failed: u32 = 0;
-    var num_skipped: u32 = 0;
-    for (tests, 1..) |t, i| {
-        if (t.case.skip) {
-            print(
-                "{d}/{d} {s}: skipped\n",
-                .{
-                    i,
-                    tests.len,
-                    t.case.title,
-                },
-            );
-            num_skipped += 1;
-            continue;
-        }
-
+    var reporter: test_helper.Reporter = .init(test_cases_to_run.len, verbose);
+    for (test_cases_to_run) |test_case| {
         defer _ = per_test_arena.reset(.retain_capacity);
-        t.run(
+        runTest(
             per_test_arena.allocator(),
-            .{ .verbose = false },
+            test_case,
+            print_detailed_error,
         ) catch |err| {
-            // show error in red
-            std.debug.print(
-                "{d}/{d} \x1b[31m{any}: {s}\x1b[0m\n",
-                .{ i, tests.len, err, t.case.title },
-            );
+            reporter.fail(test_case.title, err);
 
             const existing_count = map.get(err);
             if (existing_count) |ec| {
@@ -207,45 +75,156 @@ pub fn main() !void {
                 try map.put(err, 1);
             }
 
-            num_failed += 1;
             continue;
         };
 
         // show success in green
-        const extra = if (t.case.skip_html_reason) |reason|
+        const extra: ?[]const u8 = if (test_case.skip_html_reason) |reason|
             try std.fmt.allocPrint(
                 scratch,
                 " (skipped html, reason: \"{s}\")",
                 .{reason},
             )
         else
-            "";
-        print(
-            "{d}/{d} \x1b[32m{s}\x1b[0m{s}\n",
-            .{ i, tests.len, t.case.title, extra },
-        );
-        num_succeeded += 1;
+            null;
+        reporter.succeed(test_case.title, .{ .extra = extra });
     }
 
-    print(
-        "{d} cases succeeded. {d} cases failed. {d} cases skipped.\n",
-        .{ num_succeeded, num_failed, num_skipped },
-    );
-    if (num_failed > 0) {
-        var it = map.iterator();
-        while (it.next()) |entry| {
-            print(
-                "{any}: {d}\n",
-                .{ entry.key_ptr.*, entry.value_ptr.* },
-            );
+    reporter.summarize();
+    if (reporter.num_failed > 0) {
+        if (verbose) {
+            var it = map.iterator();
+            while (it.next()) |entry| {
+                std.debug.print(
+                    "{any}: {d}\n",
+                    .{ entry.key_ptr.*, entry.value_ptr.* },
+                );
+            }
         }
 
         std.process.exit(1);
     }
 }
 
-fn print(comptime fmt: []const u8, args: anytype) void {
-    if (config.verbose) {
-        std.debug.print(fmt, args);
+fn gatherTests(
+    alloc: Allocator,
+    path: []const u8,
+    filter: ?[]const u8,
+) ![]TestCase {
+    const cases = try readTestCases(alloc, path);
+
+    var tests: ArrayList(TestCase) = .empty;
+    for (cases) |case| {
+        if (filter) |f| {
+            if (std.ascii.indexOfIgnoreCase(case.title, f) == null) {
+                continue;
+            }
+        }
+
+        try tests.append(alloc, case);
     }
+
+    return tests.toOwnedSlice(alloc);
+}
+
+// Run test case.
+//
+// We parse the myst, rendering the AST as JSON to a buffer. Then we parse
+// that AST as a dynamic JSON value and compare it to the dynamic JSON
+// value for the AST we loaded from the spec test cases.
+//
+// If there is an expected HTML rendering we test that too.
+fn runTest(
+    alloc: Allocator,
+    test_case: TestCase,
+    print_detailed_error: bool,
+) !void {
+    var buf = Io.Writer.Allocating.init(alloc);
+    var stringify = json.Stringify{
+        .writer = &buf.writer,
+        .options = .{
+            .whitespace = .indent_2,
+        },
+    };
+    try stringify.write(test_case.mdast);
+    const expected = buf.written();
+
+    var reader = Io.Reader.fixed(test_case.myst);
+    const ast = try atrus.parse(
+        alloc,
+        &reader,
+        .{ .parse_level = .pre }, // testing only the "pre" AST
+    );
+
+    var outbuf = Io.Writer.Allocating.init(alloc);
+    try atrus.renderJSON(
+        ast,
+        &outbuf.writer,
+        .{ .whitespace = .indent_2 },
+    );
+    const actual = outbuf.written();
+
+    if (!std.mem.eql(u8, expected, actual)) {
+        if (print_detailed_error) {
+            std.debug.print("myst:\n{s}\n", .{test_case.myst});
+            test_helper.printStringDiff(expected, actual);
+        }
+        return error.NotEqual;
+    }
+
+    // html
+    reader = Io.Reader.fixed(test_case.myst);
+    const post_ast = try atrus.parse(
+        alloc,
+        &reader,
+        .{ .parse_level = .post },
+    );
+    if (test_case.html != null and test_case.skip_html_reason == null) {
+        const expected_html = test_case.html.?;
+        outbuf = Io.Writer.Allocating.init(alloc);
+        try atrus.renderHTML(
+            post_ast,
+            &outbuf.writer,
+            .{
+                .whitespace = if (test_case.html_indented)
+                    .indent_2
+                else
+                    .indent_none,
+            },
+        );
+        if (outbuf.written().len > 0)
+            _ = try outbuf.writer.writeAll("\n");
+
+        const actual_html = outbuf.written();
+        if (!std.mem.eql(u8, expected_html, actual_html)) {
+            if (print_detailed_error) {
+                std.debug.print("myst:\n{s}\n", .{test_case.myst});
+                test_helper.printStringDiff(expected_html, actual_html);
+            }
+            return error.HTMLNotEqual;
+        }
+    }
+}
+
+fn readTestCases(alloc: Allocator, path: []const u8) ![]const TestCase {
+    var file = try std.fs.cwd().openFile(path, .{});
+    defer file.close();
+
+    var buffer: [64]u8 = undefined;
+    var reader_impl = file.reader(&buffer);
+    const reader = &reader_impl.interface;
+
+    var json_reader = json.Reader.init(alloc, reader);
+    defer json_reader.deinit();
+
+    const parsed = try json.parseFromTokenSourceLeaky(
+        []const TestCase,
+        alloc,
+        &json_reader,
+        .{
+            .allocate = .alloc_always,
+            .ignore_unknown_fields = true,
+        },
+    );
+    return parsed;
 }

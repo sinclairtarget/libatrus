@@ -1,3 +1,5 @@
+//! A little helper module for all our test suites.
+
 const std = @import("std");
 
 /// Reports test case success/failure to stderr.
@@ -20,12 +22,24 @@ pub const Reporter = struct {
         };
     }
 
-    pub fn succeed(self: *Reporter, test_name: []const u8) void {
-        self.print(
-            // Print in green
-            "{d}/{d} \x1b[32m{s}\x1b[0m\n",
-            .{ self.case_i, self.num_cases, test_name },
-        );
+    pub fn succeed(
+        self: *Reporter,
+        test_name: []const u8,
+        options: struct { extra: ?[]const u8 = null },
+    ) void {
+        if (options.extra) |extra| {
+            self.print(
+                // Print in green
+                "{d}/{d} \x1b[32m{s}\x1b[0m {s}\n",
+                .{ self.case_i, self.num_cases, test_name, extra },
+            );
+        } else {
+            self.print(
+                // Print in green
+                "{d}/{d} \x1b[32m{s}\x1b[0m\n",
+                .{ self.case_i, self.num_cases, test_name },
+            );
+        }
         self.case_i += 1;
         self.num_succeeded += 1;
     }
@@ -66,6 +80,23 @@ pub const Reporter = struct {
         }
     }
 };
+
+/// Looks for a verbose flag ("-v") and a test filter in the argument list.
+///
+/// Assumes the test filter is the last arg.
+pub fn extractTestArgs(args: [][:0]u8) struct { bool, ?[]const u8 } {
+    var verbose = false;
+    var filter: ?[]const u8 = null;
+    for (args) |arg| {
+        if (std.mem.eql(u8, arg, "-v")) {
+            verbose = true;
+        } else {
+            filter = arg;
+        }
+    }
+
+    return .{ verbose, filter };
+}
 
 /// Prints the difference between two strings to stderr.
 ///
