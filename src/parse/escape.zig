@@ -1,9 +1,9 @@
 //! Handles removing backslash escapes from text.
 //!
-//! We do this here rather than during tokenization because in some contexts
-//! (e.g. inline code) the backslashes shouldn't be removed. So we can't remove
-//! the backslashes during tokenization because we don't yet know how the token
-//! will get parsed.
+//! We do this during parsing rather than during tokenization because in some
+//! contexts (e.g. inline code) the backslashes shouldn't be removed. So we
+//! can't remove the backslashes during tokenization because we don't yet know
+//! how the token will get parsed.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -49,7 +49,7 @@ pub fn strip(alloc: Allocator, s: []const u8) ![]const u8 {
         },
         .escape => {
             if (source_index >= s.len) {
-                // Backslash was last character
+                // Backslash was last character, keep it
                 copy[dest_index] = '\\';
                 dest_index += 1;
                 break :fsm;
@@ -86,9 +86,56 @@ pub fn stripOnly(
     s: []const u8,
     comptime escaped: u8,
 ) ![]const u8 {
-    const replacement: []const u8 = &[_]u8{escaped};
-    const needle = "\\" ++ replacement;
-    return try std.mem.replaceOwned(u8, alloc, s, needle, replacement);
+    const copy = try alloc.alloc(u8, s.len);
+
+    const State = enum { normal, escape };
+    var source_index: usize = 0;
+    var dest_index: usize = 0;
+    fsm: switch (State.normal) {
+        .normal => {
+            if (source_index >= s.len) {
+                break :fsm;
+            }
+
+            switch (s[source_index]) {
+                '\\' => {
+                    source_index += 1;
+                    continue :fsm .escape;
+                },
+                else => {
+                    copy[dest_index] = s[source_index];
+                    source_index += 1;
+                    dest_index += 1;
+                    continue :fsm .normal;
+                },
+            }
+        },
+        .escape => {
+            if (source_index >= s.len) {
+                // Backslash was last character, keep it
+                copy[dest_index] = '\\';
+                dest_index += 1;
+                break :fsm;
+            }
+
+            if (escaped != '\\' and s[source_index] == '\\' ) {
+                // Backslash escaping a backslash, keep both
+                copy[dest_index] = '\\';
+                dest_index += 1;
+                copy[dest_index] = s[source_index];
+                source_index += 1;
+                dest_index += 1;
+            } else if (s[source_index] != escaped) {
+                // Not a character we should touch, keep the backslash
+                copy[dest_index] = '\\';
+                dest_index += 1;
+            }
+
+            continue :fsm .normal;
+        },
+    }
+
+    return try alloc.realloc(copy, dest_index);
 }
 
 // ----------------------------------------------------------------------------
@@ -126,4 +173,24 @@ test "escape only pipes" {
     defer testing.allocator.free(result);
 
     try testing.expectEqualStrings("\\*my\\* | foo", result);
+}
+
+// Ensures that if the backslash preceding the pipe is itself escaped, then we
+// don't treat the backslash as escaping the pipe!
+test "escape only pipes escaped backslash" {
+    const value = "\\*my\\* \\\\| foo";
+    const result = try stripOnly(testing.allocator, value, '|');
+    defer testing.allocator.free(result);
+
+    try testing.expectEqualStrings("\\*my\\* \\\\| foo", result);
+}
+
+// Are we ever going to do this? Probably no. But for the sake of completeness
+// let's make sure this works.
+test "escape only backslashes" {
+    const value = "\\*my\\* \\\\| foo";
+    const result = try stripOnly(testing.allocator, value, '\\');
+    defer testing.allocator.free(result);
+
+    try testing.expectEqualStrings("\\*my\\* \\| foo", result);
 }
