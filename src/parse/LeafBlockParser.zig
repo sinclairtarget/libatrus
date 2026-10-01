@@ -2907,8 +2907,6 @@ fn parseGFMTableDataRow(
         self.it.backtrack(checkpoint_index);
     };
 
-    var num_pipes: u32 = 0;
-
     _ = try self.it.consumeWhitespaceUpTo(scratch, 3);
 
     // Make sure that we stop parsing rows when we hit another block
@@ -2916,7 +2914,6 @@ fn parseGFMTableDataRow(
     switch (first_token.token_type) {
         .pipe => {
             _ = try self.it.consume(scratch, &.{.pipe});
-            num_pipes += 1;
         },
         // These can interrupt tables
         .newline,
@@ -2929,16 +2926,15 @@ fn parseGFMTableDataRow(
         else => {},
     }
 
-    var header_cell_content: ArrayList([]const u8) = .empty;
+    var cell_content: ArrayList([]const u8) = .empty;
     for (0..util.safety.loop_bound) |_| {
         const maybe_content = try self.scanGFMTableCellContent(scratch);
         if (try self.it.consume(scratch, &.{.pipe})) |_| {
             const content = maybe_content orelse "";
-            try header_cell_content.append(scratch, content);
-            num_pipes += 1;
+            try cell_content.append(scratch, content);
         } else {
             if (maybe_content) |content| {
-                try header_cell_content.append(scratch, content);
+                try cell_content.append(scratch, content);
             }
             break;
         }
@@ -2946,20 +2942,17 @@ fn parseGFMTableDataRow(
 
     // Add empty cells up to expected number of cells
     const expected_num_cells = delimiter_row.numCells();
-    if (expected_num_cells > header_cell_content.items.len) {
-        const needed = expected_num_cells - header_cell_content.items.len;
+    if (expected_num_cells > cell_content.items.len) {
+        const needed = expected_num_cells - cell_content.items.len;
         for (0..needed) |_| {
-            try header_cell_content.append(scratch, "");
+            try cell_content.append(scratch, "");
         }
     }
 
     _ = try self.it.consume(scratch, &.{.newline}) orelse return null;
 
-    if (num_pipes == 0) // Must have at least one pipe
-        return null;
-
     var cells: ArrayList(*ast.Node) = .empty;
-    for (header_cell_content.items[0..expected_num_cells], 0..) |content, i| {
+    for (cell_content.items[0..expected_num_cells], 0..) |content, i| {
         const text_node = try alloc.create(ast.Node);
         text_node.* = .{
             .text = .{ .value = try alloc.dupeZ(u8, content) },

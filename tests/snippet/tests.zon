@@ -964,7 +964,6 @@
             \\</table>
             \\<p>bar</p>
         ,
-        .skip_reason = "not yet implemented",
     },
     .{
         // https://github.github.com/gfm/#example-203
