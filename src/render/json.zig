@@ -223,7 +223,7 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
             .table => |n| {
                 if (n.@"align") |a| {
                     try stringify.objectField("align");
-                    try stringify.write(a);
+                    try stringify.write(@tagName(a));
                 }
 
                 try renderChildren(stringify, n);
@@ -236,7 +236,7 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
 
                 if (n.@"align") |a| {
                     try stringify.objectField("align");
-                    try stringify.write(a);
+                    try stringify.write(@tagName(a));
                 }
 
                 try renderChildren(stringify, n);

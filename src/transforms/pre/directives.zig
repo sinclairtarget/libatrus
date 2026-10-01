@@ -542,7 +542,7 @@ fn transformListTable(
     const caption_node = try createCaptionNode(alloc, scratch, args);
 
     // create table
-    var table_align: ?[]const u8 = null;
+    var table_align: ?ast.Table.Alignment = null;
     var header_rows: std.DynamicBitSet = try .initEmpty(
         scratch,
         table_dimensions.rows,
@@ -550,7 +550,7 @@ fn transformListTable(
     for (options) |opt| {
         if (std.mem.eql(u8, opt.name, "align")) {
             if (opt.value) |v| {
-                table_align = v;
+                table_align = ast.Table.Alignment.fromString(v);
             }
         }
 
@@ -583,7 +583,7 @@ fn transformListTable(
     const table_node = try alloc.create(ast.Node);
     table_node.* = .{
         .table = .{
-            .@"align" = if (table_align) |a| try alloc.dupeZ(u8, a) else null,
+            .@"align" = table_align,
             .children = table_rows,
         },
     };

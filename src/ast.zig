@@ -826,46 +826,50 @@ pub const Math = struct {
 };
 
 pub const Table = struct {
+    pub const Alignment = enum {
+        left,
+        right,
+        center,
+
+        pub fn fromString(s: []const u8) Alignment {
+            if (std.mem.eql(u8, s, "right")) {
+                return .right;
+            } else if (std.mem.eql(u8, s, "center")) {
+                return .center;
+            }
+            return .left;
+        }
+    };
+
     children: []*Node,
-    @"align": ?[:0]const u8 = null,
+    @"align": ?Alignment = null,
 
     pub fn clone(self: Table, alloc: Allocator) !Table {
         return .{
             .children = try cloneChildren(alloc, self.children),
-            .@"align" = if (self.@"align") |@"align"|
-                try alloc.dupeZ(u8, @"align")
-            else
-                null,
         };
     }
 
     pub fn deinit(self: *Table, alloc: Allocator) void {
         freeChildren(alloc, self.children);
-
-        if (self.@"align") |a| alloc.free(a);
     }
 };
 
 pub const TableCell = struct {
     children: []*Node,
     header: bool,
-    @"align": ?[:0]const u8 = null,
+    @"align": ?Table.Alignment = null,
 
     pub fn clone(self: TableCell, alloc: Allocator) !TableCell {
         return .{
             .children = try cloneChildren(alloc, self.children),
             .header = self.header,
-            .@"align" = if (self.@"align") |@"align"|
-                try alloc.dupeZ(u8, @"align")
-            else
-                null,
+            .@"align" = self.@"align",
         };
     }
 
     pub fn deinit(self: *TableCell, alloc: Allocator) void {
         freeChildren(alloc, self.children);
-
-        if (self.@"align") |a| alloc.free(a);
     }
 };
 

@@ -2689,10 +2689,7 @@ fn parseGFMTable(
     // Retroactively update alignment of header cells
     for (header_row_node.table_row.children, 0..) |cell, i| {
         const alignment = delimiter_row.cell_alignments[i];
-        const alignment_str = switch (alignment) {
-            inline else => |t| @tagName(t),
-        };
-        cell.table_cell.@"align" = try alloc.dupeZ(u8, alignment_str);
+        cell.table_cell.@"align" = alignment;
     }
 
     while (try self.parseGFMTableDataRow(
@@ -2780,15 +2777,8 @@ fn parseGFMTableHeaderRow(
     return row_node;
 }
 
-// TODO: This should be moved to ast.zig.
-const TableCellAlignment = enum {
-    left,
-    right,
-    center,
-};
-
 const GFMTableDelimiterRow = struct {
-    cell_alignments: []TableCellAlignment,
+    cell_alignments: []ast.Table.Alignment,
 
     fn numCells(self: GFMTableDelimiterRow) usize {
         return self.cell_alignments.len;
@@ -2805,7 +2795,7 @@ fn parseGFMTableDelimiterRow(
         self.it.backtrack(checkpoint_index);
     };
 
-    var cell_alignments: ArrayList(TableCellAlignment) = .empty;
+    var cell_alignments: ArrayList(ast.Table.Alignment) = .empty;
 
     _ = try self.it.consumeWhitespaceUpTo(scratch, 3);
     _ = try self.it.consume(scratch, &.{.pipe});
@@ -2976,16 +2966,13 @@ fn parseGFMTableDataRow(
         };
 
         const alignment = delimiter_row.cell_alignments[i];
-        const alignment_str = switch (alignment) {
-            inline else => |t| @tagName(t),
-        };
 
         const cell_node = try alloc.create(ast.Node);
         cell_node.* = .{
             .table_cell = .{
                 .children = try alloc.dupe(*ast.Node, &.{text_node}),
                 .header = false,
-                .@"align" = try alloc.dupeZ(u8, alignment_str),
+                .@"align" = alignment,
             },
         };
         try cells.append(alloc, cell_node);

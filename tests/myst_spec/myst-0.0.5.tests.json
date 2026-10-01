@@ -19647,6 +19647,7 @@
     },
     "myst": "| header 1 | header 2 |\n|:---|---:|\n| 3 | 4 |",
     "html_indented": true,
+    "skip_html_reason": "no align attribute for table cells",
     "html": "<table>\n  <thead>\n    <tr>\n      <th>header 1</th>\n      <th>header 2</th>\n    </tr>\n  </thead>\n  <tbody>\n    <tr>\n      <td>3</td>\n      <td>4</td>\n    </tr>\n  </tbody>\n</table>\n"
   },
   {

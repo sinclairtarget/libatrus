@@ -684,8 +684,18 @@ fn renderNode(
             if (f.begin_line) {
                 try printIndent(out, options, f.depth);
             }
+
             const tag = if (n.header) "th" else "td";
-            try out.print("<{s}>", .{tag});
+            try out.print("<{s}", .{tag});
+            if (n.@"align") |a| {
+                if (a != .left) {
+                    _ = try out.writeAll(" align=\"");
+                    try printHTMLEscapedAttrValue(out, @tagName(a));
+                    _ = try out.writeAll("\"");
+                }
+            }
+            _ = try out.writeAll(">");
+
             for (n.children) |child| {
                 _ = try renderNode(
                     child,
@@ -1243,7 +1253,7 @@ fn renderTable(
     _ = try out.writeAll("<table");
     if (table.@"align") |a| {
         _ = try out.writeAll(" align=\"");
-        try printHTMLEscapedAttrValue(out, a);
+        try printHTMLEscapedAttrValue(out, @tagName(a));
         _ = try out.writeAll("\"");
     }
     _ = try out.writeAll(">\n");
