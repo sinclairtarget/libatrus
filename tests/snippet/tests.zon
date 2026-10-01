@@ -1220,7 +1220,7 @@
         ,
     },
     .{
-        // https://github.github.com/gfm/#example-204
+        // https://github.github.com/gfm/#example-205
         .name = "GFM table example 205",
         .mystmd =
             \\| abc | def |
@@ -1319,6 +1319,5 @@
             \\  </thead>
             \\</table>
         ,
-        .skip_reason = "not yet implemented",
     },
 }

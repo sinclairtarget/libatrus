@@ -1292,9 +1292,10 @@ fn renderTable(
         _ = try out.writeAll("</thead>\n");
     }
 
-    try printIndent(out, options, f.depth + 1);
-    _ = try out.writeAll("<tbody>\n");
     if (table.children.len > next_row_i) {
+        try printIndent(out, options, f.depth + 1);
+        _ = try out.writeAll("<tbody>\n");
+
         for (table.children[next_row_i..]) |child| {
             _ = try renderNode(
                 child,
@@ -1308,9 +1309,10 @@ fn renderTable(
             );
             _ = try out.writeAll("\n");
         }
+
+        try printIndent(out, options, f.depth + 1);
+        _ = try out.writeAll("</tbody>\n");
     }
-    try printIndent(out, options, f.depth + 1);
-    _ = try out.writeAll("</tbody>\n");
 
     try printIndent(out, options, f.depth);
     _ = try out.writeAll("</table>");
