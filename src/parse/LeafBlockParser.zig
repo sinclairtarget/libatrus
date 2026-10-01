@@ -2999,7 +2999,13 @@ fn scanGFMTableCellContent(self: *Self, scratch: Allocator) !?[]const u8 {
         return null;
     }
 
-    return trimmed;
+    // Strip backslashes escaping pipes. They have been respected.
+    // It's necessary to do this here because even though this text will later
+    // be fed to the InlineParser, that parser might not strip these escapes if
+    // they occur within an inline code block.
+    // This is required by the GFM table spec. See example 200.
+    const stripped = try escape.stripOnly(scratch, trimmed, '|');
+    return stripped;
 }
 
 fn parseBlankLine(self: *Self, scratch: Allocator) !bool {

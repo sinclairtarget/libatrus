@@ -78,6 +78,19 @@ pub fn strip(alloc: Allocator, s: []const u8) ![]const u8 {
     return try alloc.realloc(copy, dest_index);
 }
 
+/// Strips backslash escapes but only for a particular character.
+///
+/// Returns a newly allocated string owned by the caller.
+pub fn stripOnly(
+    alloc: Allocator,
+    s: []const u8,
+    comptime escaped: u8,
+) ![]const u8 {
+    const replacement: []const u8 = &[_]u8{escaped};
+    const needle = "\\" ++ replacement;
+    return try std.mem.replaceOwned(u8, alloc, s, needle, replacement);
+}
+
 // ----------------------------------------------------------------------------
 // Unit Tests
 // ----------------------------------------------------------------------------
@@ -105,4 +118,12 @@ test "terminating backslash not removed" {
     defer testing.allocator.free(result);
 
     try testing.expectEqualStrings("foo\\", result);
+}
+
+test "escape only pipes" {
+    const value = "\\*my\\* \\| foo";
+    const result = try stripOnly(testing.allocator, value, '|');
+    defer testing.allocator.free(result);
+
+    try testing.expectEqualStrings("\\*my\\* | foo", result);
 }

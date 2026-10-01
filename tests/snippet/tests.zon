@@ -549,7 +549,6 @@
             \\  </tbody>
             \\</table>
         ,
-        .skip_reason = "not yet implemented",
     },
     .{
         // https://github.github.com/gfm/#example-201
