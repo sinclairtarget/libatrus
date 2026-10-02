@@ -93,6 +93,7 @@ const ContainerBlock = struct {
         footnote: struct {
             identifier: []const u8,
             label: []const u8,
+            soft_closed: bool = false,
         },
     },
 
@@ -588,12 +589,13 @@ fn next(self: *Self, scratch: Allocator) TokenError!?BlockToken {
             // Top container has not been established. It needs to be closed.
             const top_container = self.top();
             switch (top_container.variant) {
-                .root, .bullet_list, .ordered_list, .footnote => {
+                .root, .bullet_list, .ordered_list => {
                     return null;
                 },
                 inline .blockquote,
                 .bullet_list_item,
                 .ordered_list_item,
+                .footnote,
                 => |*payload| {
                     // Soft close.
                     if (!payload.soft_closed) {
@@ -620,7 +622,7 @@ fn next(self: *Self, scratch: Allocator) TokenError!?BlockToken {
             const checkpoint_index = self.it.checkpoint();
             const maybe_container = blk: {
                 switch (top_container.variant) {
-                    .root, .bullet_list, .ordered_list, .footnote => {
+                    .root, .bullet_list, .ordered_list => {
                         break :blk try top_container.openChildContainer(
                             scratch,
                             self.it,
@@ -628,9 +630,9 @@ fn next(self: *Self, scratch: Allocator) TokenError!?BlockToken {
                             self.line_num,
                         );
                     },
-                    .blockquote => |payload| {
+                    inline .blockquote, .footnote => |payload| {
                         // We can rely on there being at least the root
-                        // container and the blockquote container.
+                        // container and the current top container.
                         std.debug.assert(self.container_stack.items.len >= 2);
 
                         if (payload.soft_closed) {
@@ -697,10 +699,11 @@ fn next(self: *Self, scratch: Allocator) TokenError!?BlockToken {
 
             if (maybe_container) |container| {
                 switch (top_container.variant) {
-                    .root, .bullet_list, .ordered_list, .footnote => {},
+                    .root, .bullet_list, .ordered_list => {},
                     inline .blockquote,
                     .bullet_list_item,
                     .ordered_list_item,
+                    .footnote,
                     => |payload| {
                         if (payload.soft_closed) {
                             // Time to hard-close this container. We found
@@ -734,10 +737,11 @@ fn next(self: *Self, scratch: Allocator) TokenError!?BlockToken {
         for (0..self.container_stack.items.len) |i| {
             const container = &self.container_stack.items[i];
             switch (container.variant) {
-                .root, .bullet_list, .ordered_list, .footnote => {},
+                .root, .bullet_list, .ordered_list => {},
                 inline .blockquote,
                 .bullet_list_item,
                 .ordered_list_item,
+                .footnote,
                 => |*payload| {
                     payload.soft_closed = false;
                 },

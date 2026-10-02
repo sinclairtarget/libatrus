@@ -1319,4 +1319,62 @@
             \\</table>
         ,
     },
+    .{
+        .name = "footnote definition paragraph indentation",
+        .mystmd =
+            \\This is a well-supported assertion.[^note]
+            \\
+            \\[^note]: This is a footnote containing multiple paragraphs
+            \\that go on for multiple lines.
+            \\
+            \\    To be considered part of the footnote, the first line of the
+            \\paragraph has to be indented. But subsequent lines need not be.
+        ,
+        .json_pre =
+            \\{
+            \\  "type": "root",
+            \\  "children": [
+            \\    {
+            \\      "type": "paragraph",
+            \\      "children": [
+            \\        {
+            \\          "type": "text",
+            \\          "value": "This is a well-supported assertion."
+            \\        },
+            \\        {
+            \\          "type": "footnoteReference",
+            \\          "identifier": "note",
+            \\          "label": "note"
+            \\        }
+            \\      ]
+            \\    },
+            \\    {
+            \\      "type": "footnoteDefinition",
+            \\      "identifier": "note",
+            \\      "label": "note",
+            \\      "children": [
+            \\        {
+            \\          "type": "paragraph",
+            \\          "children": [
+            \\            {
+            \\              "type": "text",
+            \\              "value": "This is a footnote containing multiple paragraphs\nthat go on for multiple lines."
+            \\            }
+            \\          ]
+            \\        },
+            \\        {
+            \\          "type": "paragraph",
+            \\          "children": [
+            \\            {
+            \\              "type": "text",
+            \\              "value": "To be considered part of the footnote, the first line of the\nparagraph has to be indented. But subsequent lines need not be."
+            \\            }
+            \\          ]
+            \\        }
+            \\      ]
+            \\    }
+            \\  ]
+            \\}
+        ,
+    },
 }

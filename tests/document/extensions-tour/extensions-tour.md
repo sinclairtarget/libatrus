@@ -70,7 +70,7 @@ A footnote definition looks a little bit like a link definition except with a
 caret before the label:
 
 [^my-footnote]: This is my footnote! It can contain block and *inline markup*
-    and it goes on for as many lines as I'd like.
+and it goes on for as many lines as I'd like.
 
     If I want to begin a new block within the footnote though, I have to
     indent it by at least four spaces.
