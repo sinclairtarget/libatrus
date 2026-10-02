@@ -9,4 +9,9 @@
         .json_path = "surprising-features/surprising-features.json",
         .html_path = "surprising-features/surprising-features.html",
     },
+    .{
+        .mystmd_path = "extensions-tour/extensions-tour.md",
+        .json_path = "extensions-tour/extensions-tour.json",
+        .html_path = "extensions-tour/extensions-tour.html",
+    },
 }

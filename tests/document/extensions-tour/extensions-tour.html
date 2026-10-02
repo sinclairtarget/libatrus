@@ -1,0 +1,175 @@
+<h1>Markdown Extensions</h1>
+<p>MyST Markdown includes support for a few features that, while not part of
+CommonMark, are often implemented in Markdown parsers.</p>
+<h2>Github-Flavored Markdown Tables</h2>
+<p>In MyST Markdown, you can create a table using a directive. But you can also
+create a table the same way you might do so on Github, using the
+Github-Flavored Markdown syntax for tables.</p>
+<p>Here is an example of a table created using this syntax:</p>
+<table>
+  <thead>
+    <tr>
+      <th>Student</th>
+      <th>Height</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>John</td>
+      <td>5'9&quot;</td>
+    </tr>
+    <tr>
+      <td>Sarah</td>
+      <td>5'6&quot;</td>
+    </tr>
+    <tr>
+      <td>Sally</td>
+      <td>5'2&quot;</td>
+    </tr>
+    <tr>
+      <td>Bill</td>
+      <td>6'2&quot;</td>
+    </tr>
+  </tbody>
+</table>
+<p>The divider row with all the hyphens cannot be omitted. It does not matter how
+many hyphens you put in each column in that row as long as there is at least
+one in each column.</p>
+<p>The pipe characters on the outside of the table are not strictly necessary.
+This is still a valid table:</p>
+<table>
+  <thead>
+    <tr>
+      <th>Student</th>
+      <th>Height</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>John</td>
+      <td>5'9&quot;</td>
+    </tr>
+    <tr>
+      <td>Sarah</td>
+      <td>5'6&quot;</td>
+    </tr>
+    <tr>
+      <td>Sally</td>
+      <td>5'2&quot;</td>
+    </tr>
+    <tr>
+      <td>Bill</td>
+      <td>6'2&quot;</td>
+    </tr>
+  </tbody>
+</table>
+<p>By default, the content of all cells is left-aligned. To change the alignment
+for a given column, you can include a colon either at the beginning or end of
+the line of hyphens in the divider row for that column. A single colon at the
+end means to right-align, while a single colon at the beginning means to
+left-align. A colon at both the beginning and the end means to center-align.</p>
+<p>In the following table, the &quot;Height&quot; column is center-aligned while the &quot;Age&quot;
+column is right-aligned.</p>
+<table>
+  <thead>
+    <tr>
+      <th>Student</th>
+      <th align="center">Height</th>
+      <th align="right">Age</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>John</td>
+      <td align="center">5'9&quot;</td>
+      <td align="right">17</td>
+    </tr>
+    <tr>
+      <td>Sarah</td>
+      <td align="center">5'6&quot;</td>
+      <td align="right">18</td>
+    </tr>
+    <tr>
+      <td>Sally</td>
+      <td align="center">5'2&quot;</td>
+      <td align="right">17</td>
+    </tr>
+    <tr>
+      <td>Bill</td>
+      <td align="center">6'2&quot;</td>
+      <td align="right">17</td>
+    </tr>
+  </tbody>
+</table>
+<p>Finally, table cells can include inline content of any kind (e.g. emphasis,
+links, or inline HTML):</p>
+<table>
+  <thead>
+    <tr>
+      <th>Student</th>
+      <th align="center">Height</th>
+      <th align="right">Age</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><em>John</em></td>
+      <td align="center">5'9&quot;</td>
+      <td align="right">17</td>
+    </tr>
+    <tr>
+      <td>Sarah</td>
+      <td align="center">5'6&quot;</td>
+      <td align="right">18</td>
+    </tr>
+    <tr>
+      <td><a href="https://sally.com">Sally</a></td>
+      <td align="center">5'2&quot;</td>
+      <td align="right">17</td>
+    </tr>
+    <tr>
+      <td><span class="name">Bill</span></td>
+      <td align="center">6'2&quot;</td>
+      <td align="right">17</td>
+    </tr>
+  </tbody>
+</table>
+<h2>Pandoc Footnotes</h2>
+<p>Using plain CommonMark, there's no easy method to add footnotes to a document.
+You might be able to get away with creating footnotes using inline links, but
+you'd have to manually number all the footnotes and they wouldn't use
+superscript for the numbers.</p>
+<p>MyST Markdown supports creating footnotes using the Pandoc syntax for
+footnotes. To create a footnote, you need to define the footnote and then
+reference it using the same label.</p>
+<p>A footnote definition looks a little bit like a link definition except with a
+caret before the label:</p>
+<p>To reference the definition, you simply use the label where you want the
+superscript number to appear.<sup><a href="#m-fn-my-footnote" id="m-fnref-my-footnote" data-footnote-ref aria-describedby="footnote-label">1</a></sup></p>
+<p>The label <code>my-footnote</code> is just a placeholder and will never appear in the
+final rendered document. Instead, footnotes will be assigned numbers based on
+the order in which they are first referenced in the document. It does not
+matter where the footnote is defined. (And you can even place the definition
+after the reference if you want to. It's quite natural to put all the
+definitions at the very bottom of the document.)</p>
+<p>If you want to force a footnote to use a certain number, you can do that by
+using the number as the label.<sup><a href="#m-fn-4" id="m-fnref-4" data-footnote-ref aria-describedby="footnote-label">4</a></sup></p>
+<section data-footnotes class="footnotes">
+  <h2 id="footnote-label" class="sr-only">Footnotes</h2>
+  <ol>
+    <li id="m-fn-my-footnote">
+      <p>This is my footnote! It can contain block and <em>inline markup</em>
+and it goes on for as many lines as I'd like.</p>
+      <p>If I want to begin a new block within the footnote though, I have to
+indent it by at least four spaces.</p>
+      <pre><code class="language-python">def foo():
+    pass
+      </code></pre>
+      <p>This is now the last line of the footnote! <a href="#m-fnref-my-footnote" data-footnote-backref class="data-footnote-backref" aria-label="Back to content">↩</a></p>
+    </li>
+    <li id="m-fn-4">
+      <p>This is footnote four, even though there are only two footnotes in this
+document! <a href="#m-fnref-4" data-footnote-backref class="data-footnote-backref" aria-label="Back to content">↩</a></p>
+    </li>
+  </ol>
+</section>
