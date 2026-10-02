@@ -1,0 +1,159 @@
+# MyST Markdown
+MyST is a superset of CommonMark. Everything you can do in CommonMark Markdown
+you can do in MyST. MyST just adds some new things on top.
+
+You can already do many, many things in CommonMark. So why add more on top of
+it?
+
+## Why MyST?
+The problem with CommonMark is that it cannot easily be extended.
+
+Not to get all philosophical, but consider this question: "What is a document?"
+I think you'll agree that most of the time a document is a piece of writing
+with paragraphs, headings, perhaps some emphasized text and some quotations.
+CommonMark covers this kind of document well; these constructs are all
+represented in the CommonMark document model. But sometimes we might want a
+document to include things that aren't anticipated by CommonMark's document
+model.
+
+The way this has typically been handled is by extending Markdown's syntax
+beyond what is described by the CommonMark specification. Pandoc-style
+footnotes are a great example. CommonMark's document model doesn't have any
+concept of a footnote, but obviously this is a useful thing to want to include
+in a document. So, to support footnotes, we can add new syntax to Markdown for
+defining and referencing footnotes.
+
+This works, but introducing new syntax is no small feat. Parsing Markdown
+documents is complicated and any new syntax could interfere with existing
+syntax unless you think about it carefully. One way to avoid conflicts and
+abiguity is to use new characters without existing meaning in Markdown (like
+the caret for footnotes), but this is a short-term solution since there are
+only so many of these unused characters.
+
+We should expect that over time we will want to model new things in our
+documents. In 2026, for example, we might want some way of signalling that a
+block of text is AI-written rather than human-written. There are all sorts of
+useful presentation decisions we could make when it comes time to render an
+AI-written text block—maybe it's a different color, maybe it's blurred until
+someone clicks it—but first we'd have to have "AI text block" as a concept in
+our document model. This isn't something we could have anticipated wanting in a
+document before. If the only way to add something new like this to Markdown is
+to extend Markdown's syntax, that's a pain.
+
+MyST does two clever things to make this situation better.
+
+The first thing MyST does is introduce two _generic_ syntactic constructs that
+can be used to represent anything we might want to include in our document
+model, now or in the future: directives and roles. Directives and roles work
+similarly but differ in that a directive is a block-level construct while a
+role is an inline construct (meaning it can appear within a paragraph). When
+you use either a directive or a role in a MyST Markdown document, you always
+provide a directive or role name. The syntax for the directive or role is the
+same, but the _name_ is what indicates the document model concept that you are
+trying to represent.
+
+The second thing MyST does is clearly delineate the syntactic parsing of a
+Markdown document from the later semantic handling of the document model. A
+parser for MyST Markdown reads a file and produces a MyST **abstract syntax
+tree** or AST. Initially, this AST is in what's known as "PRE" form, meaning it
+represents only the document model as can be gleaned from the syntax of the
+MyST Markdown document. After further processing, the abstract syntax tree
+switches to "POST" form, which represents the document model in more detail,
+accounting for the semantic meaning of the directives and roles that appeared
+in the "PRE" form of the AST.
+
+If we want to add something new to MyST Markdown, we can choose to model that
+thing as either a new kind of directive or new kind of role, then give it
+meaning by adding transformations to the AST between its "PRE" stage and its
+"POST" stage that operate on it. All of the gnarly Markdown parsing stuff
+happens before the "PRE" form and is none of our business.
+
+### An Example
+This is all a bit nebulous, so let's go back to our AI text block idea. We want
+to add this notion to Markdown's document model with minimal effort. MyST has
+made our job easier because, rather than having to concern ourselves with
+Markdown's complicated syntax rules, we can just add a new directive. 
+
+A MyST directive looks like this. It's a bit like a CommonMark code block but
+with curly braces:
+
+```{my-directive-name}
+Some content goes here. 
+
+It's a bit like a code block, but it can mean anything!
+```
+
+Adapting this general form to our AI text block use-case, we might write a
+block of AI text like this:
+
+```{llm-output}
+It's not just that this. It's also that that!
+```
+
+We've picked `llm-output` as the name for our directive. Now, in the AST, we
+know we have an AI-generated text block anywhere we see our `llm-output`
+directive. If we want to, we could implement a transform that takes
+`llm-output` directive nodes in the AST and turns them into blockquotes. Maybe
+we could even run the contents through some logic that replaces annoying
+chatbot sentence formulations with normal ones. Really, we can do anything we
+want with the directive node, as long as we can eventually map it back to
+something MyST knows how to render.
+
+A role, by the way, works very similarly, though the syntax is different. If we
+wanted to, we could create an `llm-output` role as well, which would allow us
+to include LLM output inline. That role would look like this: {llm-output}`This
+was written by a bot.` A role can appear right in the middle of a paragraph,
+unlike a directive.
+
+## What Exactly is MyST?
+MyST is primarily [a specification](https://mystmd.org/spec). It is also a
+suite of tools built by the Project Jupyter team for publishing scientific
+documents written in MyST Markdown. Those tools, which include among other
+things a static site generator, support more features than are described in
+the specification. The MyST CLI tool published by Project Jupyter is an
+application unto itself and not just a MyST parser.
+
+The MyST specification prescribes how a MyST document should be parsed into the
+MyST AST. It only covers how the document should be parsed into the "PRE" form
+of the AST, because what happens between the "PRE" and "POST" form depends on
+your application and the directives/roles you implement.
+
+What can appear in the "POST" form of the AST isn't a complete free-for-all
+though. The specification also includes an index of node types that are allowed
+in a MyST AST. This constrains the universe of possible inputs to renderers
+(which convert the AST to HTML or some other format).
+
+Finally, the MyST specification incorporates several built-in directives and
+roles that compliant parsers must support.
+
+## Tradeoffs
+If we look again at our LLM output block from earlier, we might notice
+something:
+
+```{llm-output}
+It's not just that this. It's also that that!
+```
+
+The whole point of Mark*down* in the first place is to get away from explicitly
+marking up our text. But that's essentially what we're doing here—we've marked
+the beginning of the element and the end of the element, and then given it a
+tag. One could argue that in pursuit of extensibility... with all this mark up
+we've added... we've just reinvented XML, also known as eXtensible Markup
+Language.
+
+What makes MyST different is that when you don't need something special you can
+just use regular Markdown. Most of the document will be easy to read and write.
+It's only when you need something regular Markdown can't do that you can reach
+for MyST's more mark-up-y syntax. MyST is a compromise between Markdown's
+free-flowing, readable syntax and something as structured and flexible as XML.
+
+A major drawback of MyST though is that a MyST document is not as universally
+portable as a CommonMark document. This is a natural consequence of its
+extensibility. One application may read MyST files and implement directives and
+roles that another application won't know how to handle. It's nice that the
+other application won't crash or parse unpredictably—the MyST documents will
+still be well-formed according to the MyST spec—but unrecognized directives and
+roles won't produce anything particularly useful.
+
+This suggests that MyST is best used over regular Markdown only when you need
+its power.

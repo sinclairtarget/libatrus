@@ -1,0 +1,407 @@
+{
+  "type": "root",
+  "children": [
+    {
+      "type": "block",
+      "children": [
+        {
+          "type": "heading",
+          "depth": 1,
+          "children": [
+            {
+              "type": "text",
+              "value": "MyST Markdown"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "MyST is a superset of CommonMark. Everything you can do in CommonMark Markdown\nyou can do in MyST. MyST just adds some new things on top."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "You can already do many, many things in CommonMark. So why add more on top of\nit?"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "depth": 2,
+          "children": [
+            {
+              "type": "text",
+              "value": "Why MyST?"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "The problem with CommonMark is that it cannot easily be extended."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "Not to get all philosophical, but consider this question: \"What is a document?\"\nI think you'll agree that most of the time a document is a piece of writing\nwith paragraphs, headings, perhaps some emphasized text and some quotations.\nCommonMark covers this kind of document well; these constructs are all\nrepresented in the CommonMark document model. But sometimes we might want a\ndocument to include things that aren't anticipated by CommonMark's document\nmodel."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "The way this has typically been handled is by extending Markdown's syntax\nbeyond what is described by the CommonMark specification. Pandoc-style\nfootnotes are a great example. CommonMark's document model doesn't have any\nconcept of a footnote, but obviously this is a useful thing to want to include\nin a document. So, to support footnotes, we can add new syntax to Markdown for\ndefining and referencing footnotes."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "This works, but introducing new syntax is no small feat. Parsing Markdown\ndocuments is complicated and any new syntax could interfere with existing\nsyntax unless you think about it carefully. One way to avoid conflicts and\nabiguity is to use new characters without existing meaning in Markdown (like\nthe caret for footnotes), but this is a short-term solution since there are\nonly so many of these unused characters."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "We should expect that over time we will want to model new things in our\ndocuments. In 2026, for example, we might want some way of signalling that a\nblock of text is AI-written rather than human-written. There are all sorts of\nuseful presentation decisions we could make when it comes time to render an\nAI-written text block—maybe it's a different color, maybe it's blurred until\nsomeone clicks it—but first we'd have to have \"AI text block\" as a concept in\nour document model. This isn't something we could have anticipated wanting in a\ndocument before. If the only way to add something new like this to Markdown is\nto extend Markdown's syntax, that's a pain."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "MyST does two clever things to make this situation better."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "The first thing MyST does is introduce two "
+            },
+            {
+              "type": "emphasis",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "generic"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "value": " syntactic constructs that\ncan be used to represent anything we might want to include in our document\nmodel, now or in the future: directives and roles. Directives and roles work\nsimilarly but differ in that a directive is a block-level construct while a\nrole is an inline construct (meaning it can appear within a paragraph). When\nyou use either a directive or a role in a MyST Markdown document, you always\nprovide a directive or role name. The syntax for the directive or role is the\nsame, but the "
+            },
+            {
+              "type": "emphasis",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "name"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "value": " is what indicates the document model concept that you are\ntrying to represent."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "The second thing MyST does is clearly delineate the syntactic parsing of a\nMarkdown document from the later semantic handling of the document model. A\nparser for MyST Markdown reads a file and produces a MyST "
+            },
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "abstract syntax\ntree"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "value": " or AST. Initially, this AST is in what's known as \"PRE\" form, meaning it\nrepresents only the document model as can be gleaned from the syntax of the\nMyST Markdown document. After further processing, the abstract syntax tree\nswitches to \"POST\" form, which represents the document model in more detail,\naccounting for the semantic meaning of the directives and roles that appeared\nin the \"PRE\" form of the AST."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "If we want to add something new to MyST Markdown, we can choose to model that\nthing as either a new kind of directive or new kind of role, then give it\nmeaning by adding transformations to the AST between its \"PRE\" stage and its\n\"POST\" stage that operate on it. All of the gnarly Markdown parsing stuff\nhappens before the \"PRE\" form and is none of our business."
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "depth": 3,
+          "children": [
+            {
+              "type": "text",
+              "value": "An Example"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "This is all a bit nebulous, so let's go back to our AI text block idea. We want\nto add this notion to Markdown's document model with minimal effort. MyST has\nmade our job easier because, rather than having to concern ourselves with\nMarkdown's complicated syntax rules, we can just add a new directive."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "A MyST directive looks like this. It's a bit like a CommonMark code block but\nwith curly braces:"
+            }
+          ]
+        },
+        {
+          "type": "mystDirective",
+          "name": "my-directive-name",
+          "value": "Some content goes here. \n\nIt's a bit like a code block, but it can mean anything!"
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "Adapting this general form to our AI text block use-case, we might write a\nblock of AI text like this:"
+            }
+          ]
+        },
+        {
+          "type": "mystDirective",
+          "name": "llm-output",
+          "value": "It's not just that this. It's also that that!"
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "We've picked "
+            },
+            {
+              "type": "inlineCode",
+              "value": "llm-output"
+            },
+            {
+              "type": "text",
+              "value": " as the name for our directive. Now, in the AST, we\nknow we have an AI-generated text block anywhere we see our "
+            },
+            {
+              "type": "inlineCode",
+              "value": "llm-output"
+            },
+            {
+              "type": "text",
+              "value": "\ndirective. If we want to, we could implement a transform that takes\n"
+            },
+            {
+              "type": "inlineCode",
+              "value": "llm-output"
+            },
+            {
+              "type": "text",
+              "value": " directive nodes in the AST and turns them into blockquotes. Maybe\nwe could even run the contents through some logic that replaces annoying\nchatbot sentence formulations with normal ones. Really, we can do anything we\nwant with the directive node, as long as we can eventually map it back to\nsomething MyST knows how to render."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "A role, by the way, works very similarly, though the syntax is different. If we\nwanted to, we could create an "
+            },
+            {
+              "type": "inlineCode",
+              "value": "llm-output"
+            },
+            {
+              "type": "text",
+              "value": " role as well, which would allow us\nto include LLM output inline. That role would look like this: "
+            },
+            {
+              "type": "mystRole",
+              "name": "llm-output",
+              "value": "This was written by a bot."
+            },
+            {
+              "type": "text",
+              "value": " A role can appear right in the middle of a paragraph,\nunlike a directive."
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "depth": 2,
+          "children": [
+            {
+              "type": "text",
+              "value": "What Exactly is MyST?"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "MyST is primarily "
+            },
+            {
+              "type": "link",
+              "url": "https://mystmd.org/spec",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "a specification"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "value": ". It is also a\nsuite of tools built by the Project Jupyter team for publishing scientific\ndocuments written in MyST Markdown. Those tools, which include among other\nthings a static site generator, support more features than are described in\nthe specification. The MyST CLI tool published by Project Jupyter is an\napplication unto itself and not just a MyST parser."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "The MyST specification prescribes how a MyST document should be parsed into the\nMyST AST. It only covers how the document should be parsed into the \"PRE\" form\nof the AST, because what happens between the \"PRE\" and \"POST\" form depends on\nyour application and the directives/roles you implement."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "What can appear in the \"POST\" form of the AST isn't a complete free-for-all\nthough. The specification also includes an index of node types that are allowed\nin a MyST AST. This constrains the universe of possible inputs to renderers\n(which convert the AST to HTML or some other format)."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "Finally, the MyST specification incorporates several built-in directives and\nroles that compliant parsers must support."
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "depth": 2,
+          "children": [
+            {
+              "type": "text",
+              "value": "Tradeoffs"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "If we look again at our LLM output block from earlier, we might notice\nsomething:"
+            }
+          ]
+        },
+        {
+          "type": "mystDirective",
+          "name": "llm-output",
+          "value": "It's not just that this. It's also that that!"
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "The whole point of Mark"
+            },
+            {
+              "type": "emphasis",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "down"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "value": " in the first place is to get away from explicitly\nmarking up our text. But that's essentially what we're doing here—we've marked\nthe beginning of the element and the end of the element, and then given it a\ntag. One could argue that in pursuit of extensibility... with all this mark up\nwe've added... we've just reinvented XML, also known as eXtensible Markup\nLanguage."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "What makes MyST different is that when you don't need something special you can\njust use regular Markdown. Most of the document will be easy to read and write.\nIt's only when you need something regular Markdown can't do that you can reach\nfor MyST's more mark-up-y syntax. MyST is a compromise between Markdown's\nfree-flowing, readable syntax and something as structured and flexible as XML."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "A major drawback of MyST though is that a MyST document is not as universally\nportable as a CommonMark document. This is a natural consequence of its\nextensibility. One application may read MyST files and implement directives and\nroles that another application won't know how to handle. It's nice that the\nother application won't crash or parse unpredictably—the MyST documents will\nstill be well-formed according to the MyST spec—but unrecognized directives and\nroles won't produce anything particularly useful."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "This suggests that MyST is best used over regular Markdown only when you need\nits power."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

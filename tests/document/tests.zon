@@ -17,4 +17,10 @@
         .json_post_path = "extensions-tour/extensions-tour.post.json",
         .html_path = "extensions-tour/extensions-tour.html",
     },
+    .{
+        .mystmd_path = "myst-rationale/myst-rationale.md",
+        .json_pre_path = "myst-rationale/myst-rationale.pre.json",
+        .json_post_path = "myst-rationale/myst-rationale.post.json",
+        .html_path = "myst-rationale/myst-rationale.html",
+    },
 }
