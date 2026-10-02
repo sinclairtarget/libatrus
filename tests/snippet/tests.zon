@@ -1377,4 +1377,102 @@
             \\}
         ,
     },
+    .{
+        .name = "roles - valid role names",
+        .mystmd =
+            \\{foobar}`bim`
+            \\
+            \\{-foo-bar-}`bim`
+            \\
+            \\{_foo_bar_}`bim`
+            \\
+            \\{f00bar}`bim`
+        ,
+        .json_pre =
+            \\{
+            \\  "type": "root",
+            \\  "children": [
+            \\    {
+            \\      "type": "paragraph",
+            \\      "children": [
+            \\        {
+            \\          "type": "mystRole",
+            \\          "name": "foobar",
+            \\          "value": "bim"
+            \\        }
+            \\      ]
+            \\    },
+            \\    {
+            \\      "type": "paragraph",
+            \\      "children": [
+            \\        {
+            \\          "type": "mystRole",
+            \\          "name": "-foo-bar-",
+            \\          "value": "bim"
+            \\        }
+            \\      ]
+            \\    },
+            \\    {
+            \\      "type": "paragraph",
+            \\      "children": [
+            \\        {
+            \\          "type": "mystRole",
+            \\          "name": "_foo_bar_",
+            \\          "value": "bim"
+            \\        }
+            \\      ]
+            \\    },
+            \\    {
+            \\      "type": "paragraph",
+            \\      "children": [
+            \\        {
+            \\          "type": "mystRole",
+            \\          "name": "f00bar",
+            \\          "value": "bim"
+            \\        }
+            \\      ]
+            \\    }
+            \\  ]
+            \\}
+        ,
+    },
+    .{
+        .name = "directives - valid directive names",
+        .mystmd =
+            \\```{foobar}
+            \\```
+            \\
+            \\```{-foo-bar-}
+            \\```
+            \\
+            \\```{_foo_bar_}
+            \\```
+            \\
+            \\```{f00bar}
+            \\```
+        ,
+        .json_pre =
+            \\{
+            \\  "type": "root",
+            \\  "children": [
+            \\    {
+            \\      "type": "mystDirective",
+            \\      "name": "foobar"
+            \\    },
+            \\    {
+            \\      "type": "mystDirective",
+            \\      "name": "-foo-bar-"
+            \\    },
+            \\    {
+            \\      "type": "mystDirective",
+            \\      "name": "_foo_bar_"
+            \\    },
+            \\    {
+            \\      "type": "mystDirective",
+            \\      "name": "f00bar"
+            \\    }
+            \\  ]
+            \\}
+        ,
+    },
 }

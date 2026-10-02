@@ -2377,7 +2377,7 @@ fn parseMySTDirective(
     var running_text = Io.Writer.Allocating.init(scratch);
     while (try self.it.peek(scratch)) |token| {
         switch (token.token_type) {
-            .text, .space, .tab => {
+            .text, .space, .tab, .hyphen => {
                 _ = try self.it.consume(scratch, &.{token.token_type});
                 const v = try resolveText(scratch, token);
                 _ = try running_text.writer.write(v);

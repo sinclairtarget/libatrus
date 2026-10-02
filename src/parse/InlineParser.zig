@@ -2921,7 +2921,7 @@ fn parseFootnoteReference(
             error.InvalidIdentifier => {
                 logger.warn(
                     "Ignored reference to footnote \"{s}\"; identifier was " ++
-                    "invalid.",
+                        "invalid.",
                     .{label},
                 );
                 break :blk null;
@@ -3660,7 +3660,13 @@ fn parseMySTRole(
     var running_text = Io.Writer.Allocating.init(scratch);
     while (try self.peek(scratch)) |token| {
         switch (token.token_type) {
-            .text, .whitespace => {
+            .text,
+            .whitespace,
+            .hyphen,
+            .l_delim_underscore,
+            .r_delim_underscore,
+            .lr_delim_underscore,
+            => {
                 _ = try self.consume(scratch, &.{token.token_type});
                 _ = try running_text.writer.write(emitInlineLiteral(token));
             },
