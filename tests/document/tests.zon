@@ -1,8 +1,8 @@
 .{
     .{
-        .mystmd_path = "tour/tour.md",
-        .json_path = "tour/tour.json",
-        .html_path = "tour/tour.html",
+        .mystmd_path = "cmark-tour/cmark-tour.md",
+        .json_path = "cmark-tour/cmark-tour.json",
+        .html_path = "cmark-tour/cmark-tour.html",
     },
     .{
         .mystmd_path = "surprising-features/surprising-features.md",
