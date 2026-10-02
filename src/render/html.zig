@@ -1104,16 +1104,16 @@ fn renderFigure(
     }
 
     const n = node.container;
-    _ = try out.writeAll("<figure ");
+    _ = try out.writeAll("<figure");
     if (n.identifier) |identifier| {
-        _ = try out.writeAll("id=\"");
+        _ = try out.writeAll(" id=\"");
         try printHTMLEscapedAttrValue(out, identifier);
-        _ = try out.writeAll("\" ");
+        _ = try out.writeAll("\"");
     }
 
     const needs_class = n.enumerator != null or n.class != null;
     if (needs_class) {
-        _ = try out.writeAll("class=\"");
+        _ = try out.writeAll(" class=\"");
 
         if (n.enumerator) |_| {
             _ = try out.writeAll("numbered");
