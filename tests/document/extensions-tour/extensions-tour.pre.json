@@ -1,0 +1,896 @@
+{
+  "type": "root",
+  "children": [
+    {
+      "type": "heading",
+      "depth": 1,
+      "children": [
+        {
+          "type": "text",
+          "value": "Markdown Extensions"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "MyST Markdown includes support for a few features that, while not part of\nCommonMark, are often implemented in Markdown parsers."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "depth": 2,
+      "children": [
+        {
+          "type": "text",
+          "value": "Github-Flavored Markdown Tables"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "In MyST Markdown, you can create a table using a directive. But you can also\ncreate a table the same way you might do so on Github, using the\nGithub-Flavored Markdown syntax for tables."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Here is an example of a table created using this syntax:"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "children": [
+        {
+          "type": "tableRow",
+          "children": [
+            {
+              "type": "tableCell",
+              "header": true,
+              "align": "left",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Student"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "header": true,
+              "align": "left",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Height"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "tableRow",
+          "children": [
+            {
+              "type": "tableCell",
+              "align": "left",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "John"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "align": "left",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "5'9\""
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "tableRow",
+          "children": [
+            {
+              "type": "tableCell",
+              "align": "left",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Sarah"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "align": "left",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "5'6\""
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "tableRow",
+          "children": [
+            {
+              "type": "tableCell",
+              "align": "left",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Sally"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "align": "left",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "5'2\""
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "tableRow",
+          "children": [
+            {
+              "type": "tableCell",
+              "align": "left",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Bill"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "align": "left",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "6'2\""
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "The divider row with all the hyphens cannot be omitted. It does not matter how\nmany hyphens you put in each column in that row as long as there is at least\none in each column."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "The pipe characters on the outside of the table are not strictly necessary.\nThis is still a valid table:"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "children": [
+        {
+          "type": "tableRow",
+          "children": [
+            {
+              "type": "tableCell",
+              "header": true,
+              "align": "left",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Student"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "header": true,
+              "align": "left",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Height"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "tableRow",
+          "children": [
+            {
+              "type": "tableCell",
+              "align": "left",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "John"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "align": "left",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "5'9\""
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "tableRow",
+          "children": [
+            {
+              "type": "tableCell",
+              "align": "left",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Sarah"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "align": "left",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "5'6\""
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "tableRow",
+          "children": [
+            {
+              "type": "tableCell",
+              "align": "left",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Sally"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "align": "left",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "5'2\""
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "tableRow",
+          "children": [
+            {
+              "type": "tableCell",
+              "align": "left",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Bill"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "align": "left",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "6'2\""
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "By default, the content of all cells is left-aligned. To change the alignment\nfor a given column, you can include a colon either at the beginning or end of\nthe line of hyphens in the divider row for that column. A single colon at the\nend means to right-align, while a single colon at the beginning means to\nleft-align. A colon at both the beginning and the end means to center-align."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "In the following table, the \"Height\" column is center-aligned while the \"Age\"\ncolumn is right-aligned."
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "children": [
+        {
+          "type": "tableRow",
+          "children": [
+            {
+              "type": "tableCell",
+              "header": true,
+              "align": "left",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Student"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "header": true,
+              "align": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Height"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "header": true,
+              "align": "right",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Age"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "tableRow",
+          "children": [
+            {
+              "type": "tableCell",
+              "align": "left",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "John"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "align": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "5'9\""
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "align": "right",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "17"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "tableRow",
+          "children": [
+            {
+              "type": "tableCell",
+              "align": "left",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Sarah"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "align": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "5'6\""
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "align": "right",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "18"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "tableRow",
+          "children": [
+            {
+              "type": "tableCell",
+              "align": "left",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Sally"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "align": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "5'2\""
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "align": "right",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "17"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "tableRow",
+          "children": [
+            {
+              "type": "tableCell",
+              "align": "left",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Bill"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "align": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "6'2\""
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "align": "right",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "17"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Finally, table cells can include inline content of any kind (e.g. emphasis,\nlinks, or inline HTML):"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "children": [
+        {
+          "type": "tableRow",
+          "children": [
+            {
+              "type": "tableCell",
+              "header": true,
+              "align": "left",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Student"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "header": true,
+              "align": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Height"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "header": true,
+              "align": "right",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Age"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "tableRow",
+          "children": [
+            {
+              "type": "tableCell",
+              "align": "left",
+              "children": [
+                {
+                  "type": "emphasis",
+                  "children": [
+                    {
+                      "type": "text",
+                      "value": "John"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "align": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "5'9\""
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "align": "right",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "17"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "tableRow",
+          "children": [
+            {
+              "type": "tableCell",
+              "align": "left",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Sarah"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "align": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "5'6\""
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "align": "right",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "18"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "tableRow",
+          "children": [
+            {
+              "type": "tableCell",
+              "align": "left",
+              "children": [
+                {
+                  "type": "link",
+                  "url": "https://sally.com",
+                  "children": [
+                    {
+                      "type": "text",
+                      "value": "Sally"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "align": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "5'2\""
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "align": "right",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "17"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "tableRow",
+          "children": [
+            {
+              "type": "tableCell",
+              "align": "left",
+              "children": [
+                {
+                  "type": "html",
+                  "value": "<span class=\"name\">"
+                },
+                {
+                  "type": "text",
+                  "value": "Bill"
+                },
+                {
+                  "type": "html",
+                  "value": "</span>"
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "align": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "6'2\""
+                }
+              ]
+            },
+            {
+              "type": "tableCell",
+              "align": "right",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "17"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "depth": 2,
+      "children": [
+        {
+          "type": "text",
+          "value": "Pandoc Footnotes"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Using plain CommonMark, there's no easy method to add footnotes to a document.\nYou might be able to get away with creating footnotes using inline links, but\nyou'd have to manually number all the footnotes and they wouldn't use\nsuperscript for the numbers."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "MyST Markdown supports creating footnotes using the Pandoc syntax for\nfootnotes. To create a footnote, you need to define the footnote and then\nreference it using the same label."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "A footnote definition looks a little bit like a link definition except with a\ncaret before the label:"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "To reference the definition, you simply use the label where you want the\nsuperscript number to appear."
+        },
+        {
+          "type": "footnoteReference",
+          "identifier": "my-footnote",
+          "label": "my-footnote"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "The label "
+        },
+        {
+          "type": "inlineCode",
+          "value": "my-footnote"
+        },
+        {
+          "type": "text",
+          "value": " is just a placeholder and will never appear in the\nfinal rendered document. Instead, footnotes will be assigned numbers based on\nthe order in which they are first referenced in the document. It does not\nmatter where the footnote is defined. (And you can even place the definition\nafter the reference if you want to. It's quite natural to put all the\ndefinitions at the very bottom of the document.)"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "If you want to force a footnote to use a certain number, you can do that by\nusing the number as the label."
+        },
+        {
+          "type": "footnoteReference",
+          "identifier": "4",
+          "label": "4"
+        }
+      ]
+    },
+    {
+      "type": "footnoteDefinition",
+      "identifier": "my-footnote",
+      "label": "my-footnote",
+      "children": [
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "This is my footnote! It can contain block and "
+            },
+            {
+              "type": "emphasis",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "inline markup"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "value": "\nand it goes on for as many lines as I'd like."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "If I want to begin a new block within the footnote though, I have to\nindent it by at least four spaces."
+            }
+          ]
+        },
+        {
+          "type": "code",
+          "lang": "python",
+          "value": "def foo():\n    pass"
+        },
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "This is now the last line of the footnote!"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "footnoteDefinition",
+      "identifier": "4",
+      "label": "4",
+      "children": [
+        {
+          "type": "paragraph",
+          "children": [
+            {
+              "type": "text",
+              "value": "This is footnote four, even though there are only two footnotes in this\ndocument!"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

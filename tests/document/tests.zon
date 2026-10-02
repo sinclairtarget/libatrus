@@ -1,17 +1,20 @@
 .{
     .{
         .mystmd_path = "cmark-tour/cmark-tour.md",
-        .json_path = "cmark-tour/cmark-tour.json",
+        .json_pre_path = "cmark-tour/cmark-tour.pre.json",
+        .json_post_path = "cmark-tour/cmark-tour.post.json",
         .html_path = "cmark-tour/cmark-tour.html",
     },
     .{
         .mystmd_path = "surprising-features/surprising-features.md",
-        .json_path = "surprising-features/surprising-features.json",
+        .json_pre_path = "surprising-features/surprising-features.pre.json",
+        .json_post_path = "surprising-features/surprising-features.post.json",
         .html_path = "surprising-features/surprising-features.html",
     },
     .{
         .mystmd_path = "extensions-tour/extensions-tour.md",
-        .json_path = "extensions-tour/extensions-tour.json",
+        .json_pre_path = "extensions-tour/extensions-tour.pre.json",
+        .json_post_path = "extensions-tour/extensions-tour.post.json",
         .html_path = "extensions-tour/extensions-tour.html",
     },
 }

@@ -92,39 +92,64 @@ fn runTest(
     );
 
     var reader = Io.Reader.fixed(mystmd);
-    const ast = try atrus.parse(
+    var root_node = try atrus.parse(
         alloc,
         &reader,
-        .{ .parse_level = .post },
+        .{ .parse_level = .pre },
     );
 
-    // Check JSON
+    // Check JSON PRE
     var outbuf = Io.Writer.Allocating.init(alloc);
     try atrus.renderJSON(
-        ast,
+        root_node,
         &outbuf.writer,
         .{ .whitespace = .indent_2 },
     );
     _ = try outbuf.writer.writeAll("\n");
 
-    const expected_json = try slurpFile(
+    const expected_json_pre = try slurpFile(
         alloc,
         rootdir,
-        test_case.json_path,
+        test_case.json_pre_path,
         print_detailed_error,
     );
-    if (!std.mem.eql(u8, expected_json, outbuf.written())) {
+    if (!std.mem.eql(u8, expected_json_pre, outbuf.written())) {
         if (print_detailed_error) {
-            test_helper.printStringDiff(expected_json, outbuf.written());
+            test_helper.printStringDiff(expected_json_pre, outbuf.written());
         }
-        return error.JSONNotEqual;
+        return error.JSONPreNotEqual;
+    }
+
+    outbuf.clearRetainingCapacity();
+
+    // Check JSON POST
+    root_node = try atrus.transform(alloc, root_node, .{});
+
+    try atrus.renderJSON(
+        root_node,
+        &outbuf.writer,
+        .{ .whitespace = .indent_2 },
+    );
+    _ = try outbuf.writer.writeAll("\n");
+
+    const expected_json_post = try slurpFile(
+        alloc,
+        rootdir,
+        test_case.json_post_path,
+        print_detailed_error,
+    );
+    if (!std.mem.eql(u8, expected_json_post, outbuf.written())) {
+        if (print_detailed_error) {
+            test_helper.printStringDiff(expected_json_post, outbuf.written());
+        }
+        return error.JSONPostNotEqual;
     }
 
     outbuf.clearRetainingCapacity();
 
     // Check HTML
     try atrus.renderHTML(
-        ast,
+        root_node,
         &outbuf.writer,
         .{ .whitespace = .indent_2 },
     );
