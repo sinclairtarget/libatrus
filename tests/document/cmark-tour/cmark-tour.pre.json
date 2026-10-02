@@ -42,7 +42,7 @@
       "children": [
         {
           "type": "text",
-          "value": "That is what Markdown tries to do. Markdown is a large set of rules governing\nhow structure can be derived from these natural patterns in text and (a few\nexplicit tag-like constructs for when the natural patterns aren't sufficient).\nThe set of rules is large because recognizing these natural patterns in a text\ndocument is much more complicated than just looking for tags. This is a\ndrawback of Markdown: Writing a program to read Markdown is challenging. But\nwriting a Markdown document, for humans, is easy. And once you have a program\nthat can read Markdown, you can convert your document to other, more\nmachine-friendly formats programmatically."
+          "value": "That is what Markdown tries to do. Markdown is a large set of rules governing\nhow structure can be derived from these natural patterns in text (and a few\nexplicit tag-like constructs for when the natural patterns aren't sufficient).\nThe set of rules is large because recognizing these natural patterns in a text\ndocument is much more complicated than just looking for tags. This is a\ndrawback of Markdown: Writing a program to read Markdown is challenging. But\nwriting a Markdown document, for humans, is easy. And once you have a program\nthat can read Markdown, you can convert your document to other, more\nmachine-friendly formats programmatically."
         }
       ]
     },
