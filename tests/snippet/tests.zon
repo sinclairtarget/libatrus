@@ -1378,6 +1378,112 @@
         ,
     },
     .{
+        .name = "directives - valid directive names",
+        .mystmd =
+            \\```{foobar}
+            \\```
+            \\
+            \\```{-foo-bar-}
+            \\```
+            \\
+            \\```{_foo_bar_}
+            \\```
+            \\
+            \\```{f00bar}
+            \\```
+        ,
+        .json_pre =
+            \\{
+            \\  "type": "root",
+            \\  "children": [
+            \\    {
+            \\      "type": "mystDirective",
+            \\      "name": "foobar"
+            \\    },
+            \\    {
+            \\      "type": "mystDirective",
+            \\      "name": "-foo-bar-"
+            \\    },
+            \\    {
+            \\      "type": "mystDirective",
+            \\      "name": "_foo_bar_"
+            \\    },
+            \\    {
+            \\      "type": "mystDirective",
+            \\      "name": "f00bar"
+            \\    }
+            \\  ]
+            \\}
+        ,
+    },
+    .{
+        .name = "directives - invalid directive names",
+        .mystmd =
+            \\```{foo)bar}
+            \\bim
+            \\```
+            \\
+            \\```{^foobar}
+            \\bim
+            \\```
+            \\
+            \\```{😎}
+            \\bim
+            \\```
+            \\
+            \\```{香港}
+            \\bim
+            \\```
+        ,
+        .json_pre =
+            \\{
+            \\  "type": "root",
+            \\  "children": [
+            \\    {
+            \\      "type": "mystDirectiveError",
+            \\      "message": "Invalid MyST directive name",
+            \\      "children": [
+            \\        {
+            \\          "type": "text",
+            \\          "value": "bim"
+            \\        }
+            \\      ]
+            \\    },
+            \\    {
+            \\      "type": "mystDirectiveError",
+            \\      "message": "Invalid MyST directive name",
+            \\      "children": [
+            \\        {
+            \\          "type": "text",
+            \\          "value": "bim"
+            \\        }
+            \\      ]
+            \\    },
+            \\    {
+            \\      "type": "mystDirectiveError",
+            \\      "message": "Invalid MyST directive name",
+            \\      "children": [
+            \\        {
+            \\          "type": "text",
+            \\          "value": "bim"
+            \\        }
+            \\      ]
+            \\    },
+            \\    {
+            \\      "type": "mystDirectiveError",
+            \\      "message": "Invalid MyST directive name",
+            \\      "children": [
+            \\        {
+            \\          "type": "text",
+            \\          "value": "bim"
+            \\        }
+            \\      ]
+            \\    }
+            \\  ]
+            \\}
+        ,
+    },
+    .{
         .name = "roles - valid role names",
         .mystmd =
             \\{foobar}`bim`
@@ -1437,39 +1543,55 @@
         ,
     },
     .{
-        .name = "directives - valid directive names",
+        .name = "roles - invalid role names",
         .mystmd =
-            \\```{foobar}
-            \\```
+            \\{foo*bar}`bim`
             \\
-            \\```{-foo-bar-}
-            \\```
+            \\{foo)bar}`bim`
             \\
-            \\```{_foo_bar_}
-            \\```
+            \\{😎}`bim`
             \\
-            \\```{f00bar}
-            \\```
+            \\{香港}`bim`
         ,
         .json_pre =
             \\{
             \\  "type": "root",
             \\  "children": [
             \\    {
-            \\      "type": "mystDirective",
-            \\      "name": "foobar"
+            \\      "type": "paragraph",
+            \\      "children": [
+            \\        {
+            \\          "type": "mystRoleError",
+            \\          "value": "bim"
+            \\        }
+            \\      ]
             \\    },
             \\    {
-            \\      "type": "mystDirective",
-            \\      "name": "-foo-bar-"
+            \\      "type": "paragraph",
+            \\      "children": [
+            \\        {
+            \\          "type": "mystRoleError",
+            \\          "value": "bim"
+            \\        }
+            \\      ]
             \\    },
             \\    {
-            \\      "type": "mystDirective",
-            \\      "name": "_foo_bar_"
+            \\      "type": "paragraph",
+            \\      "children": [
+            \\        {
+            \\          "type": "mystRoleError",
+            \\          "value": "bim"
+            \\        }
+            \\      ]
             \\    },
             \\    {
-            \\      "type": "mystDirective",
-            \\      "name": "f00bar"
+            \\      "type": "paragraph",
+            \\      "children": [
+            \\        {
+            \\          "type": "mystRoleError",
+            \\          "value": "bim"
+            \\        }
+            \\      ]
             \\    }
             \\  ]
             \\}

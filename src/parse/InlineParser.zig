@@ -3657,20 +3657,15 @@ fn parseMySTRole(
 
     _ = try self.consume(scratch, &.{.l_brace}) orelse return null;
 
+    // Parse role name
     var running_text = Io.Writer.Allocating.init(scratch);
     while (try self.peek(scratch)) |token| {
         switch (token.token_type) {
-            .text,
-            .whitespace,
-            .hyphen,
-            .l_delim_underscore,
-            .r_delim_underscore,
-            .lr_delim_underscore,
-            => {
+            .r_brace, .newline => break,
+            else => {
                 _ = try self.consume(scratch, &.{token.token_type});
                 _ = try running_text.writer.write(emitInlineLiteral(token));
             },
-            else => break,
         }
     }
 

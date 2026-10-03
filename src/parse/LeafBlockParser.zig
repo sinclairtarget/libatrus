@@ -2377,18 +2377,18 @@ fn parseMySTDirective(
     var running_text = Io.Writer.Allocating.init(scratch);
     while (try self.it.peek(scratch)) |token| {
         switch (token.token_type) {
-            .text, .space, .tab, .hyphen => {
+            .r_brace, .newline => break,
+            else => {
                 _ = try self.it.consume(scratch, &.{token.token_type});
                 const v = try resolveText(scratch, token);
                 _ = try running_text.writer.write(v);
             },
-            else => break,
         }
     }
+    _ = try self.it.consume(scratch, &.{.r_brace}) orelse return fail;
 
     const name = std.mem.trim(u8, try running_text.toOwnedSlice(), " \t");
 
-    _ = try self.it.consume(scratch, &.{.r_brace}) orelse return fail;
     _ = try self.it.consumeWhitespace(scratch);
 
     // Parse args
@@ -2502,6 +2502,12 @@ fn parseMySTDirective(
     did_parse = true;
 
     if (!myst.isValidDirectiveName(name)) {
+        const text_node = try alloc.create(ast.Node);
+        text_node.* = .{
+            .text = .{ .value = try alloc.dupeZ(u8, value) },
+        };
+        errdefer text_node.deinit(alloc);
+
         const owned_message = try alloc.dupeZ(
             u8,
             "Invalid MyST directive name",
@@ -2511,7 +2517,7 @@ fn parseMySTDirective(
         const error_node = try alloc.create(ast.Node);
         error_node.* = .{
             .myst_directive_error = .{
-                .children = &.{},
+                .children = try alloc.dupe(*ast.Node, &.{text_node}),
                 .message = owned_message,
             },
         };
