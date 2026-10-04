@@ -31,6 +31,7 @@ pub fn normalize(
             Uri.ParseError.InvalidFormat,
             Uri.ParseError.InvalidPort,
             Uri.ParseError.UnexpectedCharacter,
+            Uri.ParseError.InvalidHostName,
             => {},
         }
 
@@ -42,6 +43,7 @@ pub fn normalize(
             Uri.ParseError.InvalidFormat,
             Uri.ParseError.InvalidPort,
             Uri.ParseError.UnexpectedCharacter,
+            Uri.ParseError.InvalidHostName,
             => {},
         }
 

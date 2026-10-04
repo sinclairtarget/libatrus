@@ -24,7 +24,7 @@ const config = @import("config");
 /// Returns a scoped logger.
 ///
 /// Uses the given scope, but only if fine-grained log scopes are enabled.
-pub fn logger(scope: @Type(.enum_literal)) type {
+pub fn logger(scope: @EnumLiteral()) type {
     if (config.allow_log_scopes) {
         return std.log.scoped(scope);
     } else {

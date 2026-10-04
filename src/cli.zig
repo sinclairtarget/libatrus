@@ -96,6 +96,7 @@ pub fn printUsage(out: *Io.Writer) !void {
 ///
 /// Caller responsible for freeing memory held by returned Options.
 pub fn parseArgs(
+    args: std.process.Args,
     gpa: Allocator,
     arena: Allocator,
     diagnostic: *Diagnostic,
@@ -103,15 +104,15 @@ pub fn parseArgs(
     var args_arena_impl = std.heap.ArenaAllocator.init(gpa);
     defer args_arena_impl.deinit();
 
-    const args = try std.process.argsAlloc(args_arena_impl.allocator());
-    if (args.len < 2) {
+    const argsSlice = try args.toSlice(args_arena_impl.allocator());
+    if (argsSlice.len < 2) {
         return .{ .parse, .{} };
     }
 
-    if (std.mem.eql(u8, args[1], "--version")) {
+    if (std.mem.eql(u8, argsSlice[1], "--version")) {
         return .{ .print_version, Options{} };
-    } else if (std.mem.eql(u8, args[1], "-h") or
-        std.mem.eql(u8, args[1], "--help"))
+    } else if (std.mem.eql(u8, argsSlice[1], "-h") or
+        std.mem.eql(u8, argsSlice[1], "--help"))
     {
         return .{ .help, Options{} };
     }
@@ -121,7 +122,7 @@ pub fn parseArgs(
     var parse_level = ParseLevel.post;
     var filepath_or_input: ?[]const u8 = null;
     var args_processed: u32 = 1;
-    for (args[1..args.len]) |arg| {
+    for (argsSlice[1..argsSlice.len]) |arg| {
         if (std.mem.eql(u8, arg, "--html")) {
             output_choice = .html;
         } else if (std.mem.eql(u8, arg, "--typst")) {
@@ -146,8 +147,8 @@ pub fn parseArgs(
         }
     }
 
-    if (args_processed < args.len) {
-        diagnostic.argname = try arena.dupe(u8, args[args_processed]);
+    if (args_processed < argsSlice.len) {
+        diagnostic.argname = try arena.dupe(u8, argsSlice[args_processed]);
         return ArgsError.UnrecognizedArg;
     }
 

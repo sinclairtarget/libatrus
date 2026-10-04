@@ -84,7 +84,10 @@ pub const Reporter = struct {
 /// Looks for a verbose flag ("-v") and a test filter in the argument list.
 ///
 /// Assumes the test filter is the last arg.
-pub fn extractTestArgs(args: [][:0]u8) struct { bool, ?[]const u8 } {
+pub fn extractTestArgs(args: []const [:0]const u8) struct {
+    bool,
+    ?[]const u8,
+} {
     var verbose = false;
     var filter: ?[]const u8 = null;
     for (args) |arg| {

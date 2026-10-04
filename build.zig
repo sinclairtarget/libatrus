@@ -201,6 +201,7 @@ fn installLibrary(
         .imports = &.{
             .{ .name = "atrus", .module = atrus_module },
         },
+        .link_libc = true,
     });
 
     const static_lib = b.addLibrary(.{
@@ -208,7 +209,6 @@ fn installLibrary(
         .name = "atrus",
         .root_module = c_api_module,
     });
-    static_lib.linkLibC();
 
     const shared_lib = b.addLibrary(.{
         .linkage = .dynamic,
@@ -379,7 +379,7 @@ fn addTests(
     c_api_tests_exe.root_module.addIncludePath(b.path("include/"));
     c_api_tests_exe.root_module.linkLibrary(static_lib);
     var c_api_tests_cmd = b.addRunArtifact(c_api_tests_exe);
-    _ = c_api_tests_cmd.captureStdErr(); // Hide debug output from libatrus
+    _ = c_api_tests_cmd.captureStdErr(.{}); // Hide debug output from libatrus
 
     return .{
         .unit = unit_tests_cmd,

@@ -28,11 +28,7 @@ pub const std_options: std.Options = .{
     },
 };
 
-pub fn main() !void {
-    var stdout_buffer: [64]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
-    const stdout = &stdout_writer.interface;
-
+pub fn main(init: std.process.Init.Minimal) !void {
     var debug_allocator: std.heap.DebugAllocator(.{
         .verbose_log = false,
     }) = .init;
@@ -48,10 +44,22 @@ pub fn main() !void {
     defer arena_impl.deinit();
     const arena = arena_impl.allocator();
 
+    var threaded: Io.Threaded = .init_single_threaded;
+    const io = threaded.io();
+
+    var stdout_buffer: [64]u8 = undefined;
+    var stdout_writer = Io.File.stdout().writer(io, &stdout_buffer);
+    const stdout = &stdout_writer.interface;
+
     // Parse CLI args
     const action, const options = blk: {
         var diagnostic = cli.Diagnostic{};
-        break :blk cli.parseArgs(gpa, arena, &diagnostic) catch |err| {
+        break :blk cli.parseArgs(
+            init.args,
+            gpa,
+            arena,
+            &diagnostic,
+        ) catch |err| {
             switch (err) {
                 ArgsError.NotEnoughArgs => {
                     try cli.printUsage(stdout);
@@ -87,7 +95,11 @@ pub fn main() !void {
         .parse => {
             logger.info("Parsing with options: {f}", .{options});
 
-            const myst = slurp(arena, options.filepath_or_input) catch |err| {
+            const myst = slurp(
+                io,
+                arena,
+                options.filepath_or_input,
+            ) catch |err| {
                 switch (err) {
                     error.FileNotFound => {
                         const path = options.filepath_or_input.?;
@@ -136,14 +148,18 @@ pub fn main() !void {
             if (builtin.mode == .Debug) {
                 if (options.filepath_or_input == null) {
                     var buffer: [max_line_len]u8 = undefined;
-                    var reader_impl = std.fs.File.stdin().reader(&buffer);
+                    var reader_impl = Io.File.stdin().reader(io, &buffer);
                     try blockTokenize(arena, stdout, &reader_impl.interface);
                     break :dispatch;
                 }
 
                 const filepath_or_input = options.filepath_or_input.?;
-                const cwd = std.fs.cwd();
-                var file = cwd.openFile(filepath_or_input, .{}) catch |err| {
+                const cwd = Io.Dir.cwd();
+                var file = cwd.openFile(
+                    io,
+                    filepath_or_input,
+                    .{},
+                ) catch |err| {
                     switch (err) {
                         error.FileNotFound => {
                             try inlineTokenize(
@@ -156,10 +172,10 @@ pub fn main() !void {
                         else => return err,
                     }
                 };
-                defer file.close();
+                defer file.close(io);
 
                 var buffer: [max_line_len]u8 = undefined;
-                var reader_impl = file.reader(&buffer);
+                var reader_impl = file.reader(io, &buffer);
                 try blockTokenize(arena, stdout, &reader_impl.interface);
             } else {
                 // Runtime error if we get here somehow in non-debug build
@@ -171,19 +187,20 @@ pub fn main() !void {
     try stdout.flush();
 }
 
-fn slurp(alloc: Allocator, filepath: ?[]const u8) ![]const u8 {
+/// Reads a file into memory (or all of stdin if no filepath is given).
+fn slurp(io: Io, alloc: Allocator, filepath: ?[]const u8) ![]const u8 {
     var buffer: [128]u8 = undefined;
 
     if (filepath) |fp| {
-        var file = try std.fs.cwd().openFile(fp, .{});
-        defer file.close();
+        var file = try Io.Dir.cwd().openFile(io, fp, .{});
+        defer file.close(io);
 
-        var reader_impl = file.reader(&buffer);
+        var reader_impl = file.reader(io, &buffer);
         const reader = &reader_impl.interface;
         const bytes = try reader.allocRemaining(alloc, .unlimited);
         return bytes;
     } else {
-        var reader_impl = std.fs.File.stdin().reader(&buffer);
+        var reader_impl = Io.File.stdin().reader(io, &buffer);
         const reader = &reader_impl.interface;
         const bytes = try reader.allocRemaining(alloc, .unlimited);
         return bytes;

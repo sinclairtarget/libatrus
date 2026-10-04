@@ -1387,7 +1387,7 @@ fn parseHTMLLiteralContent(
         }
     }
 
-    const trimmed = std.mem.trimRight(u8, content.written(), "\n");
+    const trimmed = std.mem.trimEnd(u8, content.written(), "\n");
     const owned_value = try alloc.dupeZ(u8, trimmed);
     errdefer alloc.free(owned_value);
 
@@ -1994,7 +1994,7 @@ fn parseHTMLKnownTag(
         }
     }
 
-    const trimmed = std.mem.trimRight(u8, content.written(), "\n");
+    const trimmed = std.mem.trimEnd(u8, content.written(), "\n");
     const owned_value = try alloc.dupeZ(u8, trimmed);
     errdefer alloc.free(owned_value);
 
@@ -2133,7 +2133,7 @@ fn parseHTMLUnknownTag(
         }
     }
 
-    const trimmed = std.mem.trimRight(u8, content.written(), "\n");
+    const trimmed = std.mem.trimEnd(u8, content.written(), "\n");
     const owned_value = try alloc.dupeZ(u8, trimmed);
     errdefer alloc.free(owned_value);
 

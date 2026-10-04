@@ -174,10 +174,6 @@ fn parseInline(
     original_nodes: []*ast.Node,
     def_store: DefStore,
 ) ![]*ast.Node {
-    // This function resets the arena after it parses inline content within
-    // each block. The arena should be empty when passed to this function.
-    std.debug.assert(scratch_arena.state.end_index == 0);
-
     var nodes: ArrayList(*ast.Node) = .empty;
     errdefer nodes.deinit(alloc);
 

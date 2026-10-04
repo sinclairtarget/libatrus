@@ -26,19 +26,10 @@ pub const std_options: std.Options = .{
     .log_level = .err,
 };
 
-pub fn main() !void {
-    var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
-    defer {
-        _ = debug_allocator.detectLeaks();
-        _ = debug_allocator.deinit();
-    }
-    const gpa = debug_allocator.allocator();
+pub fn main(init: std.process.Init) !void {
+    const scratch = init.arena.allocator();
 
-    var arena = ArenaAllocator.init(gpa);
-    defer arena.deinit();
-    const scratch = arena.allocator();
-
-    const args = try std.process.argsAlloc(scratch);
+    const args = try init.minimal.args.toSlice(scratch);
     if (args.len < 2) {
         return error.NotEnoughArgs;
     }
@@ -46,7 +37,12 @@ pub fn main() !void {
     const path = args[1];
     const verbose, const filter = test_helper.extractTestArgs(args[2..]);
 
-    const test_cases_to_run = gatherTests(scratch, path, filter) catch |err| {
+    const test_cases_to_run = gatherTests(
+        init.io,
+        scratch,
+        path,
+        filter,
+    ) catch |err| {
         std.debug.print("failed to gather tests\n", .{});
         return err;
     };
@@ -55,7 +51,7 @@ pub fn main() !void {
     var map = AutoHashMap(anyerror, u16).init(scratch);
     defer map.deinit();
 
-    var per_test_arena = ArenaAllocator.init(gpa);
+    var per_test_arena = ArenaAllocator.init(init.gpa);
     defer per_test_arena.deinit();
 
     var reporter: test_helper.Reporter = .init(test_cases_to_run.len, verbose);
@@ -107,11 +103,12 @@ pub fn main() !void {
 }
 
 fn gatherTests(
+    io: Io,
     alloc: Allocator,
     path: []const u8,
     filter: ?[]const u8,
 ) ![]TestCase {
-    const cases = try readTestCases(alloc, path);
+    const cases = try readTestCases(io, alloc, path);
 
     var tests: ArrayList(TestCase) = .empty;
     for (cases) |case| {
@@ -206,12 +203,16 @@ fn runTest(
     }
 }
 
-fn readTestCases(alloc: Allocator, path: []const u8) ![]const TestCase {
-    var file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+fn readTestCases(
+    io: Io,
+    alloc: Allocator,
+    path: []const u8,
+) ![]const TestCase {
+    var file = try Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
     var buffer: [64]u8 = undefined;
-    var reader_impl = file.reader(&buffer);
+    var reader_impl = file.reader(io, &buffer);
     const reader = &reader_impl.interface;
 
     var json_reader = json.Reader.init(alloc, reader);

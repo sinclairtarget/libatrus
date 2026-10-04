@@ -1013,21 +1013,23 @@ fn NarrowedNodeType(
     const all_fields = e_info.@"enum".fields;
 
     var i: usize = 0;
-    var fields: [all_fields.len]std.builtin.Type.EnumField = undefined;
+    var field_names: [all_fields.len][:0]const u8 = undefined;
+    var field_values: [all_fields.len]c_uint = undefined;
     for (all_fields) |field| {
         const node = @unionInit(Node, field.name, undefined);
         if (SubsetEnum.fromNodeType(node) == choice) {
-            fields[i] = field;
+            field_names[i] = field.name;
+            field_values[i] = field.value;
             i += 1;
         }
     }
 
-    return @Type(.{ .@"enum" = .{
-        .tag_type = e_info.@"enum".tag_type,
-        .fields = fields[0..i],
-        .decls = &.{},
-        .is_exhaustive = true,
-    } });
+    return @Enum(
+        e_info.@"enum".tag_type,
+        .exhaustive,
+        field_names[0..i],
+        field_values[0..i],
+    );
 }
 
 // Creates a union containing only the subset of node types matching the given
@@ -1042,26 +1044,27 @@ fn NarrowedNode(
 
     const all_fields = @typeInfo(Node).@"union".fields;
 
+    const UnionField = std.builtin.Type.UnionField;
+
     var i: usize = 0;
-    var fields: [all_fields.len]std.builtin.Type.UnionField = undefined;
+    var field_names: [all_fields.len][:0]const u8 = undefined;
+    var field_types: [all_fields.len]type = undefined;
+    var field_attrs: [all_fields.len]UnionField.Attributes = undefined;
     for (all_fields) |field| {
         const node = @unionInit(Node, field.name, undefined);
         if (SubsetEnum.fromNodeType(node) == choice) {
-            fields[i] = .{
-                .name = field.name,
-                .type = *field.type,
-                .alignment = field.alignment,
-            };
+            field_names[i] = field.name;
+            field_types[i] = *field.type;
+            field_attrs[i] = .{ .@"align" = field.alignment };
             i += 1;
         }
     }
 
-    return @Type(.{
-        .@"union" = .{
-            .layout = .auto,
-            .tag_type = NarrowedNodeType(SubsetEnum, choice),
-            .fields = fields[0..i],
-            .decls = &.{},
-        },
-    });
+    return @Union(
+        .auto,
+        NarrowedNodeType(SubsetEnum, choice),
+        field_names[0..i],
+        field_types[0..i],
+        field_attrs[0..i],
+    );
 }

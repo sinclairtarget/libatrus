@@ -8,32 +8,33 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
-const fs = std.fs;
 const Io = std.Io;
 const zon = std.zon;
 
-pub fn main() !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const alloc = arena.allocator();
+pub fn main(init: std.process.Init) !void {
+    const alloc = init.arena.allocator();
 
-    const args = try std.process.argsAlloc(alloc);
+    const args = try init.minimal.args.toSlice(alloc);
     const input_path = args[1];
     const output_path = args[2];
 
-    const cwd = fs.cwd();
+    const cwd = Io.Dir.cwd();
 
-    var in_file = try cwd.openFile(input_path, .{});
-    defer in_file.close();
+    var in_file = try cwd.openFile(init.io, input_path, .{});
+    defer in_file.close(init.io);
 
     var in_buf: [128]u8 = undefined;
-    var in_reader = in_file.reader(&in_buf);
+    var in_reader = in_file.reader(init.io, &in_buf);
 
-    var out_file = try cwd.createFile(output_path, .{ .truncate = true });
-    defer out_file.close();
+    var out_file = try cwd.createFile(
+        init.io,
+        output_path,
+        .{ .truncate = true },
+    );
+    defer out_file.close(init.io);
 
     var out_buf: [128]u8 = undefined;
-    var out_writer = out_file.writer(&out_buf);
+    var out_writer = out_file.writer(init.io, &out_buf);
 
     processCaseFoldMappings(
         alloc,

@@ -21,18 +21,16 @@ pub const std_options: std.Options = .{
     .log_level = .err,
 };
 
-pub fn main() !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const alloc = arena.allocator();
+pub fn main(init: std.process.Init) !void {
+    const alloc = init.arena.allocator();
 
-    const args = try std.process.argsAlloc(alloc);
+    const args = try init.minimal.args.toSlice(alloc);
     const verbose, const filter = test_helper.extractTestArgs(args[1..]);
 
     const test_cases_to_run = try gatherTests(alloc, filter);
     const print_detailed_error: bool = verbose and test_cases_to_run.len == 1;
 
-    var per_test_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var per_test_arena = std.heap.ArenaAllocator.init(init.gpa);
     defer per_test_arena.deinit();
 
     var reporter: test_helper.Reporter = .init(test_cases_to_run.len, verbose);
@@ -44,6 +42,7 @@ pub fn main() !void {
 
         defer _ = per_test_arena.reset(.retain_capacity);
         runTest(
+            init.io,
             per_test_arena.allocator(),
             test_case,
             config.tests_dirpath,
@@ -79,12 +78,14 @@ fn gatherTests(alloc: Allocator, filter: ?[]const u8) ![]TestCase {
 }
 
 fn runTest(
+    io: Io,
     alloc: Allocator,
     test_case: TestCase,
     rootdir: []const u8,
     print_detailed_error: bool,
 ) !void {
     const mystmd = try slurpFile(
+        io,
         alloc,
         rootdir,
         test_case.mystmd_path,
@@ -108,6 +109,7 @@ fn runTest(
     _ = try outbuf.writer.writeAll("\n");
 
     const expected_json_pre = try slurpFile(
+        io,
         alloc,
         rootdir,
         test_case.json_pre_path,
@@ -133,6 +135,7 @@ fn runTest(
     _ = try outbuf.writer.writeAll("\n");
 
     const expected_json_post = try slurpFile(
+        io,
         alloc,
         rootdir,
         test_case.json_post_path,
@@ -156,6 +159,7 @@ fn runTest(
     _ = try outbuf.writer.writeAll("\n");
 
     const expected_html = try slurpFile(
+        io,
         alloc,
         rootdir,
         test_case.html_path,
@@ -176,6 +180,7 @@ fn runTest(
 }
 
 fn slurpFile(
+    io: Io,
     alloc: Allocator,
     rootdir: []const u8,
     path: []const u8,
@@ -185,7 +190,7 @@ fn slurpFile(
 
     var buffer: [128]u8 = undefined;
 
-    var file = std.fs.cwd().openFile(adjusted_path, .{}) catch |err| {
+    var file = Io.Dir.cwd().openFile(io, adjusted_path, .{}) catch |err| {
         switch (err) {
             error.FileNotFound => {
                 if (print_detailed_error) {
@@ -199,9 +204,9 @@ fn slurpFile(
             else => return err,
         }
     };
-    defer file.close();
+    defer file.close(io);
 
-    var reader_impl = file.reader(&buffer);
+    var reader_impl = file.reader(io, &buffer);
     const reader = &reader_impl.interface;
     const bytes = try reader.allocRemaining(alloc, .unlimited);
     return bytes;

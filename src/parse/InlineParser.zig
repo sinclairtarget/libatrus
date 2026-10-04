@@ -2926,7 +2926,7 @@ fn parseFootnoteReference(
                 );
                 break :blk null;
             },
-            inline else => |e| return e,
+            else => |e| return e,
         }
     } orelse return null;
 

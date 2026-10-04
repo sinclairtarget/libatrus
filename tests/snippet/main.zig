@@ -21,18 +21,16 @@ pub const std_options: std.Options = .{
     .log_level = .err,
 };
 
-pub fn main() !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const alloc = arena.allocator();
+pub fn main(init: std.process.Init) !void {
+    const alloc = init.arena.allocator();
 
-    const args = try std.process.argsAlloc(alloc);
+    const args = try init.minimal.args.toSlice(alloc);
     const verbose, const filter = test_helper.extractTestArgs(args[1..]);
 
     const test_cases_to_run = try gatherTests(alloc, filter);
     const print_detailed_error: bool = verbose and test_cases_to_run.len == 1;
 
-    var per_test_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var per_test_arena = std.heap.ArenaAllocator.init(init.gpa);
     defer per_test_arena.deinit();
 
     var reporter: test_helper.Reporter = .init(test_cases_to_run.len, verbose);
