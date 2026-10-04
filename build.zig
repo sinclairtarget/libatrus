@@ -67,7 +67,7 @@ pub fn build(b: *std.Build) void {
     // libatrus
     const lib_artifacts = installLibrary(b, atrus_module, target, optimize);
 
-    // tests and benchmarks
+    // tests
     const test_cmds = addTests(
         b,
         atrus_module,
@@ -75,7 +75,6 @@ pub fn build(b: *std.Build) void {
         test_case_filter,
         test_verbose,
     );
-    const benchmark_cmds = addBenchmarks(b, exe_artifact.artifact, optimize);
 
     // tools
     const entities_tool = addUpdateEntitiesTool(b, entities_json_path);
@@ -140,11 +139,6 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&test_cmds.snippet.step);
     test_step.dependOn(&test_cmds.document.step);
     test_step.dependOn(&test_cmds.c_api.step);
-
-    // benchmarks
-    const benchmark_step = b.step("benchmark", "Run all benchmarks");
-    benchmark_step.dependOn(&benchmark_cmds.memory.step);
-    benchmark_step.dependOn(&benchmark_cmds.speed.step);
 
     // tools
     const generate_entities_step = b.step(
@@ -393,48 +387,6 @@ fn addTests(
         .snippet = snippet_tests_cmd,
         .document = document_tests_cmd,
         .c_api = c_api_tests_cmd,
-    };
-}
-
-/// We have two benchmark executables, one that benchmarks peak memory usage
-/// and another that benchmarks (wall clock) performance.
-const BenchmarkCmds = struct {
-    memory: *Step.Run,
-    speed: *Step.Run,
-};
-
-fn addBenchmarks(
-    b: *std.Build,
-    atrus_exe: *Step.Compile,
-    optimize: std.builtin.OptimizeMode,
-) BenchmarkCmds {
-    const memory_exe = b.addExecutable(.{
-        .name = "benchmark-memory",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("benchmark/memory/main.zig"),
-            .target = b.graph.host,
-            .optimize = optimize,
-        }),
-    });
-    const options = b.addOptions();
-    options.addOptionPath("exec_path", atrus_exe.getEmittedBin()); // Adds dep
-    memory_exe.root_module.addOptions("config", options);
-    const memory_cmd = b.addRunArtifact(memory_exe);
-
-    const speed_exe = b.addExecutable(.{
-        .name = "benchmark-speed",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("benchmark/speed/main.zig"),
-            .target = b.graph.host,
-            .optimize = optimize,
-        }),
-    });
-    speed_exe.root_module.addOptions("config", options);
-    const speed_cmd = b.addRunArtifact(speed_exe);
-
-    return .{
-        .memory = memory_cmd,
-        .speed = speed_cmd,
     };
 }
 
