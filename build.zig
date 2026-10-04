@@ -81,7 +81,7 @@ pub fn build(b: *std.Build) void {
     const casefold_tool = addUpdateCaseFoldTool(b, casefold_txt_path);
 
     // docs
-    const docs = installDocs(b, exe_artifact.artifact);
+    const docs = installDocs(b, atrus_module);
 
     // -- top-level build steps -----------------------------------------------
     // exe
@@ -455,9 +455,16 @@ fn addUpdateCaseFoldTool(
     };
 }
 
-fn installDocs(b: *std.Build, exe: *Step.Compile) *Step.InstallDir {
+fn installDocs(
+    b: *std.Build,
+    atrus_module: *std.Build.Module,
+) *Step.InstallDir {
+    const obj = b.addObject(.{
+        .name = "atrus",
+        .root_module = atrus_module,
+    });
     return b.addInstallDirectory(.{
-        .source_dir = exe.getEmittedDocs(),
+        .source_dir = obj.getEmittedDocs(),
         .install_dir = .prefix,
         .install_subdir = "docs",
     });
