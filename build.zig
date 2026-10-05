@@ -40,6 +40,7 @@ pub fn build(b: *std.Build) void {
     const data_module = b.createModule(.{
         .root_source_file = b.path("data/root.zig"),
         .target = target,
+        .optimize = optimize,
     });
 
     // atrus module
@@ -48,6 +49,7 @@ pub fn build(b: *std.Build) void {
     const atrus_module = b.addModule("atrus", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
+        .optimize = optimize,
         .imports = &.{
             .{ .name = "data", .module = data_module },
         },

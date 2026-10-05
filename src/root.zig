@@ -239,15 +239,17 @@ pub fn loadJSON(alloc: Allocator, in: *Io.Reader) !*ast.Node {
 
 // Tokenization is part of the public interface of the library only in debug
 // mode.
-pub const lex =
-    if (builtin.mode == .Debug)
-        struct {
-            pub const BlockTokenizer = @import("lex/BlockTokenizer.zig");
-            pub const InlineTokenizer = @import("lex/InlineTokenizer.zig");
-            pub const LineReader = @import("lex/LineReader.zig");
+pub const lex = struct {
+    comptime {
+        if (builtin.mode != .Debug) {
+            @compileError("the lex namespace is only available in debug mode");
         }
-    else
-        @compileError("tokenziation is only supported in debug release mode");
+    }
+
+    pub const BlockTokenizer = @import("lex/BlockTokenizer.zig");
+    pub const InlineTokenizer = @import("lex/InlineTokenizer.zig");
+    pub const LineReader = @import("lex/LineReader.zig");
+};
 
 // ----------------------------------------------------------------------------
 // Unit Tests
