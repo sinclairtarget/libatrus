@@ -25,7 +25,7 @@
 // Compile-time version.
 #define ATRUS_MAJOR_VERSION 0
 #define ATRUS_MINOR_VERSION 10
-#define ATRUS_PATCH_VERSION 0
+#define ATRUS_PATCH_VERSION 1
 
 /*
  * Reports the link-time version of the library.
