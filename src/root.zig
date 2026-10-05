@@ -19,9 +19,6 @@ const ContainerBlockParser = @import("parse/ContainerBlockParser.zig");
 const DefStore = @import("lookup/DefStore.zig");
 const InlineParser = @import("parse/InlineParser.zig");
 const transforms = @import("transforms/transforms.zig");
-const json = @import("render/json.zig");
-const html = @import("render/html.zig");
-const typst = @import("render/typst.zig");
 const util = @import("util.zig");
 
 const logger = @import("logging.zig").logger(.root);
@@ -35,6 +32,7 @@ const max_line_len = 4096; // bytes
 
 pub const version = config.version;
 pub const ast = @import("ast.zig");
+pub const render = @import("render.zig");
 
 pub const ParseError = error{
     ReadFailed,
@@ -181,52 +179,6 @@ pub fn transform(
     return transformed;
 }
 
-pub const HTMLOptions = html.Options;
-
-pub const RenderHTMLError = error{
-    WriteFailed,
-    OutOfMemory,
-    NotPostProcessed,
-};
-
-/// Renders the AST as HTML, writing to the given writer.
-pub fn renderHTML(
-    root: *ast.Node,
-    out: *Io.Writer,
-    options: HTMLOptions,
-) RenderHTMLError!void {
-    try html.render(root, out, options);
-}
-
-pub const JSONOptions = json.Options;
-
-pub const RenderJSONError = error{
-    WriteFailed,
-    OutOfMemory,
-};
-
-/// Renders the AST as JSON, writing to the given writer.
-pub fn renderJSON(
-    root: *ast.Node,
-    out: *Io.Writer,
-    options: JSONOptions,
-) RenderJSONError!void {
-    try json.render(root, out, options);
-}
-
-pub const TypstOptions = struct {}; // No options (yet!)
-
-pub const RenderTypstError = typst.RenderError;
-
-pub fn renderTypst(
-    root: *ast.Node,
-    out: *Io.Writer,
-    options: TypstOptions,
-) RenderTypstError!void {
-    _ = options;
-    try typst.render(root, out);
-}
-
 /// Parses the input string (containing a MyST AST in JSON form) into a MYST
 /// AST. Returns a pointer to the root node.
 ///
@@ -276,9 +228,9 @@ test {
     _ = @import("parse/escape.zig");
     _ = @import("parse/InlineParser.zig");
     _ = @import("parse/LeafBlockParser.zig");
+    _ = @import("render.zig");
     _ = @import("render/html.zig");
     _ = @import("render/json.zig");
-    _ = @import("root.zig");
     _ = @import("transforms/post.zig");
     _ = @import("transforms/post/enumerate.zig");
     _ = @import("transforms/post/references.zig");
@@ -327,106 +279,6 @@ test transform {
     // One of the post-processing transformations groups sub-trees of the AST
     // into "blocks". The root node just has a single block child now.
     try testing.expectEqual(1, root_node.root.children.len);
-}
-
-test renderHTML {
-    const md =
-        \\# I am a heading
-        \\I am a paragraph containing *emphasis*.
-        \\
-    ;
-    const expected =
-        \\<h1>I am a heading</h1>
-        \\<p>I am a paragraph containing <em>emphasis</em>.</p>
-    ;
-
-    var in: Io.Reader = .fixed(md);
-    const root = try parse(testing.allocator, &in, .{});
-    defer root.deinit(testing.allocator);
-
-    var buf = Io.Writer.Allocating.init(testing.allocator);
-    try renderHTML(root, &buf.writer, .{});
-    const result = try buf.toOwnedSlice();
-    defer testing.allocator.free(result);
-
-    try testing.expectEqualStrings(expected, result);
-}
-
-test renderJSON {
-    const md =
-        \\I am a paragraph containing *emphasis*.
-        \\
-    ;
-
-    const expected =
-        \\{
-        \\  "type": "root",
-        \\  "children": [
-        \\    {
-        \\      "type": "block",
-        \\      "children": [
-        \\        {
-        \\          "type": "paragraph",
-        \\          "children": [
-        \\            {
-        \\              "type": "text",
-        \\              "value": "I am a paragraph containing "
-        \\            },
-        \\            {
-        \\              "type": "emphasis",
-        \\              "children": [
-        \\                {
-        \\                  "type": "text",
-        \\                  "value": "emphasis"
-        \\                }
-        \\              ]
-        \\            },
-        \\            {
-        \\              "type": "text",
-        \\              "value": "."
-        \\            }
-        \\          ]
-        \\        }
-        \\      ]
-        \\    }
-        \\  ]
-        \\}
-    ;
-
-    var in: Io.Reader = .fixed(md);
-    const root = try parse(testing.allocator, &in, .{});
-    defer root.deinit(testing.allocator);
-
-    var buf = Io.Writer.Allocating.init(testing.allocator);
-    try renderJSON(root, &buf.writer, .{ .whitespace = .indent_2 });
-    const result = try buf.toOwnedSlice();
-    defer testing.allocator.free(result);
-
-    try testing.expectEqualStrings(expected, result);
-}
-
-test renderTypst {
-    const md =
-        \\# I am a heading
-        \\I am a paragraph with [a link](http://coolpage.com).
-        \\
-    ;
-
-    const expected =
-        \\= I am a heading
-        \\I am a paragraph with #link("http://coolpage.com")[a link].
-    ;
-
-    var in: Io.Reader = .fixed(md);
-    const root = try parse(testing.allocator, &in, .{});
-    defer root.deinit(testing.allocator);
-
-    var buf = Io.Writer.Allocating.init(testing.allocator);
-    try renderTypst(root, &buf.writer, .{});
-    const result = try buf.toOwnedSlice();
-    defer testing.allocator.free(result);
-
-    try testing.expectEqualStrings(expected, result);
 }
 
 test loadJSON {

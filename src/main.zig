@@ -125,20 +125,20 @@ pub fn main(init: std.process.Init.Minimal) !void {
             logger.info("Rendering...", .{});
             switch (options.output_choice) {
                 .json => {
-                    try atrus.renderJSON(
+                    try atrus.render.toJSON(
                         ast,
                         stdout,
                         .{ .whitespace = .indent_2 },
                     );
                 },
                 .html => {
-                    try atrus.renderHTML(
+                    try atrus.render.toHTML(
                         ast,
                         stdout,
                         .{ .whitespace = .indent_2 },
                     );
                 },
-                .typst => try atrus.renderTypst(ast, stdout, .{}),
+                .typst => try atrus.render.toTypst(ast, stdout, .{}),
             }
             try stdout.print("\n", .{});
             try stdout.flush();

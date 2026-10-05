@@ -10,9 +10,9 @@ const Io = std.Io;
 
 const atrus = @import("atrus");
 const ParseError = atrus.ParseError;
-const RenderJSONError = atrus.RenderJSONError;
-const RenderHTMLError = atrus.RenderHTMLError;
-const RenderTypstError = atrus.RenderTypstError;
+const RenderJSONError = atrus.render.JSONError;
+const RenderHTMLError = atrus.render.HTMLError;
+const RenderTypstError = atrus.render.TypstError;
 
 const c_alloc = std.heap.c_allocator;
 
@@ -79,7 +79,7 @@ export fn atrus_parse(
 
 export fn atrus_render_html(root: *atrus.ast.Node, out: *[*:0]const u8) c_int {
     var buf = Io.Writer.Allocating.init(c_alloc);
-    atrus.renderHTML(root, &buf.writer, .{}) catch |err| {
+    atrus.render.toHTML(root, &buf.writer, .{}) catch |err| {
         switch (err) {
             // TODO: Proper error propagation.
             RenderHTMLError.WriteFailed => return -1,
@@ -109,7 +109,7 @@ export fn atrus_render_json(
     whitespace_option: c_uint,
 ) c_int {
     var buf = Io.Writer.Allocating.init(c_alloc);
-    const options: atrus.JSONOptions = .{
+    const options: atrus.render.JSONOptions = .{
         .whitespace = switch (@as(
             WhitespaceOption,
             @enumFromInt(whitespace_option),
@@ -119,7 +119,7 @@ export fn atrus_render_json(
             .indent_4 => .indent_4,
         },
     };
-    atrus.renderJSON(root, &buf.writer, options) catch |err| {
+    atrus.render.toJSON(root, &buf.writer, options) catch |err| {
         switch (err) {
             RenderJSONError.WriteFailed => return -1,
             RenderJSONError.OutOfMemory => return -1,
@@ -140,7 +140,7 @@ export fn atrus_render_typst(
     out: *[*:0]const u8,
 ) c_int {
     var buf = Io.Writer.Allocating.init(c_alloc);
-    atrus.renderTypst(root, &buf.writer, .{}) catch |err| {
+    atrus.render.toTypst(root, &buf.writer, .{}) catch |err| {
         switch (err) {
             RenderTypstError.WriteFailed => return -1,
             RenderTypstError.NotImplemented => return -2,

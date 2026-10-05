@@ -90,7 +90,7 @@ fn runTest(
     var outbuf = Io.Writer.Allocating.init(alloc);
 
     // JSON PRE
-    try atrus.renderJSON(
+    try atrus.render.toJSON(
         root_node,
         &outbuf.writer,
         .{ .whitespace = .indent_2 },
@@ -107,7 +107,7 @@ fn runTest(
 
     // JSON POST
     if (case.json_post) |json_post| {
-        try atrus.renderJSON(
+        try atrus.render.toJSON(
             root_node,
             &outbuf.writer,
             .{ .whitespace = .indent_2 },
@@ -123,7 +123,7 @@ fn runTest(
 
     // HTML
     if (case.html) |html| {
-        try atrus.renderHTML(
+        try atrus.render.toHTML(
             root_node,
             &outbuf.writer,
             .{ .whitespace = .indent_2 },
@@ -139,7 +139,7 @@ fn runTest(
 
     // Typst
     if (case.typst) |typst| {
-        try atrus.renderTypst(root_node, &outbuf.writer, .{});
+        try atrus.render.toTypst(root_node, &outbuf.writer, .{});
         if (!std.mem.eql(u8, typst, outbuf.written())) {
             if (print_detailed_error) {
                 test_helper.printStringDiff(typst, outbuf.written());

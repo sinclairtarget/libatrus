@@ -101,7 +101,7 @@ fn runTest(
 
     // Check JSON PRE
     var outbuf = Io.Writer.Allocating.init(alloc);
-    try atrus.renderJSON(
+    try atrus.render.toJSON(
         root_node,
         &outbuf.writer,
         .{ .whitespace = .indent_2 },
@@ -127,7 +127,7 @@ fn runTest(
     // Check JSON POST
     root_node = try atrus.transform(alloc, root_node, .{});
 
-    try atrus.renderJSON(
+    try atrus.render.toJSON(
         root_node,
         &outbuf.writer,
         .{ .whitespace = .indent_2 },
@@ -151,7 +151,7 @@ fn runTest(
     outbuf.clearRetainingCapacity();
 
     // Check HTML
-    try atrus.renderHTML(
+    try atrus.render.toHTML(
         root_node,
         &outbuf.writer,
         .{ .whitespace = .indent_2 },

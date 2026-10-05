@@ -154,7 +154,7 @@ fn runTest(
     );
 
     var outbuf = Io.Writer.Allocating.init(alloc);
-    try atrus.renderJSON(
+    try atrus.render.toJSON(
         ast,
         &outbuf.writer,
         .{ .whitespace = .indent_2 },
@@ -179,7 +179,7 @@ fn runTest(
     if (test_case.html != null and test_case.skip_html_reason == null) {
         const expected_html = test_case.html.?;
         outbuf = Io.Writer.Allocating.init(alloc);
-        try atrus.renderHTML(
+        try atrus.render.toHTML(
             post_ast,
             &outbuf.writer,
             .{
