@@ -103,7 +103,7 @@ fn runTest(
     }
     outbuf.clearRetainingCapacity();
 
-    root_node = try atrus.transform(alloc, root_node, .{});
+    root_node = try atrus.resolve(alloc, root_node, .{});
 
     // JSON POST
     if (case.json_post) |json_post| {

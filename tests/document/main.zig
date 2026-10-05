@@ -125,7 +125,7 @@ fn runTest(
     outbuf.clearRetainingCapacity();
 
     // Check JSON POST
-    root_node = try atrus.transform(alloc, root_node, .{});
+    root_node = try atrus.resolve(alloc, root_node, .{});
 
     try atrus.render.toJSON(
         root_node,

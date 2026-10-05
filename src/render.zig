@@ -62,7 +62,6 @@ test toHTML {
     const md =
         \\# I am a heading
         \\I am a paragraph containing *emphasis*.
-        \\
     ;
     const expected =
         \\<h1>I am a heading</h1>
@@ -74,7 +73,7 @@ test toHTML {
     defer root.deinit(testing.allocator);
 
     var buf = Io.Writer.Allocating.init(testing.allocator);
-    try toHTML(root, &buf.writer, .{});
+    try atrus.render.toHTML(root, &buf.writer, .{});
     const result = try buf.toOwnedSlice();
     defer testing.allocator.free(result);
 
@@ -84,7 +83,6 @@ test toHTML {
 test toJSON {
     const md =
         \\I am a paragraph containing *emphasis*.
-        \\
     ;
 
     const expected =
@@ -127,7 +125,7 @@ test toJSON {
     defer root.deinit(testing.allocator);
 
     var buf = Io.Writer.Allocating.init(testing.allocator);
-    try toJSON(root, &buf.writer, .{ .whitespace = .indent_2 });
+    try atrus.render.toJSON(root, &buf.writer, .{ .whitespace = .indent_2 });
     const result = try buf.toOwnedSlice();
     defer testing.allocator.free(result);
 
@@ -138,7 +136,6 @@ test toTypst {
     const md =
         \\# I am a heading
         \\I am a paragraph with [a link](http://coolpage.com).
-        \\
     ;
 
     const expected =
@@ -151,7 +148,7 @@ test toTypst {
     defer root.deinit(testing.allocator);
 
     var buf = Io.Writer.Allocating.init(testing.allocator);
-    try toTypst(root, &buf.writer, .{});
+    try atrus.render.toTypst(root, &buf.writer, .{});
     const result = try buf.toOwnedSlice();
     defer testing.allocator.free(result);
 

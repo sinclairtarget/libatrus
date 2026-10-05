@@ -1,6 +1,17 @@
-//! Atrus parses MyST-flavored markdown into the MyST AST.
+//! Atrus parses MyST-flavored markdown into the MyST AST. It can also "render"
+//! the AST to JSON, HTML, or other formats.
 //!
-//! It can also "render" the AST to JSON, HTML, or other formats.
+//! For simple use cases, call the `parse` function to parse input MyST into an
+//! AST. You can then pass that AST to a function in the `render` namespace
+//! such as `render.toHTML`.
+//!
+//! For more advanced use cases requiring modifications to the AST, first call
+//! `parse` and set `ParseOptions.parse_level` to `.pre`. This returns an AST
+//! in "PRE" form that you can then manipulate using the functions and structs
+//! defined in the `ast` namespace. Later, you can call `resolve` to run the
+//! standard post-processing transforms that resolve the AST to "POST" form.
+//! You can pass a "POST"-form AST to a function in the `render` namespace as
+//! before.
 
 // This file defines the Zig interface of libatrus. For the C-ABI-compatible
 // interface, see atrus.h.
@@ -41,6 +52,8 @@ pub const ParseError = error{
 } || InlineParser.Error || Allocator.Error || Io.Writer.Error;
 
 pub const ParseOptions = struct {
+    /// See <https://mystmd.org/spec/ast-primer#pre-and-post> for more
+    /// information.
     parse_level: enum {
         /// Only parse blocks, not inline content. This is only really useful
         /// for debugging.
@@ -145,10 +158,11 @@ pub const TransformError = error{
     OutOfMemory,
 };
 
-pub const TransformOptions = struct {};
+pub const ResolveOptions = struct {};
 
 /// Runs post-processing transforms on the given AST, modifying it in-place.
-/// After these transforms, the AST is considered to be "resolved".
+/// After these transforms, the AST is considered to be resolved and in "POST"
+/// form.
 ///
 /// This is a no-op if you previously called `atrus.parse()` using the `.post`
 /// parse level, since these are the same transforms done there.
@@ -156,10 +170,10 @@ pub const TransformOptions = struct {};
 /// This function gives you more control over which post-processing transforms
 /// are done. It also allows you to modify the AST returned from
 /// `atrus.parse()` before running any of the post-processing transforms.
-pub fn transform(
+pub fn resolve(
     alloc: Allocator,
     root: *ast.Node,
-    options: TransformOptions,
+    options: ResolveOptions,
 ) TransformError!*ast.Node {
     _ = options;
 
@@ -179,7 +193,7 @@ pub fn transform(
     return transformed;
 }
 
-/// Parses the input string (containing a MyST AST in JSON form) into a MYST
+/// Parses the input string (containing a MyST AST in JSON form) into a MyST
 /// AST. Returns a pointer to the root node.
 ///
 /// The caller is responsible for freeing the memory used by the AST nodes.
@@ -189,8 +203,8 @@ pub fn loadJSON(alloc: Allocator, in: *Io.Reader) !*ast.Node {
     return error.NotImplemented;
 }
 
-// Tokenization is part of the public interface of the library only in debug
-// mode.
+/// Tokenization is part of the public interface of the library only in debug
+/// mode.
 pub const lex = struct {
     comptime {
         if (builtin.mode != .Debug) {
@@ -245,7 +259,6 @@ test parse {
     const md =
         \\# I am a heading
         \\I am a paragraph containing *emphasis*.
-        \\
     ;
 
     var in: Io.Reader = .fixed(md);
@@ -255,16 +268,16 @@ test parse {
     try testing.expectEqual(.root, @as(ast.NodeType, root_node.*));
 }
 
-test transform {
+test resolve {
     const md =
         \\# I am a heading
         \\I am a paragraph containing *emphasis*.
-        \\
     ;
 
     var in: Io.Reader = .fixed(md);
     var root_node = try parse(testing.allocator, &in, .{
-        // Don't execute any post-processing transforms.
+        // Don't run any post-processing transforms; return an AST in "PRE"
+        // form.
         .parse_level = .pre,
     });
     defer root_node.deinit(testing.allocator);
@@ -274,10 +287,11 @@ test transform {
     // Both the heading and the paragraph are direct children of the root node.
     try testing.expectEqual(2, root_node.root.children.len);
 
-    root_node = try transform(testing.allocator, root_node, .{});
+    // Run all post-processing transforms.
+    root_node = try resolve(testing.allocator, root_node, .{});
 
-    // One of the post-processing transformations groups sub-trees of the AST
-    // into "blocks". The root node just has a single block child now.
+    // One of the post-processing transforms groups sub-trees of the AST into
+    // "blocks". The root node just has a single block child now.
     try testing.expectEqual(1, root_node.root.children.len);
 }
 
