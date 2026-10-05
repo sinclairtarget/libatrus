@@ -1,4 +1,4 @@
-//! Atrus parses MyST-flavored markdown into the MyST AST. It can also "render"
+//! Atrus parses MyST-flavored markdown into the MyST AST. It can also render
 //! the AST to JSON, HTML, or other formats.
 //!
 //! For simple use cases, call the `parse` function to parse input MyST into an
@@ -12,6 +12,9 @@
 //! standard post-processing transforms that resolve the AST to "POST" form.
 //! You can pass a "POST"-form AST to a function in the `render` namespace as
 //! before.
+//!
+//! See <https://github.com/sinclairtarget/aweigh> for an example of an
+//! application using Atrus to implement a custom MyST directive.
 
 // This file defines the Zig interface of libatrus. For the C-ABI-compatible
 // interface, see atrus.h.
