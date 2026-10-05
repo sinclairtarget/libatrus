@@ -4,7 +4,7 @@ const BufMap = std.BufMap;
 
 const ast = @import("../../ast.zig");
 const footnotes = @import("../../lookup/footnotes.zig");
-const util = @import("../../util/util.zig");
+const util = @import("../../util.zig");
 
 pub fn transform(
     alloc: Allocator,

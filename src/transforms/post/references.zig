@@ -2,7 +2,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const ast = @import("../../ast.zig");
-const myst = @import("../../myst/myst.zig");
+const myst = @import("../../myst.zig");
 
 const TargetMap = std.hash_map.StringHashMapUnmanaged(*ast.Node);
 
@@ -555,7 +555,7 @@ fn generateContainerCrossRefLinkText(
 // Unit Tests
 // ----------------------------------------------------------------------------
 const testing = std.testing;
-const util = @import("../../util/util.zig");
+const util = @import("../../util.zig");
 
 test "apply reference target to code block" {
     const target_node = try testing.allocator.create(ast.Node);

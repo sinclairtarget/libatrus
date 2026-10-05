@@ -1,5 +1,5 @@
-pub const option_values = @import("option_values.zig");
-pub const references = @import("references.zig");
+pub const option_values = @import("myst/option_values.zig");
+pub const references = @import("myst/references.zig");
 
 pub fn isValidRoleName(name: []const u8) bool {
     for (name) |c| {

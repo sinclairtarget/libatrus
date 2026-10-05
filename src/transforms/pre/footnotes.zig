@@ -4,7 +4,7 @@ const Allocator = std.mem.Allocator;
 const ast = @import("../../ast.zig");
 const DefStore = @import("../../lookup/DefStore.zig");
 const FootnoteDefMap = @import("../../lookup/footnotes.zig").DefMap;
-const util = @import("../../util/util.zig");
+const util = @import("../../util.zig");
 
 /// Moves all footnote definition nodes to the end of the AST. The footnote
 /// definitions are sorted according to when they are first referenced in the

@@ -4,10 +4,10 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-const ast = @import("../../ast.zig");
-const blocks = @import("blocks.zig");
-const enumerate = @import("enumerate.zig");
-const references = @import("references.zig");
+const ast = @import("../ast.zig");
+const blocks = @import("post/blocks.zig");
+const enumerate = @import("post/enumerate.zig");
+const references = @import("post/references.zig");
 
 /// Apply all "post" stage transformations.
 ///
@@ -35,7 +35,7 @@ pub fn transform(
 // Unit Tests
 // ----------------------------------------------------------------------------
 const testing = std.testing;
-const util = @import("../../util/util.zig");
+const util = @import("../util.zig");
 
 test "group by block, no block breaks" {
     var alloc = testing.allocator;

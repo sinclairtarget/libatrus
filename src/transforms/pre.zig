@@ -1,10 +1,10 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-const ast = @import("../../ast.zig");
-const roles = @import("roles.zig");
-const directives = @import("directives.zig");
-const footnotes = @import("footnotes.zig");
+const ast = @import("../ast.zig");
+const roles = @import("pre/roles.zig");
+const directives = @import("pre/directives.zig");
+const footnotes = @import("pre/footnotes.zig");
 
 /// Apply all "pre" stage transformations.
 pub fn transform(

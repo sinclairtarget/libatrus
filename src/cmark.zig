@@ -4,9 +4,9 @@
 const std = @import("std");
 const fmt = std.fmt;
 
-pub const character_refs = @import("character_refs.zig");
-pub const html = @import("html.zig");
-pub const uri = @import("uri.zig");
+pub const character_refs = @import("cmark/character_refs.zig");
+pub const html = @import("cmark/html.zig");
+pub const uri = @import("cmark/uri.zig");
 
 /// Sequence of 1 to 9 arabic digits. Can begin with 0s.
 pub fn parseOrderedListNumber(s: []const u8) !u32 {

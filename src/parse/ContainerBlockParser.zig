@@ -28,7 +28,7 @@ const Io = std.Io;
 const fmt = std.fmt;
 
 const ast = @import("../ast.zig");
-const cmark = @import("../cmark/cmark.zig");
+const cmark = @import("../cmark.zig");
 const logging = @import("../logging.zig");
 const BlockToken = @import("../lex/tokens.zig").BlockToken;
 const BlockTokenType = @import("../lex/tokens.zig").BlockTokenType;
@@ -36,7 +36,7 @@ const whitespaceLen = @import("../lex/tokens.zig").whitespaceLen;
 const LeafBlockParser = @import("LeafBlockParser.zig");
 const DefStore = @import("../lookup/DefStore.zig");
 const TokenIterator = @import("../lex/iterator.zig").TokenIterator;
-const util = @import("../util/util.zig");
+const util = @import("../util.zig");
 
 const logger = logging.logger(.container);
 

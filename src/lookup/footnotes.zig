@@ -25,7 +25,7 @@ const BufSet = std.BufSet;
 const BufMap = std.BufMap;
 
 const ast = @import("../ast.zig");
-const util = @import("../util/util.zig");
+const util = @import("../util.zig");
 
 pub const Error = error{InvalidIdentifier} ||
     Allocator.Error ||

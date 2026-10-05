@@ -34,14 +34,14 @@ const ast = @import("../ast.zig");
 const BlockToken = @import("../lex/tokens.zig").BlockToken;
 const BlockTokenType = @import("../lex/tokens.zig").BlockTokenType;
 const whitespaceLen = @import("../lex/tokens.zig").whitespaceLen;
-const cmark = @import("../cmark/cmark.zig");
+const cmark = @import("../cmark.zig");
 const escape = @import("escape.zig");
 const DefStore = @import("../lookup/DefStore.zig");
 const link_label_max_len = @import("../lookup/links.zig").label_max_len;
 const NodeList = @import("NodeList.zig");
-const myst = @import("../myst/myst.zig");
+const myst = @import("../myst.zig");
 const TokenIterator = @import("../lex/iterator.zig").TokenIterator;
-const util = @import("../util/util.zig");
+const util = @import("../util.zig");
 
 const Error = error{
     LineTooLong,

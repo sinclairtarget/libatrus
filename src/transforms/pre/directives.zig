@@ -6,9 +6,9 @@ const Io = std.Io;
 
 const ast = @import("../../ast.zig");
 const atrus = @import("../../root.zig");
-const myst = @import("../../myst/myst.zig");
+const myst = @import("../../myst.zig");
 const logger = @import("../../logging.zig").logger(.directives);
-const util = @import("../../util/util.zig");
+const util = @import("../../util.zig");
 const InlineTokenizer = @import("../../lex/InlineTokenizer.zig");
 const InlineParser = @import("../../parse/InlineParser.zig");
 

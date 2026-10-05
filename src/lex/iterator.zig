@@ -2,7 +2,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 
-const cmark = @import("../cmark/cmark.zig");
+const cmark = @import("../cmark.zig");
 const Token = @import("tokens.zig").Token;
 const BlockTokenType = @import("tokens.zig").BlockTokenType;
 const whitespaceLen = @import("tokens.zig").whitespaceLen;

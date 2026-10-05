@@ -2,8 +2,8 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const ast = @import("../../ast.zig");
-const myst = @import("../../myst/myst.zig");
-const util = @import("../../util/util.zig");
+const myst = @import("../../myst.zig");
+const util = @import("../../util.zig");
 
 pub fn transform(
     alloc: Allocator,

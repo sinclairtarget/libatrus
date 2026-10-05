@@ -22,7 +22,7 @@ const transforms = @import("transforms/transforms.zig");
 const json = @import("render/json.zig");
 const html = @import("render/html.zig");
 const typst = @import("render/typst.zig");
-const util = @import("util/util.zig");
+const util = @import("util.zig");
 
 const logger = @import("logging.zig").logger(.root);
 
@@ -277,12 +277,12 @@ test {
     _ = @import("render/html.zig");
     _ = @import("render/json.zig");
     _ = @import("root.zig");
+    _ = @import("transforms/post.zig");
     _ = @import("transforms/post/enumerate.zig");
-    _ = @import("transforms/post/post.zig");
     _ = @import("transforms/post/references.zig");
+    _ = @import("transforms/pre.zig");
     _ = @import("transforms/pre/directives.zig");
     _ = @import("transforms/pre/footnotes.zig");
-    _ = @import("transforms/pre/pre.zig");
     _ = @import("transforms/pre/roles.zig");
     _ = @import("util/unicode.zig");
 }

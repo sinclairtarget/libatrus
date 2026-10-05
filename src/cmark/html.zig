@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const util = @import("../util/util.zig");
+const util = @import("../util.zig");
 
 /// Returns true if the given string is a valid HTML tag name according to the
 /// CommonMark spec.
