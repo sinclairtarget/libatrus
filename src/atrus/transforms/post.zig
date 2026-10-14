@@ -35,7 +35,7 @@ pub fn transform(
 // Unit Tests
 // ----------------------------------------------------------------------------
 const testing = std.testing;
-const util = @import("../util.zig");
+const utils = @import("utils");
 
 test "group by block, no block breaks" {
     var alloc = testing.allocator;
@@ -247,7 +247,7 @@ test "enumerate figures" {
 
     const first_node = block_node.block.children[0];
     try testing.expectEqual(.container, @as(ast.NodeType, first_node.*));
-    const first_enumerator = try util.testing.expectNonNull(
+    const first_enumerator = try utils.testing.expectNonNull(
         first_node.container.enumerator,
     );
     try testing.expectEqualStrings("1", first_enumerator);
@@ -258,7 +258,7 @@ test "enumerate figures" {
 
     const third_node = block_node.block.children[2];
     try testing.expectEqual(.container, @as(ast.NodeType, third_node.*));
-    const third_enumerator = try util.testing.expectNonNull(
+    const third_enumerator = try utils.testing.expectNonNull(
         third_node.container.enumerator,
     );
     try testing.expectEqualStrings("2", third_enumerator);

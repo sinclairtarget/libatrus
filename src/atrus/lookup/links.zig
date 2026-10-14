@@ -4,15 +4,15 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const StringHashMapUnmanaged = std.hash_map.StringHashMapUnmanaged;
 
-const util = @import("../util.zig");
+const utils = @import("utils");
 
 pub const label_max_len = 999; // TODO: This is in bytes, but should be in
                                // Unicode codepoints.
-const folded_label_max_len = util.unicode.utf8.caseFoldLenWorstCase(
+const folded_label_max_len = utils.unicode.utf8.caseFoldLenWorstCase(
     label_max_len,
 );
 
-pub const Error = Allocator.Error || util.unicode.CaseFoldError;
+pub const Error = Allocator.Error || utils.unicode.CaseFoldError;
 
 pub const Definition = struct {
     url: []const u8,
@@ -110,7 +110,7 @@ fn normalizeLabel(link_label: []const u8, buf: []u8) ![]u8 {
     const collapsed = collapseInteriorWhitespace(trimmed, &collapse_buf);
 
     // case fold
-    return try util.unicode.utf8.caseFoldFull(collapsed, buf);
+    return try utils.unicode.utf8.caseFoldFull(collapsed, buf);
 }
 
 fn collapseInteriorWhitespace(s: []const u8, buf: []u8) []u8 {
@@ -157,7 +157,7 @@ test "can map single link def" {
 
     try testing.expectEqual(1, map.count());
 
-    const retrieved = try util.testing.expectNonNull(try map.get("bim"));
+    const retrieved = try utils.testing.expectNonNull(try map.get("bim"));
     try testing.expectEqualStrings("/foo", retrieved.url);
     try testing.expectEqualStrings("bar", retrieved.title);
 }
@@ -180,7 +180,7 @@ test "first link def takes precedence" {
     try map.add(testing.allocator, def1);
     try map.add(testing.allocator, def2);
 
-    const val = try util.testing.expectNonNull( try map.get("bim"));
+    const val = try utils.testing.expectNonNull( try map.get("bim"));
     try testing.expectEqualStrings("/foo", val.url);
     try testing.expectEqualStrings("bar", val.title);
 }
@@ -197,7 +197,7 @@ test "match is case-insensitive" {
 
     try map.add(testing.allocator, def);
 
-    const val = try util.testing.expectNonNull(try map.get("Bim"));
+    const val = try utils.testing.expectNonNull(try map.get("Bim"));
     try testing.expectEqualStrings("/foo", val.url);
     try testing.expectEqualStrings("bar", val.title);
 }
@@ -214,7 +214,7 @@ test "leading and trailing whitespace is stripped from label" {
 
     try map.add(testing.allocator, def);
 
-    const val = try util.testing.expectNonNull(try map.get("  bim  \t"));
+    const val = try utils.testing.expectNonNull(try map.get("  bim  \t"));
     try testing.expectEqualStrings("/foo", val.url);
     try testing.expectEqualStrings("bar", val.title);
 }
@@ -231,7 +231,7 @@ test "interior whitespace is collapsed" {
 
     try map.add(testing.allocator, def);
 
-    const val = try util.testing.expectNonNull(try map.get("bim  \t bat"));
+    const val = try utils.testing.expectNonNull(try map.get("bim  \t bat"));
     try testing.expectEqualStrings("/foo", val.url);
     try testing.expectEqualStrings("bar", val.title);
 }
@@ -248,7 +248,7 @@ test "label is case folded" {
 
     try map.add(testing.allocator, def);
 
-    const val = try util.testing.expectNonNull(try map.get("Strasse"));
+    const val = try utils.testing.expectNonNull(try map.get("Strasse"));
     try testing.expectEqualStrings("/foo", val.url);
     try testing.expectEqualStrings("bar", val.title);
 }

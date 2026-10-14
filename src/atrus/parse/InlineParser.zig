@@ -37,6 +37,7 @@ const ArrayList = std.ArrayList;
 const Io = std.Io;
 const fmt = std.fmt;
 
+const utils = @import("utils");
 const tokens = @import("../lex/tokens.zig");
 const InlineToken = tokens.InlineToken;
 const InlineTokenType = tokens.InlineTokenType;
@@ -45,9 +46,9 @@ const cmark = @import("../cmark.zig");
 const myst = @import("../myst.zig");
 const DefStore = @import("../lookup/DefStore.zig");
 const link_label_max_len = @import("../lookup/links.zig").label_max_len;
-const util = @import("../util.zig");
 const ast = @import("../ast.zig");
 const NodeList = @import("NodeList.zig");
+const nodeutil = @import("../nodeutil.zig");
 const alttext = @import("../render/alttext.zig");
 const escape = @import("escape.zig");
 const logging = @import("../logging.zig");
@@ -57,7 +58,7 @@ const logger = logging.logger(.@"inline");
 pub const Error = Io.Writer.Error ||
     Allocator.Error ||
     cmark.character_refs.CharacterReferenceError ||
-    util.unicode.CaseFoldError;
+    utils.unicode.CaseFoldError;
 
 tokenizer: *InlineTokenizer,
 line: ArrayList(InlineToken),
@@ -83,7 +84,7 @@ pub fn parse(
     alloc: Allocator,
     scratch: Allocator,
 ) Error![]*ast.Node {
-    var nodes = NodeList.init(alloc, scratch, util.nodes.createTextNode, .{});
+    var nodes = NodeList.init(alloc, scratch, nodeutil.createTextNode, .{});
     errdefer {
         for (nodes.items()) |node| {
             node.deinit(alloc);
@@ -91,7 +92,7 @@ pub fn parse(
         nodes.deinit();
     }
 
-    for (0..util.safety.loop_bound) |_| { // could hit if we forget to consume tokens
+    for (0..utils.safety.loop_bound) |_| { // could hit if we forget to consume tokens
         _ = try self.peek(scratch) orelse break;
 
         if (try self.parseMySTRole(alloc, scratch)) |role| {
@@ -167,7 +168,7 @@ pub fn parse(
         }
 
         @panic("unable to parse inline token");
-    } else @panic(util.safety.loop_bound_panic_msg);
+    } else @panic(utils.safety.loop_bound_panic_msg);
 
     return try nodes.toOwnedSlice();
 }
@@ -184,7 +185,7 @@ fn parseStarStrong(
     },
 ) Error!?*ast.Node {
     var did_parse = false;
-    var children = NodeList.init(alloc, scratch, util.nodes.createTextNode, .{});
+    var children = NodeList.init(alloc, scratch, nodeutil.createTextNode, .{});
     const checkpoint_index = self.checkpoint();
 
     // Track bracket depth so we know if we need to exit early because a parent
@@ -218,7 +219,7 @@ fn parseStarStrong(
         .lr_delim_star,
     }) orelse return null;
 
-    for (0..util.safety.loop_bound) |_| {
+    for (0..utils.safety.loop_bound) |_| {
         if (try self.parseMySTRole(alloc, scratch)) |role| {
             try children.append(role);
             continue;
@@ -372,7 +373,7 @@ fn parseStarStrong(
         }
 
         break;
-    } else @panic(util.safety.loop_bound_panic_msg);
+    } else @panic(utils.safety.loop_bound_panic_msg);
 
     try children.flush();
     if (children.len() == 0) {
@@ -419,7 +420,7 @@ fn parseStarEmphasis(
     },
 ) Error!?*ast.Node {
     var did_parse = false;
-    var children = NodeList.init(alloc, scratch, util.nodes.createTextNode, .{});
+    var children = NodeList.init(alloc, scratch, nodeutil.createTextNode, .{});
     const checkpoint_index = self.checkpoint();
 
     // Track bracket depth so we know if we need to exit early because a parent
@@ -450,7 +451,7 @@ fn parseStarEmphasis(
         .lr_delim_star,
     }) orelse return null;
 
-    for (0..util.safety.loop_bound) |_| {
+    for (0..utils.safety.loop_bound) |_| {
         var did_parse_this_loop = false;
 
         // leading star_emph?
@@ -648,7 +649,7 @@ fn parseStarEmphasis(
 
         // Reached end of interior content
         break;
-    } else @panic(util.safety.loop_bound_panic_msg);
+    } else @panic(utils.safety.loop_bound_panic_msg);
 
     try children.flush();
     if (children.len() == 0) {
@@ -688,7 +689,7 @@ fn parseUnderscoreStrong(
     },
 ) Error!?*ast.Node {
     var did_parse = false;
-    var children = NodeList.init(alloc, scratch, util.nodes.createTextNode, .{});
+    var children = NodeList.init(alloc, scratch, nodeutil.createTextNode, .{});
     const checkpoint_index = self.checkpoint();
 
     // Track bracket depth so we know if we need to exit early because a parent
@@ -731,7 +732,7 @@ fn parseUnderscoreStrong(
         else => return null,
     }
 
-    for (0..util.safety.loop_bound) |_| {
+    for (0..utils.safety.loop_bound) |_| {
         if (try self.parseMySTRole(alloc, scratch)) |role| {
             try children.append(role);
             continue;
@@ -881,7 +882,7 @@ fn parseUnderscoreStrong(
         }
 
         break;
-    } else @panic(util.safety.loop_bound_panic_msg);
+    } else @panic(utils.safety.loop_bound_panic_msg);
 
     try children.flush();
     if (children.len() == 0) {
@@ -937,7 +938,7 @@ fn parseUnderscoreEmphasis(
     },
 ) Error!?*ast.Node {
     var did_parse = false;
-    var children = NodeList.init(alloc, scratch, util.nodes.createTextNode, .{});
+    var children = NodeList.init(alloc, scratch, nodeutil.createTextNode, .{});
     const checkpoint_index = self.checkpoint();
 
     // Track bracket depth so we know if we need to exit early because a parent
@@ -979,7 +980,7 @@ fn parseUnderscoreEmphasis(
         else => return null,
     }
 
-    for (0..util.safety.loop_bound) |_| {
+    for (0..utils.safety.loop_bound) |_| {
         var did_parse_this_loop = false;
 
         // leading under_emph?
@@ -1174,7 +1175,7 @@ fn parseUnderscoreEmphasis(
 
         // Reached end of interior content
         break;
-    } else @panic(util.safety.loop_bound_panic_msg);
+    } else @panic(utils.safety.loop_bound_panic_msg);
 
     try children.flush();
     if (children.len() == 0) {
@@ -1340,7 +1341,7 @@ fn parseInlineCode(
 
     // TODO: Use allocating writer instead
     var values: ArrayList([]const u8) = .empty;
-    for (0..util.safety.loop_bound) |_| {
+    for (0..utils.safety.loop_bound) |_| {
         const token = try self.peek(scratch) orelse return null;
         switch (token.token_type) {
             .backtick => {
@@ -1392,7 +1393,7 @@ fn parseInlineCode(
                 try values.append(scratch, value);
             },
         }
-    } else @panic(util.safety.loop_bound_panic_msg);
+    } else @panic(utils.safety.loop_bound_panic_msg);
 
     if (values.items.len == 0) {
         return null;
@@ -1401,7 +1402,7 @@ fn parseInlineCode(
     var value = try std.mem.join(scratch, "", values.items);
 
     // Special case for stripping single leading and following space
-    if (value.len > 1 and !util.strings.containsOnly(value, " ")) {
+    if (value.len > 1 and !utils.strings.containsOnly(value, " ")) {
         if (value[0] == ' ' and value[value.len - 1] == ' ') {
             value = value[1 .. value.len - 1];
         }
@@ -1510,7 +1511,7 @@ fn parseLinkText(
     alloc: Allocator,
     scratch: Allocator,
 ) Error!?[]*ast.Node {
-    var nodes = NodeList.init(alloc, scratch, util.nodes.createTextNode, .{});
+    var nodes = NodeList.init(alloc, scratch, nodeutil.createTextNode, .{});
     var did_parse = false;
     const checkpoint_index = self.checkpoint();
     defer if (!did_parse) {
@@ -1524,7 +1525,7 @@ fn parseLinkText(
     _ = try self.consume(scratch, &.{.l_square_bracket}) orelse return null;
 
     var bracket_depth: u32 = 0;
-    loop: for (0..util.safety.loop_bound) |_| {
+    loop: for (0..utils.safety.loop_bound) |_| {
         if (try self.parseMySTRole(alloc, scratch)) |role| {
             try nodes.append(role);
             continue;
@@ -1619,7 +1620,7 @@ fn parseLinkText(
         }
 
         break;
-    } else @panic(util.safety.loop_bound_panic_msg);
+    } else @panic(utils.safety.loop_bound_panic_msg);
 
     _ = try self.consume(scratch, &.{.r_square_bracket}) orelse return null;
 
@@ -1686,7 +1687,7 @@ fn scanLinkDestination(self: *Self, scratch: Allocator) !?[]const u8 {
                 else => |t| {
                     _ = try self.consume(scratch, &.{t});
                     const value = try emitInlineText(scratch, token);
-                    if (util.strings.containsAsciiControl(value)) {
+                    if (utils.strings.containsAsciiControl(value)) {
                         return "";
                     }
                     _ = try running_text.writer.write(value);
@@ -2044,7 +2045,7 @@ fn parseLinkLabel(
     alloc: Allocator,
     scratch: Allocator,
 ) Error!?[]*ast.Node {
-    var nodes = NodeList.init(alloc, scratch, util.nodes.createTextNode, .{});
+    var nodes = NodeList.init(alloc, scratch, nodeutil.createTextNode, .{});
     var did_parse = false;
     const checkpoint_index = self.checkpoint();
     defer if (!did_parse) {
@@ -2057,7 +2058,7 @@ fn parseLinkLabel(
 
     _ = try self.consume(scratch, &.{.l_square_bracket}) orelse return null;
 
-    for (0..util.safety.loop_bound) |_| {
+    for (0..utils.safety.loop_bound) |_| {
         // square brackets not permitted within link label
         if (try self.peek(scratch)) |token| {
             switch (token.token_type) {
@@ -2105,7 +2106,7 @@ fn parseLinkLabel(
         }
 
         break;
-    } else @panic(util.safety.loop_bound_panic_msg);
+    } else @panic(utils.safety.loop_bound_panic_msg);
 
     _ = try self.consume(scratch, &.{.r_square_bracket}) orelse return null;
 
@@ -2195,7 +2196,7 @@ fn parseImageDescription(
     scratch: Allocator,
 ) Error!?[]*ast.Node {
     var did_parse = false;
-    var nodes = NodeList.init(alloc, scratch, util.nodes.createTextNode, .{});
+    var nodes = NodeList.init(alloc, scratch, nodeutil.createTextNode, .{});
     const checkpoint_index = self.checkpoint();
     defer if (!did_parse) {
         self.backtrack(checkpoint_index);
@@ -2208,7 +2209,7 @@ fn parseImageDescription(
     _ = try self.consume(scratch, &.{.l_square_bracket}) orelse return null;
 
     var bracket_depth: u32 = 0;
-    loop: for (0..util.safety.loop_bound) |_| {
+    loop: for (0..utils.safety.loop_bound) |_| {
         if (try self.parseMySTRole(alloc, scratch)) |role| {
             try nodes.append(role);
             continue;
@@ -2292,7 +2293,7 @@ fn parseImageDescription(
         }
 
         break;
-    } else @panic(util.safety.loop_bound_panic_msg);
+    } else @panic(utils.safety.loop_bound_panic_msg);
 
     _ = try self.consume(scratch, &.{.r_square_bracket}) orelse return null;
 
@@ -2559,7 +2560,7 @@ fn parseURIAutolink(
     }
 
     const url = try cmark.uri.normalize(scratch, scratch, content);
-    const text = try util.nodes.createTextNode(alloc, content);
+    const text = try nodeutil.createTextNode(alloc, content);
     errdefer text.deinit(alloc);
 
     const children = try alloc.dupe(*ast.Node, &.{text});
@@ -2687,7 +2688,7 @@ fn parseEmailAutolink(
         return null;
     }
 
-    const text = try util.nodes.createTextNode(alloc, content);
+    const text = try nodeutil.createTextNode(alloc, content);
     errdefer text.deinit(alloc);
 
     const url = try fmt.allocPrintSentinel(
@@ -3064,7 +3065,7 @@ fn parseHTMLOpenTag(
     const tag = try self.scanHTMLTagName(scratch) orelse return null;
     _ = try running_text.writer.write(tag);
 
-    for (0..util.safety.loop_bound) |_| {
+    for (0..utils.safety.loop_bound) |_| {
         if (try self.consume(scratch, &.{.whitespace})) |ws| {
             _ = try running_text.writer.write(emitInlineLiteral(ws));
         } else if (try self.consume(scratch, &.{.newline})) |nl| {
@@ -3081,7 +3082,7 @@ fn parseHTMLOpenTag(
             // no more attributes, we are done
             break;
         }
-    } else @panic(util.safety.loop_bound_panic_msg);
+    } else @panic(utils.safety.loop_bound_panic_msg);
 
     // Allow "/" before closing bracket
     if (try self.consume(scratch, &.{.slash})) |_| {

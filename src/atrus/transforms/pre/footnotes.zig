@@ -4,7 +4,7 @@ const Allocator = std.mem.Allocator;
 const ast = @import("../../ast.zig");
 const DefStore = @import("../../lookup/DefStore.zig");
 const FootnoteDefMap = @import("../../lookup/footnotes.zig").DefMap;
-const util = @import("../../util.zig");
+const nodeutil = @import("../../nodeutil.zig");
 
 /// Moves all footnote definition nodes to the end of the AST. The footnote
 /// definitions are sorted according to when they are first referenced in the
@@ -16,7 +16,7 @@ pub fn transform(
     var reference_order_def_map: FootnoteDefMap = .empty;
     defer reference_order_def_map.deinit(alloc);
 
-    try util.nodes.gatherFootnotesReferenceOrder(
+    try nodeutil.gatherFootnotesReferenceOrder(
         alloc,
         original_node,
         &reference_order_def_map,

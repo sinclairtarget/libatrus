@@ -30,6 +30,7 @@ const ArenaAllocator = std.heap.ArenaAllocator;
 const Io = std.Io;
 const ArrayList = std.ArrayList;
 
+const utils = @import("utils");
 const ast = @import("../ast.zig");
 const BlockToken = @import("../lex/tokens.zig").BlockToken;
 const BlockTokenType = @import("../lex/tokens.zig").BlockTokenType;
@@ -39,9 +40,9 @@ const escape = @import("escape.zig");
 const DefStore = @import("../lookup/DefStore.zig");
 const link_label_max_len = @import("../lookup/links.zig").label_max_len;
 const NodeList = @import("NodeList.zig");
+const nodeutil = @import("../nodeutil.zig");
 const myst = @import("../myst.zig");
 const TokenIterator = @import("../lex/iterator.zig").TokenIterator;
-const util = @import("../util.zig");
 
 const Error = error{
     LineTooLong,
@@ -50,7 +51,7 @@ const Error = error{
 } ||
     Allocator.Error ||
     cmark.character_refs.CharacterReferenceError ||
-    util.unicode.CaseFoldError;
+    utils.unicode.CaseFoldError;
 
 const close_token_panic_msg = "encountered unexpected CLOSE token";
 
@@ -92,7 +93,7 @@ pub fn parse(
 
     self.in_paragraph = false;
 
-    for (0..util.safety.loop_bound) |_| {
+    for (0..utils.safety.loop_bound) |_| {
         self.it.clearConsumed();
 
         const next = try self.it.peek(scratch) orelse break;
@@ -220,7 +221,7 @@ pub fn parse(
         }
 
         @panic("unable to parse block token");
-    } else @panic(util.safety.loop_bound_panic_msg);
+    } else @panic(utils.safety.loop_bound_panic_msg);
 
     return try children.toOwnedSlice();
 }
@@ -259,7 +260,7 @@ fn parseATXHeading(
     _ = try self.it.consume(scratch, &.{.pound});
 
     var inner = Io.Writer.Allocating.init(scratch);
-    for (0..util.safety.loop_bound) |_| {
+    for (0..utils.safety.loop_bound) |_| {
         const current = try self.it.peek(scratch) orelse break;
         switch (current.token_type) {
             .pound => {
@@ -285,7 +286,7 @@ fn parseATXHeading(
                 _ = try self.it.consume(scratch, &.{current.token_type});
             },
         }
-    } else @panic(util.safety.loop_bound_panic_msg);
+    } else @panic(utils.safety.loop_bound_panic_msg);
 
     _ = try self.it.consume(scratch, &.{.newline}) orelse return null;
 
@@ -294,7 +295,7 @@ fn parseATXHeading(
         if (trimmed_inner.len == 0) {
             break :blk &.{};
         }
-        const text_node = try util.nodes.createTextNode(alloc, trimmed_inner);
+        const text_node = try nodeutil.createTextNode(alloc, trimmed_inner);
         break :blk try alloc.dupe(*ast.Node, &.{text_node});
     };
     errdefer alloc.free(children);
@@ -548,7 +549,7 @@ fn parseIndentedCode(
 
     // Parse one or more indented lines
     var lines: ArrayList([]const u8) = .empty;
-    block_loop: for (0..util.safety.loop_bound) |line_num| {
+    block_loop: for (0..utils.safety.loop_bound) |line_num| {
         var line = Io.Writer.Allocating.init(scratch);
 
         const loop_checkpoint_index = self.it.checkpoint();
@@ -585,7 +586,7 @@ fn parseIndentedCode(
         }
 
         try lines.append(scratch, line.written());
-    } else @panic(util.safety.loop_bound_panic_msg);
+    } else @panic(utils.safety.loop_bound_panic_msg);
 
     if (lines.items.len == 0) {
         return fail;
@@ -593,7 +594,7 @@ fn parseIndentedCode(
 
     // Skip leading and trailing blank lines
     const start_index = for (lines.items, 0..) |line, i| {
-        if (line.len > 0 and !util.strings.containsOnly(line, "\n")) {
+        if (line.len > 0 and !utils.strings.containsOnly(line, "\n")) {
             break i;
         }
     } else lines.items.len;
@@ -602,7 +603,7 @@ fn parseIndentedCode(
         while (i > start_index) {
             i -= 1;
             const line = lines.items[i];
-            if (line.len > 0 and !util.strings.containsOnly(line, "\n")) {
+            if (line.len > 0 and !utils.strings.containsOnly(line, "\n")) {
                 break :blk i + 1;
             }
         }
@@ -614,7 +615,7 @@ fn parseIndentedCode(
         "\n",
         lines.items[start_index..end_index],
     );
-    if (buf.len == 0 or util.strings.containsOnly(buf, " \t\n")) {
+    if (buf.len == 0 or utils.strings.containsOnly(buf, " \t\n")) {
         return fail;
     }
 
@@ -783,7 +784,7 @@ fn parseFencedCode(
     // MyST tests require trailing newline to be trimmed for AST, even though
     // it should be added back when rendered as HTML.
     // https://spec.commonmark.org/0.30/#example-119
-    const trimmed = util.strings.trimEndOne(content.written(), "\n");
+    const trimmed = utils.strings.trimEndOne(content.written(), "\n");
 
     const value = try alloc.dupeZ(u8, trimmed);
     errdefer alloc.free(value);
@@ -1118,7 +1119,7 @@ fn scanLinkDefDestination(self: *Self, scratch: Allocator) !?[]const u8 {
                 .hexadecimal_character_reference,
                 => |t| {
                     _ = try self.it.consume(scratch, &.{t});
-                    if (util.strings.containsAsciiControl(token.lexeme)) {
+                    if (utils.strings.containsAsciiControl(token.lexeme)) {
                         return null;
                     }
                     const value = try resolveText(scratch, token);
@@ -2060,7 +2061,7 @@ fn parseHTMLUnknownTag(
     // Handle attributes (only allowed for open tags)
     var newline_count: u8 = 0;
     if (is_opening_tag) {
-        for (0..util.safety.loop_bound) |_| {
+        for (0..utils.safety.loop_bound) |_| {
             ws_tokens = try self.it.consumeWhitespace(scratch);
             if (whitespaceLen(ws_tokens) > 0) {
                 for (ws_tokens) |t| {
@@ -2080,7 +2081,7 @@ fn parseHTMLUnknownTag(
                 // no more attributes, we are done
                 break;
             }
-        } else @panic(util.safety.loop_bound_panic_msg);
+        } else @panic(utils.safety.loop_bound_panic_msg);
     }
 
     if (newline_count > 1) {
@@ -2736,7 +2737,7 @@ fn parseGFMTableHeaderRow(
     }
 
     var header_cell_content: ArrayList([]const u8) = .empty;
-    for (0..util.safety.loop_bound) |_| {
+    for (0..utils.safety.loop_bound) |_| {
         const maybe_content = try self.scanGFMTableCellContent(scratch);
         if (try self.it.consume(scratch, &.{.pipe})) |_| {
             const content = maybe_content orelse "";
@@ -2748,7 +2749,7 @@ fn parseGFMTableHeaderRow(
             }
             break;
         }
-    } else @panic(util.safety.loop_bound_panic_msg);
+    } else @panic(utils.safety.loop_bound_panic_msg);
 
     _ = try self.it.consume(scratch, &.{.newline}) orelse return null;
 
@@ -2933,7 +2934,7 @@ fn parseGFMTableDataRow(
     }
 
     var cell_content: ArrayList([]const u8) = .empty;
-    for (0..util.safety.loop_bound) |_| {
+    for (0..utils.safety.loop_bound) |_| {
         const maybe_content = try self.scanGFMTableCellContent(scratch);
         if (try self.it.consume(scratch, &.{.pipe})) |_| {
             const content = maybe_content orelse "";
@@ -2944,7 +2945,7 @@ fn parseGFMTableDataRow(
             }
             break;
         }
-    } else @panic(util.safety.loop_bound_panic_msg);
+    } else @panic(utils.safety.loop_bound_panic_msg);
 
     // Add empty cells up to expected number of cells
     const expected_num_cells = delimiter_row.numCells();
@@ -3184,7 +3185,7 @@ fn scanTextFallback(self: *Self, scratch: Allocator) ![]const u8 {
 fn createParagraphNode(alloc: Allocator, text_content: []const u8) !*ast.Node {
     std.debug.assert(text_content.len > 0);
 
-    const text_node = try util.nodes.createTextNode(alloc, text_content);
+    const text_node = try nodeutil.createTextNode(alloc, text_content);
     errdefer text_node.deinit(alloc);
 
     const children = try alloc.dupe(*ast.Node, &.{text_node});
@@ -3206,7 +3207,7 @@ fn createSetextHeadingNode(
 ) !*ast.Node {
     std.debug.assert(text_content.len > 0);
 
-    const text_node = try util.nodes.createTextNode(alloc, text_content);
+    const text_node = try nodeutil.createTextNode(alloc, text_content);
     errdefer text_node.deinit(alloc);
 
     const children = try alloc.dupe(*ast.Node, &.{text_node});
@@ -3656,7 +3657,7 @@ test "link reference definition" {
 
     try testing.expectEqual(1, def_store.links.count());
 
-    const definition = try util.testing.expectNonNull(
+    const definition = try utils.testing.expectNonNull(
         try def_store.links.get("foo"),
     );
     try testing.expectEqualStrings("foo", definition.label);

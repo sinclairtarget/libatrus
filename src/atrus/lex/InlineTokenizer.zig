@@ -21,10 +21,10 @@ const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const Io = std.Io;
 
+const utils = @import("utils");
 const InlineToken = @import("tokens.zig").InlineToken;
 const InlineTokenType = @import("tokens.zig").InlineTokenType;
 const Context = @import("tokens.zig").Context;
-const util = @import("../util.zig");
 
 pub const Error = error{
     WriteFailed,
@@ -676,7 +676,7 @@ fn matchDelimUnderRun(
                         evaluateDelimUnderscoreContext(
                             self.in[self.i..lookahead_i],
                             false,
-                            util.strings.isPunctuation(&.{b}),
+                            utils.strings.isPunctuation(&.{b}),
                         ),
                     };
                 },
@@ -720,7 +720,7 @@ fn matchDelimUnderRun(
                         evaluateDelimUnderscoreContext(
                             self.in[self.i..lookahead_i],
                             false,
-                            util.strings.isPunctuation(&.{b}),
+                            utils.strings.isPunctuation(&.{b}),
                         ),
                     };
                 },
@@ -730,7 +730,7 @@ fn matchDelimUnderRun(
                         evaluateDelimUnderscoreContext(
                             self.in[self.i..lookahead_i],
                             false,
-                            util.strings.isPunctuation(&.{b}),
+                            utils.strings.isPunctuation(&.{b}),
                         ),
                     };
                 },
@@ -791,7 +791,7 @@ fn matchDelimUnderRun(
                         evaluateDelimUnderscoreContext(
                             self.in[self.i..lookahead_i],
                             true,
-                            util.strings.isPunctuation(&.{b}),
+                            utils.strings.isPunctuation(&.{b}),
                         ),
                     };
                 },
@@ -1305,7 +1305,7 @@ fn expectEqualTokens(
 
     for (expected) |exp| {
         const maybe_token = try tokenizer.next(scratch);
-        const token = try util.testing.expectNonNull(maybe_token);
+        const token = try utils.testing.expectNonNull(maybe_token);
         try std.testing.expectEqual(exp, token.token_type);
     }
 

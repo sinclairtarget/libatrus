@@ -43,15 +43,26 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    // atrus module
-    // Using "addModule()" here adds the package to the package module set,
-    // making it available to anyone consuming libatrus as a Zig package.
-    const atrus_module = b.addModule("atrus", .{
-        .root_source_file = b.path("src/root.zig"),
+    // utils module
+    const utils_module = b.createModule(.{
+        .root_source_file = b.path("src/utils/root.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
             .{ .name = "data", .module = data_module },
+        },
+    });
+
+    // atrus module
+    // Using "addModule()" here adds the package to the package module set,
+    // making it available to anyone consuming libatrus as a Zig package.
+    const atrus_module = b.addModule("atrus", .{
+        .root_source_file = b.path("src/atrus/root.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "data", .module = data_module },
+            .{ .name = "utils", .module = utils_module },
         },
     });
     const options = b.addOptions();
@@ -171,7 +182,7 @@ fn installExecutable(
     const exe = b.addExecutable(.{
         .name = "atrus",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("src/main.zig"),
+            .root_source_file = b.path("src/cli/main.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{
@@ -197,7 +208,7 @@ fn installLibrary(
     optimize: std.builtin.OptimizeMode,
 ) LibraryArtifacts {
     const c_api_module = b.createModule(.{
-        .root_source_file = b.path("src/c_api.zig"),
+        .root_source_file = b.path("src/c_api/root.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{

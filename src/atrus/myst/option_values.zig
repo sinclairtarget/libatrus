@@ -182,11 +182,11 @@ pub fn parseCommaSeparatedRanges(alloc: Allocator, s: []const u8) !?[]u16 {
 // Unit Tests
 //-----------------------------------------------------------------------------
 const testing = std.testing;
-const util = @import("../util.zig");
+const utils = @import("utils");
 
 fn testParseCommaSeparatedRanges(s: []const u8, expected: []const u16) !void {
     const maybe_answer = try parseCommaSeparatedRanges(testing.allocator, s);
-    const answer = try util.testing.expectNonNull(maybe_answer);
+    const answer = try utils.testing.expectNonNull(maybe_answer);
     defer testing.allocator.free(answer);
 
     try testing.expectEqualSlices(u16, expected, answer);

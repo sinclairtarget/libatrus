@@ -7,8 +7,8 @@ const Io = std.Io;
 const ast = @import("../../ast.zig");
 const atrus = @import("../../root.zig");
 const myst = @import("../../myst.zig");
+const nodeutil = @import("../../nodeutil.zig");
 const logger = @import("../../logging.zig").logger(.directives);
-const util = @import("../../util.zig");
 const InlineTokenizer = @import("../../lex/InlineTokenizer.zig");
 const InlineParser = @import("../../parse/InlineParser.zig");
 
@@ -125,7 +125,7 @@ fn transformAdmonition(
 
     if (args.len > 0) {
         // Handle args
-        const text_node = try util.nodes.createTextNode(
+        const text_node = try nodeutil.createTextNode(
             alloc,
             std.mem.trim(u8, args, " \t"),
         );

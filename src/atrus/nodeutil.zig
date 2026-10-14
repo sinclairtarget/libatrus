@@ -1,8 +1,10 @@
+// TODO: This needs a better home/name.
+
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-const ast = @import("../ast.zig");
-const FootnoteDefMap = @import("../lookup/footnotes.zig").DefMap;
+const ast = @import("ast.zig");
+const FootnoteDefMap = @import("lookup/footnotes.zig").DefMap;
 
 /// Creates a text node with the given text value.
 ///

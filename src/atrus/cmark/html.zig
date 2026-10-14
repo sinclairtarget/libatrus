@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const util = @import("../util.zig");
+const utils = @import("utils");
 
 /// Returns true if the given string is a valid HTML tag name according to the
 /// CommonMark spec.
@@ -36,14 +36,14 @@ pub fn isValidAttributeName(s: []const u8) bool {
     }
 
     if (!std.ascii.isAlphabetic(s[0]) and
-        !util.strings.containsScalar("_:", s[0]))
+        !utils.strings.containsScalar("_:", s[0]))
     {
         return false;
     }
 
     for (1..s.len) |i| {
         if (!std.ascii.isAlphanumeric(s[i]) and
-            !util.strings.containsScalar("_:.-", s[i]))
+            !utils.strings.containsScalar("_:.-", s[i]))
         {
             return false;
         }

@@ -555,7 +555,7 @@ fn generateContainerCrossRefLinkText(
 // Unit Tests
 // ----------------------------------------------------------------------------
 const testing = std.testing;
-const util = @import("../../util.zig");
+const utils = @import("utils");
 
 test "apply reference target to code block" {
     const target_node = try testing.allocator.create(ast.Node);
@@ -601,10 +601,10 @@ test "apply reference target to code block" {
     const post_code_node = post_node.root.children[0];
     try testing.expectEqual(.code, @as(ast.NodeType, post_code_node.*));
 
-    const label = try util.testing.expectNonNull(post_code_node.code.label);
+    const label = try utils.testing.expectNonNull(post_code_node.code.label);
     try testing.expectEqualStrings("Foo", label);
 
-    const identifier = try util.testing.expectNonNull(
+    const identifier = try utils.testing.expectNonNull(
         post_code_node.code.identifier,
     );
     try testing.expectEqualStrings("foo", identifier);
@@ -742,7 +742,7 @@ test "link to ref" {
         "pasta",
         ref_node.cross_reference.identifier,
     );
-    const title = try util.testing.expectNonNull(
+    const title = try utils.testing.expectNonNull(
         ref_node.cross_reference.title,
     );
     try testing.expectEqualStrings("The Best Pasta", title);

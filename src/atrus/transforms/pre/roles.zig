@@ -3,7 +3,7 @@ const Allocator = std.mem.Allocator;
 
 const ast = @import("../../ast.zig");
 const myst = @import("../../myst.zig");
-const util = @import("../../util.zig");
+const nodeutil = @import("../../nodeutil.zig");
 
 pub fn transform(
     alloc: Allocator,
@@ -79,7 +79,7 @@ fn transformSubscript(
     node: *ast.Node,
     value: []const u8,
 ) !*ast.Node {
-    const text_node = try util.nodes.createTextNode(alloc, value);
+    const text_node = try nodeutil.createTextNode(alloc, value);
     errdefer text_node.deinit(alloc);
 
     const sub_node = try alloc.create(ast.Node);
@@ -107,7 +107,7 @@ fn transformSuperscript(
     node: *ast.Node,
     value: []const u8,
 ) !*ast.Node {
-    const text_node = try util.nodes.createTextNode(alloc, value);
+    const text_node = try nodeutil.createTextNode(alloc, value);
     errdefer text_node.deinit(alloc);
 
     const sup_node = try alloc.create(ast.Node);
@@ -175,7 +175,7 @@ fn transformAbbreviation(
         break :blk std.mem.trim(u8, value[0..open_i], " \t");
     };
 
-    const text_node = try util.nodes.createTextNode(alloc, abbr_value);
+    const text_node = try nodeutil.createTextNode(alloc, abbr_value);
     errdefer text_node.deinit(alloc);
 
     const abbr_node = try alloc.create(ast.Node);

@@ -24,15 +24,15 @@ const StringHashMapUnmanaged = std.StringHashMapUnmanaged;
 const BufSet = std.BufSet;
 const BufMap = std.BufMap;
 
+const utils = @import("utils");
 const ast = @import("../ast.zig");
-const util = @import("../util.zig");
 
 pub const Error = error{InvalidIdentifier} ||
     Allocator.Error ||
-    util.unicode.CaseFoldError;
+    utils.unicode.CaseFoldError;
 
 const max_identifier_chars = 999; // bytes
-const normalization_buf_size = util.unicode.utf8.caseFoldLenWorstCase(
+const normalization_buf_size = utils.unicode.utf8.caseFoldLenWorstCase(
     max_identifier_chars,
 );
 
@@ -206,7 +206,7 @@ fn normalizeIdentifier(identifier: []const u8, buf: []u8) ![]u8 {
         return Error.InvalidIdentifier;
     }
 
-    return try util.unicode.utf8.caseFoldFull(identifier, buf);
+    return try utils.unicode.utf8.caseFoldFull(identifier, buf);
 }
 
 /// Identifiers may not contain spaces, tabs, newlines, or the characters `^`,
@@ -247,7 +247,7 @@ test "simple add and get" {
 
     try def_map.add(testing.allocator, &def_node);
 
-    const retrieved = try util.testing.expectNonNull(
+    const retrieved = try utils.testing.expectNonNull(
         try def_map.get("my-footnote"),
     );
     try testing.expectEqualStrings(
@@ -282,7 +282,7 @@ test "iterate" {
     // Iterate
     var it = def_map.iterator();
 
-    var def_node = try util.testing.expectNonNull(it.next());
+    var def_node = try utils.testing.expectNonNull(it.next());
     try testing.expectEqualStrings(
         "my-footnote",
         def_node.footnote_definition.identifier,
@@ -292,7 +292,7 @@ test "iterate" {
         def_node.footnote_definition.label,
     );
 
-    def_node = try util.testing.expectNonNull(it.next());
+    def_node = try utils.testing.expectNonNull(it.next());
     try testing.expectEqualStrings(
         "my-other-footnote",
         def_node.footnote_definition.identifier,
@@ -319,7 +319,7 @@ test "case fold footnote" {
 
     try def_map.add(testing.allocator, &def_node);
 
-    const retrieved = try util.testing.expectNonNull(
+    const retrieved = try utils.testing.expectNonNull(
         try def_map.get("όσος"),
     );
     try testing.expectEqualStrings(

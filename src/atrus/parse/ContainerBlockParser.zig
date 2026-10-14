@@ -27,6 +27,7 @@ const ArrayList = std.ArrayList;
 const Io = std.Io;
 const fmt = std.fmt;
 
+const utils = @import("utils");
 const ast = @import("../ast.zig");
 const cmark = @import("../cmark.zig");
 const logging = @import("../logging.zig");
@@ -36,7 +37,6 @@ const whitespaceLen = @import("../lex/tokens.zig").whitespaceLen;
 const LeafBlockParser = @import("LeafBlockParser.zig");
 const DefStore = @import("../lookup/DefStore.zig");
 const TokenIterator = @import("../lex/iterator.zig").TokenIterator;
-const util = @import("../util.zig");
 
 const logger = logging.logger(.container);
 
@@ -47,7 +47,7 @@ const Error = error{
 } ||
     Allocator.Error ||
     cmark.character_refs.CharacterReferenceError ||
-    util.unicode.CaseFoldError;
+    utils.unicode.CaseFoldError;
 
 const TokenError = error{
     LineTooLong,
@@ -479,7 +479,7 @@ pub fn parse(
     self.can_open_containers = true;
 
     var leaf_it = self.iterator();
-    for (0..util.safety.loop_bound) |_| {
+    for (0..utils.safety.loop_bound) |_| {
         for (self.container_stack.items) |container| {
             logger.debug("[{s}]", .{container.name()});
         }
@@ -536,7 +536,7 @@ pub fn parse(
         }
 
         try self.pop(alloc, scratch, def_store);
-    } else @panic(util.safety.loop_bound_panic_msg);
+    } else @panic(utils.safety.loop_bound_panic_msg);
 
     const root = try self.top().toNode(alloc, self.line_num);
     errdefer root.deinit();

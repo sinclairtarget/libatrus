@@ -2,9 +2,10 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const BufMap = std.BufMap;
 
+const utils = @import("utils");
 const ast = @import("../../ast.zig");
 const footnotes = @import("../../lookup/footnotes.zig");
-const util = @import("../../util.zig");
+const nodeutil = @import("../../nodeutil.zig");
 
 pub fn transform(
     alloc: Allocator,
@@ -88,7 +89,7 @@ fn enumerateFootnotes(
     var reference_order_def_map: footnotes.DefMap = .empty;
 
     // Build map of definitions in reference order
-    try util.nodes.gatherFootnotesReferenceOrder(
+    try nodeutil.gatherFootnotesReferenceOrder(
         scratch,
         node,
         &reference_order_def_map,
@@ -254,7 +255,7 @@ test "enumerate footnotes" {
             @as(ast.NodeType, child_node.*),
         );
 
-        const enumerator = try util.testing.expectNonNull(
+        const enumerator = try utils.testing.expectNonNull(
             child_node.footnote_reference.enumerator,
         );
         try testing.expectEqualStrings(expected_number, enumerator);
@@ -269,7 +270,7 @@ test "enumerate footnotes" {
             @as(ast.NodeType, child_node.*),
         );
 
-        const enumerator = try util.testing.expectNonNull(
+        const enumerator = try utils.testing.expectNonNull(
             child_node.footnote_definition.enumerator,
         );
         try testing.expectEqualStrings(expected_number, enumerator);

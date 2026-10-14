@@ -27,13 +27,13 @@ const ArenaAllocator = std.heap.ArenaAllocator;
 const Io = std.Io;
 const ArrayList = std.ArrayList;
 
+const utils = @import("utils");
 const LineReader = @import("lex/LineReader.zig");
 const BlockTokenizer = @import("lex/BlockTokenizer.zig");
 const ContainerBlockParser = @import("parse/ContainerBlockParser.zig");
 const DefStore = @import("lookup/DefStore.zig");
 const InlineParser = @import("parse/InlineParser.zig");
 const transforms = @import("transforms/transforms.zig");
-const util = @import("util.zig");
 
 const logger = @import("logging.zig").logger(.root);
 
@@ -103,7 +103,7 @@ pub fn parse(
     defer arena.deinit();
     const scratch = arena.allocator();
 
-    var timer: util.debug.ComputationTimer(logger) = .init(.{});
+    var timer: utils.debug.ComputationTimer(logger) = .init(.{});
     defer timer.stop();
 
     var line_buf: [max_line_len]u8 = undefined;
@@ -184,7 +184,7 @@ pub fn resolve(
     defer arena.deinit();
     const scratch = arena.allocator();
 
-    var timer: util.debug.ComputationTimer(logger) = .init(.{});
+    var timer: utils.debug.ComputationTimer(logger) = .init(.{});
     defer timer.stop();
 
     timer.step("post transforms");
@@ -255,7 +255,7 @@ test {
     _ = @import("transforms/pre/directives.zig");
     _ = @import("transforms/pre/footnotes.zig");
     _ = @import("transforms/pre/roles.zig");
-    _ = @import("util/unicode.zig");
+    _ = @import("utils");
 }
 
 test parse {
