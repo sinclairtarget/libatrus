@@ -1,0 +1,1973 @@
+{
+  "type": "root",
+  "children": [
+    {
+      "type": "heading",
+      "depth": 1,
+      "children": [
+        {
+          "type": "text",
+          "value": "MyST Features"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Markedly Structured Text, or MyST, is a superset of CommonMark. It adds several\nfeatures on top of standard Markdown meant to support technical and scientific\npublishing. It also introduces \"directives\" and \"roles\", two ways of making\nMarkdown more extensible that are inspired by ReStructured Text."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "This document describes the MyST features supported by "
+        },
+        {
+          "type": "inlineCode",
+          "value": "libatrus"
+        },
+        {
+          "type": "text",
+          "value": "."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "depth": 2,
+      "children": [
+        {
+          "type": "text",
+          "value": "Comments"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "In MyST, any line beginning with a "
+        },
+        {
+          "type": "inlineCode",
+          "value": "%"
+        },
+        {
+          "type": "text",
+          "value": " symbol is a comment. Comments aren't\nvisible to readers. (Though that doesn't mean they are completely hidden. When\nrendering to HTML, for example, comments are turned into HTML comments, which\ncan still be read if someone inspects the source for a web page.)"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "This is an example of a comment:"
+        }
+      ]
+    },
+    {
+      "type": "mystComment",
+      "value": "Hi, I am a comment!"
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "I am regular paragraph text."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "depth": 2,
+      "children": [
+        {
+          "type": "text",
+          "value": "Blocks"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "A MyST document can be separated into one or more \"blocks\". Each block can have\nmetadata attached to it. Blocks are a way to break your document into different\nparts at the top-most structural level."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "You begin a new block with a line containing three or more "
+        },
+        {
+          "type": "inlineCode",
+          "value": "+"
+        },
+        {
+          "type": "text",
+          "value": " symbols. The\nsymbols can be followed by an inline JSON document with arbtitrary keys and\nvalues."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "This is the first block in the document."
+        }
+      ]
+    },
+    {
+      "type": "blockBreak",
+      "meta": "{\"name\": \"foo\"}"
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Now we're on the second block in the document."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "depth": 2,
+      "children": [
+        {
+          "type": "text",
+          "value": "Directives"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Directives are a way of adding new kinds of constructions to Markdown without\nadding any new syntax. Directives should be used why you want to include\nmultiple lines of content in the new construction."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "depth": 3,
+      "children": [
+        {
+          "type": "text",
+          "value": "Generic Syntax"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "A directive looks like this:"
+        }
+      ]
+    },
+    {
+      "type": "mystDirective",
+      "name": "foobar",
+      "args": "bim bam",
+      "value": ":zips: 4\n:zaps: enough\n\nThis is my content.\n\nIt goes on for many lines."
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Here we've used "
+        },
+        {
+          "type": "inlineCode",
+          "value": "`"
+        },
+        {
+          "type": "text",
+          "value": " as a code fence, but you can also use "
+        },
+        {
+          "type": "inlineCode",
+          "value": ":"
+        },
+        {
+          "type": "text",
+          "value": ", which makes\nmore sense when the directive includes nested Markdown content. (This makes no\ndifference to the MyST parser, but if your MyST document gets read by a normal\nMarkdown parser, using "
+        },
+        {
+          "type": "inlineCode",
+          "value": ":"
+        },
+        {
+          "type": "text",
+          "value": " for your directives ensures that the nested Markdown\nstill gets parsed.)"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "The name of the directive is enclosed in curly braces immediately following the\ncode fence. Anything on the same line after the curly braces is considered to\nbe the \"argument\" to the directive."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Within the fenced block, the first lines can start with an option name enclosed\nby "
+        },
+        {
+          "type": "inlineCode",
+          "value": ":"
+        },
+        {
+          "type": "text",
+          "value": " followed by an option value. These are like named arguments to the\ndirective."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Finally, everything following the last option until the end of the fenced block\nconstitutes the directive's value or body."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Unless a directive is specially handled by "
+        },
+        {
+          "type": "inlineCode",
+          "value": "libatrus"
+        },
+        {
+          "type": "text",
+          "value": " (see the next section),\nit will get rendered as an \"unhandled directive.\" Applications should either\ntransform custom directives into other nodes before rendering or else override\nrendering for the custom directive."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "depth": 3,
+      "children": [
+        {
+          "type": "text",
+          "value": "Built-in Directives"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "MyST includes several built-in directives. These are required by the MyST\nspecification and are implemented in "
+        },
+        {
+          "type": "inlineCode",
+          "value": "libatrus"
+        },
+        {
+          "type": "text",
+          "value": "."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "depth": 4,
+      "children": [
+        {
+          "type": "text",
+          "value": "Admonitions"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "An admonition is block of text that calls special attention to something."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "A basic admonition looks like this:"
+        }
+      ]
+    },
+    {
+      "type": "mystDirective",
+      "name": "admonition",
+      "args": "Pay Attention!",
+      "value": "You need to understand this.",
+      "children": [
+        {
+          "type": "admonition",
+          "children": [
+            {
+              "type": "admonitionTitle",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Pay Attention!"
+                }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "You need to understand this."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "There are also ten other kinds of admonition that you can use by varying the\ndirective name. Some examples are "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{note}"
+        },
+        {
+          "type": "text",
+          "value": ", "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{hint}"
+        },
+        {
+          "type": "text",
+          "value": ", "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{warning}"
+        },
+        {
+          "type": "text",
+          "value": ", and\n"
+        },
+        {
+          "type": "inlineCode",
+          "value": "{danger}"
+        },
+        {
+          "type": "text",
+          "value": "."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "The directive argument is used as a title for the admonition element when\nrendered. If none is given, then the admonition kind is used as the title\ninstead."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "depth": 4,
+      "children": [
+        {
+          "type": "text",
+          "value": "Code Blocks"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "The "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{code}"
+        },
+        {
+          "type": "text",
+          "value": " directive introduces a code block that behaves similarly to a\nregular Markdown code block but with added options."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Here is an example of a "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{code}"
+        },
+        {
+          "type": "text",
+          "value": " directive:"
+        }
+      ]
+    },
+    {
+      "type": "mystDirective",
+      "name": "code",
+      "args": "python",
+      "options": {
+        "linenos": true,
+        "filename": "run.py"
+      },
+      "value": "def foo():\n    pass",
+      "children": [
+        {
+          "type": "code",
+          "lang": "python",
+          "showLineNumbers": true,
+          "value": "def foo():\n    pass",
+          "filename": "run.py"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "The directive argument is used to establish the programming language for the\ncode block. Here, we've used two options to specify we want to render this code\nblock with lines numbers and a filename of "
+        },
+        {
+          "type": "inlineCode",
+          "value": "run.py"
+        },
+        {
+          "type": "text",
+          "value": "."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Other valid options for code blocks are "
+        },
+        {
+          "type": "inlineCode",
+          "value": ":emphasize-lines:"
+        },
+        {
+          "type": "text",
+          "value": ", which specifies\none or more lines (or a range of lines) to be highlighted, and\n"
+        },
+        {
+          "type": "inlineCode",
+          "value": ":lineno-start:"
+        },
+        {
+          "type": "text",
+          "value": ", which establishes the starting line number."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "depth": 4,
+      "children": [
+        {
+          "type": "text",
+          "value": "Images"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "The "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{image}"
+        },
+        {
+          "type": "text",
+          "value": " directive, like the "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{code}"
+        },
+        {
+          "type": "text",
+          "value": " directive, behaves similarly to the\nexisting Markdown image syntax but allows for added options."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Here is an example of an "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{image}"
+        },
+        {
+          "type": "text",
+          "value": " directive:"
+        }
+      ]
+    },
+    {
+      "type": "mystDirective",
+      "name": "image",
+      "args": "cat.jpg",
+      "options": {
+        "alt": "Funny cat.",
+        "width": "200px",
+        "align": "center"
+      },
+      "children": [
+        {
+          "type": "image",
+          "url": "cat.jpg",
+          "alt": "Funny cat.",
+          "width": "200px",
+          "align": "center"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "The directive argument is used as the URL for the image. The "
+        },
+        {
+          "type": "inlineCode",
+          "value": "alt"
+        },
+        {
+          "type": "text",
+          "value": " option\nallows for specifying alt text for the image. The "
+        },
+        {
+          "type": "inlineCode",
+          "value": ":width:"
+        },
+        {
+          "type": "text",
+          "value": " and "
+        },
+        {
+          "type": "inlineCode",
+          "value": ":align:"
+        },
+        {
+          "type": "text",
+          "value": "\noptions are available for controlling the size and placement of the image."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "depth": 4,
+      "children": [
+        {
+          "type": "text",
+          "value": "Figures"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "The "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{figure}"
+        },
+        {
+          "type": "text",
+          "value": " directive is similar to the "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{image}"
+        },
+        {
+          "type": "text",
+          "value": " directive except it allows\nfor an associated caption. The caption appears in the body of the directive."
+        }
+      ]
+    },
+    {
+      "type": "mystDirective",
+      "name": "figure",
+      "args": "cat.jpg",
+      "options": {
+        "alt": "Funny cat."
+      },
+      "value": "This is my funny cat!",
+      "children": [
+        {
+          "type": "container",
+          "kind": "figure",
+          "children": [
+            {
+              "type": "image",
+              "url": "cat.jpg",
+              "alt": "Funny cat."
+            },
+            {
+              "type": "caption",
+              "children": [
+                {
+                  "type": "paragraph",
+                  "children": [
+                    {
+                      "type": "text",
+                      "value": "This is my funny cat!"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "The "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{figure}"
+        },
+        {
+          "type": "text",
+          "value": " directive supports the same set of options as the "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{image}"
+        },
+        {
+          "type": "text",
+          "value": "\ndirective."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "depth": 4,
+      "children": [
+        {
+          "type": "text",
+          "value": "Math"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "A "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{math}"
+        },
+        {
+          "type": "text",
+          "value": " directive contains LaTeX-style math. No unique options are\nsupported."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Here is an example:"
+        }
+      ]
+    },
+    {
+      "type": "mystDirective",
+      "name": "math",
+      "value": "y = mx + b",
+      "children": [
+        {
+          "type": "math",
+          "value": "y = mx + b"
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "depth": 4,
+      "children": [
+        {
+          "type": "text",
+          "value": "Tables"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Tables can be written in MyST as they are written in Github-flavored Markdown.\nBut there is also a "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{list-table}"
+        },
+        {
+          "type": "text",
+          "value": " directive that can be used to create tables\nfrom bullet lists."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Here is an example:"
+        }
+      ]
+    },
+    {
+      "type": "mystDirective",
+      "name": "list-table",
+      "args": "Starter Pokemon",
+      "options": {
+        "header-rows": 1,
+        "align": "center"
+      },
+      "value": "* * Pokemon\n  * Type\n* * Pikachu\n  * Electric\n* * Squirtle\n  * Water\n* * Bulbasaur\n  * Grass",
+      "children": [
+        {
+          "type": "container",
+          "kind": "table",
+          "children": [
+            {
+              "type": "caption",
+              "children": [
+                {
+                  "type": "paragraph",
+                  "children": [
+                    {
+                      "type": "text",
+                      "value": "Starter Pokemon"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "table",
+              "align": "center",
+              "children": [
+                {
+                  "type": "tableRow",
+                  "children": [
+                    {
+                      "type": "tableCell",
+                      "header": true,
+                      "children": [
+                        {
+                          "type": "text",
+                          "value": "Pokemon"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "tableCell",
+                      "header": true,
+                      "children": [
+                        {
+                          "type": "text",
+                          "value": "Type"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "tableRow",
+                  "children": [
+                    {
+                      "type": "tableCell",
+                      "children": [
+                        {
+                          "type": "text",
+                          "value": "Pikachu"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "tableCell",
+                      "children": [
+                        {
+                          "type": "text",
+                          "value": "Electric"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "tableRow",
+                  "children": [
+                    {
+                      "type": "tableCell",
+                      "children": [
+                        {
+                          "type": "text",
+                          "value": "Squirtle"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "tableCell",
+                      "children": [
+                        {
+                          "type": "text",
+                          "value": "Water"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "tableRow",
+                  "children": [
+                    {
+                      "type": "tableCell",
+                      "children": [
+                        {
+                          "type": "text",
+                          "value": "Bulbasaur"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "tableCell",
+                      "children": [
+                        {
+                          "type": "text",
+                          "value": "Grass"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "For the "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{list-table}"
+        },
+        {
+          "type": "text",
+          "value": " directive, the directive argument, if provided, is used\nas a caption for the table. The "
+        },
+        {
+          "type": "inlineCode",
+          "value": ":align:"
+        },
+        {
+          "type": "text",
+          "value": " option sets the alignment of the\nentire table. The "
+        },
+        {
+          "type": "inlineCode",
+          "value": ":header-rows:"
+        },
+        {
+          "type": "text",
+          "value": " option describes how many of the leading rows\nshould be considered header rows."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "depth": 3,
+      "children": [
+        {
+          "type": "text",
+          "value": "Common Options"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Though generally the supported options for each directive depend on the\ndirective, there are some common options that apply to all built-in directives."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Every directive can have either a "
+        },
+        {
+          "type": "inlineCode",
+          "value": ":name:"
+        },
+        {
+          "type": "text",
+          "value": " or a "
+        },
+        {
+          "type": "inlineCode",
+          "value": ":label:"
+        },
+        {
+          "type": "text",
+          "value": " option. This sets the\ntarget ID for the directive so that it can be cross-referenced."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Every directive can have a boolean "
+        },
+        {
+          "type": "inlineCode",
+          "value": ":enumerated:"
+        },
+        {
+          "type": "text",
+          "value": " option determining whether\nthe directive should be given an enumartion value when cross-referenced."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Finally, every directive can also have a "
+        },
+        {
+          "type": "inlineCode",
+          "value": ":class:"
+        },
+        {
+          "type": "text",
+          "value": " option. This has no inherent\nmeaning but can be used to add custom styling once the directive has been\nrendered."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "depth": 3,
+      "children": [
+        {
+          "type": "text",
+          "value": "Errors"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Sometimes a directive can be well-formed but invalid. This could happen if, for\nexample, a directive argument is of the wrong type."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "If a directive is invalid, it is replaced in the MyST document by a directive\nerror, which includes an error message. Note that parsing of the MyST document\nstill completes successfully."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "The following is an invalid use of the "
+        },
+        {
+          "type": "inlineCode",
+          "value": "list-table"
+        },
+        {
+          "type": "text",
+          "value": " directive and will produce\na directive error:"
+        }
+      ]
+    },
+    {
+      "type": "mystDirectiveError",
+      "message": "list not uniform for directive: list-table"
+    },
+    {
+      "type": "heading",
+      "depth": 2,
+      "children": [
+        {
+          "type": "text",
+          "value": "Roles"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Roles are similar to directives. They are a way of adding new constructions to\nMarkdown without adding any new syntax. But unlike directives they should apply\nonly to content appearing within a single line."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "depth": 3,
+      "children": [
+        {
+          "type": "text",
+          "value": "Generic Syntax"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "A role looks like this: "
+        },
+        {
+          "type": "mystRole",
+          "name": "foobar",
+          "value": "bim bam"
+        },
+        {
+          "type": "text",
+          "value": "."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "THe role name is given in curly braces and the role value is given between\nbackticks following the curly braces."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Roles do not have arguments or options."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Unless a role is specially handled by "
+        },
+        {
+          "type": "inlineCode",
+          "value": "libatrus"
+        },
+        {
+          "type": "text",
+          "value": " (see the next section), it\nwill get rendered as an \"unhandled role.\" Applications should either transform\ncustom roles into other nodes before rendering or else override rendering for\nthe custom role."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "depth": 3,
+      "children": [
+        {
+          "type": "text",
+          "value": "Built-in Roles"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "MyST includes several built-in roles. These are required by the MyST\nspecification and are implemented in "
+        },
+        {
+          "type": "inlineCode",
+          "value": "libatrus"
+        },
+        {
+          "type": "text",
+          "value": "."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "depth": 4,
+      "children": [
+        {
+          "type": "text",
+          "value": "Abbreviations"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "The "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{abbr}"
+        },
+        {
+          "type": "text",
+          "value": " role allows you to use an acronym and provide an expansion of the\nacronym as optional content for the reader (the exact mechansim depends on the\nrender format)."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Here is an example of the "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{abbr}"
+        },
+        {
+          "type": "text",
+          "value": " role:"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "mystRole",
+          "name": "abbr",
+          "value": "MyST (Markedly Structured Text)",
+          "children": [
+            {
+              "type": "abbreviation",
+              "title": "Markedly Structured Text",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "MyST"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "value": " is a great time!"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "As you can see, the expansion goes within parentheses following the acronym."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "depth": 4,
+      "children": [
+        {
+          "type": "text",
+          "value": "Subscript"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "The "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{sub}"
+        },
+        {
+          "type": "text",
+          "value": " role indicates that the associated value should be treated as\nsubscript: CO"
+        },
+        {
+          "type": "mystRole",
+          "name": "sub",
+          "value": "2",
+          "children": [
+            {
+              "type": "subscript",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "2"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "value": "."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "depth": 4,
+      "children": [
+        {
+          "type": "text",
+          "value": "Superscript"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "The "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{sup}"
+        },
+        {
+          "type": "text",
+          "value": " role indicates that the associated value should be treated as\nsuperscript: 44"
+        },
+        {
+          "type": "mystRole",
+          "name": "sup",
+          "value": "th",
+          "children": [
+            {
+              "type": "superscript",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "th"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "value": " president."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "depth": 4,
+      "children": [
+        {
+          "type": "text",
+          "value": "Math"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "The "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{math}"
+        },
+        {
+          "type": "text",
+          "value": " role indiciates that the associated value contains LaTeX math:\n"
+        },
+        {
+          "type": "mystRole",
+          "name": "math",
+          "value": "y = mx + b",
+          "children": [
+            {
+              "type": "inlineMath",
+              "value": "y = mx + b"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "value": "."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "depth": 4,
+      "children": [
+        {
+          "type": "text",
+          "value": "References"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "There are two roles for cross-referencing that are covered in the section below\non references."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "depth": 3,
+      "children": [
+        {
+          "type": "text",
+          "value": "Errors"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Like with directives, if a role is well-formed but invalid then it is replaced\nin the document with a role error (usually including an error message). Parsing\nstill completes successfully."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "depth": 2,
+      "children": [
+        {
+          "type": "text",
+          "value": "Cross References"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "MyST supports a system for creating \"rich\" references to other parts of a\ndocument or even to entirely different documents."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "depth": 3,
+      "children": [
+        {
+          "type": "text",
+          "value": "Targets"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "For something to be the target of a cross reference, it must have a label. You\ncan give a label to something in a few different ways depending on whether that\nsomething is a directive or not."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "A directive can be labeled using either the "
+        },
+        {
+          "type": "inlineCode",
+          "value": ":label:"
+        },
+        {
+          "type": "text",
+          "value": " or "
+        },
+        {
+          "type": "inlineCode",
+          "value": ":name:"
+        },
+        {
+          "type": "text",
+          "value": " options.\nOtherwise, you assign a label by putting the label on the immediately preceding\nline using special syntax."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Here is an example of a labeled heading:"
+        }
+      ]
+    },
+    {
+      "type": "mystTarget",
+      "label": "my-example-heading"
+    },
+    {
+      "type": "heading",
+      "depth": 4,
+      "children": [
+        {
+          "type": "text",
+          "value": "My Example Labeled Heading"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Labels can be given to headings, paragraphs, lists, blockquotes, or pretty much\nany element that isn't an inline element."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "depth": 3,
+      "children": [
+        {
+          "type": "text",
+          "value": "Referencing"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "You create a cross reference using Markdown's regular link syntax (and URL\nfragments) or either the "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{ref}"
+        },
+        {
+          "type": "text",
+          "value": ", "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{numref}"
+        },
+        {
+          "type": "text",
+          "value": ", or "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{eq}"
+        },
+        {
+          "type": "text",
+          "value": " role. Using the regular\nlink syntax establishes a cross reference with default behavior that varies\ndepending on the type of element targeted. Using the roles gives you greater\ncontrol over the cross reference."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "The "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{ref}"
+        },
+        {
+          "type": "text",
+          "value": " role establishes a cross reference that does not use any\nenumeration value. Writing just "
+        },
+        {
+          "type": "mystRole",
+          "name": "ref",
+          "value": "my-example-heading",
+          "children": [
+            {
+              "type": "crossReference",
+              "kind": "ref",
+              "identifier": "my-example-heading",
+              "label": "my-example-heading"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "value": " establishes a cross\nreference to the above heading that automatically fills in the link text based\non the heading. This is equivalent to "
+        },
+        {
+          "type": "link",
+          "url": "#my-example-heading",
+          "children": []
+        },
+        {
+          "type": "text",
+          "value": ". Writing\n"
+        },
+        {
+          "type": "mystRole",
+          "name": "ref",
+          "value": "the above heading <my-example-heading>",
+          "children": [
+            {
+              "type": "crossReference",
+              "kind": "ref",
+              "identifier": "my-example-heading",
+              "label": "my-example-heading",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "the above heading"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "value": ", with the label given in angle\nbrackets, establishes a link using \"the above heading\" as the link text. This\nis equivalent to "
+        },
+        {
+          "type": "link",
+          "url": "#my-example-heading",
+          "children": [
+            {
+              "type": "text",
+              "value": "the above heading"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "value": "."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "The "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{numref}"
+        },
+        {
+          "type": "text",
+          "value": " role is similar but allows you to make use of the target's\nenumeration value in the link text using "
+        },
+        {
+          "type": "inlineCode",
+          "value": "%s"
+        },
+        {
+          "type": "text",
+          "value": ". The reference will not resolve\n(see below) if the target element is not enumerated. Here is an example of\nusing the "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{numref}"
+        },
+        {
+          "type": "text",
+          "value": " role:"
+        }
+      ]
+    },
+    {
+      "type": "mystDirective",
+      "name": "figure",
+      "args": "plot.png",
+      "options": {
+        "label": "my-plot"
+      },
+      "value": "Look at the curves on that distribution!",
+      "children": [
+        {
+          "type": "container",
+          "kind": "figure",
+          "children": [
+            {
+              "type": "image",
+              "url": "plot.png"
+            },
+            {
+              "type": "caption",
+              "children": [
+                {
+                  "type": "paragraph",
+                  "children": [
+                    {
+                      "type": "text",
+                      "value": "Look at the curves on that distribution!"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Here is a reference to the above figure: "
+        },
+        {
+          "type": "mystRole",
+          "name": "numref",
+          "value": "Plot %s <my-plot>",
+          "children": [
+            {
+              "type": "crossReference",
+              "kind": "numref",
+              "identifier": "my-plot",
+              "label": "my-plot",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "Plot %s"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "value": "."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Finally there is the "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{eq}"
+        },
+        {
+          "type": "text",
+          "value": " role, which establishes a reference to a "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{math}"
+        },
+        {
+          "type": "text",
+          "value": "\ndirective. The only valid value for an "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{eq}"
+        },
+        {
+          "type": "text",
+          "value": " role is the label for a "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{math}"
+        },
+        {
+          "type": "text",
+          "value": "\ndirective. Here is an example:"
+        }
+      ]
+    },
+    {
+      "type": "mystDirective",
+      "name": "math",
+      "options": {
+        "label": "super-formula"
+      },
+      "value": "y = x^2",
+      "children": [
+        {
+          "type": "math",
+          "identifier": "super-formula",
+          "label": "super-formula",
+          "value": "y = x^2"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Take a look at "
+        },
+        {
+          "type": "mystRole",
+          "name": "eq",
+          "value": "super-formula",
+          "children": [
+            {
+              "type": "crossReference",
+              "kind": "eq",
+              "identifier": "super-formula",
+              "label": "super-formula"
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "value": "!"
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "depth": 3,
+      "children": [
+        {
+          "type": "text",
+          "value": "Resolution"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "The cross references in a MyST document are initially unresolved, meaning that\nthey are not yet connected to their targets. Resolution is one of the last\ntransformations applied to a MyST document before it is rendered."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "When the "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{ref}"
+        },
+        {
+          "type": "text",
+          "value": ", "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{numref}"
+        },
+        {
+          "type": "text",
+          "value": ", and "
+        },
+        {
+          "type": "inlineCode",
+          "value": "{eq}"
+        },
+        {
+          "type": "text",
+          "value": " roles are used for cross referencing\nand the reference is unresolved, it will be rendered as an unresolved cross\nreference. Using the Markdown link syntax for cross references instead means\nthat an unresolved cross reference just gets rendered as a broken link."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Here is an unresolved reference: "
+        },
+        {
+          "type": "mystRole",
+          "name": "ref",
+          "value": "This goes nowhere <not-a-thing>",
+          "children": [
+            {
+              "type": "crossReference",
+              "kind": "ref",
+              "identifier": "not-a-thing",
+              "label": "not-a-thing",
+              "children": [
+                {
+                  "type": "text",
+                  "value": "This goes nowhere"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "text",
+          "value": "."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "children": [
+        {
+          "type": "text",
+          "value": "Cross references within a single MyST document are handled by "
+        },
+        {
+          "type": "inlineCode",
+          "value": "libatrus"
+        },
+        {
+          "type": "text",
+          "value": ". To\ncross reference to targets within other documents, you must supply the valid\nuniverse of targets for a given document to "
+        },
+        {
+          "type": "inlineCode",
+          "value": "libatrus"
+        },
+        {
+          "type": "text",
+          "value": " when calling "
+        },
+        {
+          "type": "inlineCode",
+          "value": "resolve()"
+        },
+        {
+          "type": "text",
+          "value": "\non the document."
+        }
+      ]
+    }
+  ]
+}

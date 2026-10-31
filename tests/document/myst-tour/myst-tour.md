@@ -237,10 +237,9 @@ render format).
 
 Here is an example of the `{abbr}` role:
 
-{abbr}`MyST <Markedly Structured Text>` is a great time!
+{abbr}`MyST (Markedly Structured Text)` is a great time!
 
-As you can see, the expansion goes within angle brackets following the
-acronym.
+As you can see, the expansion goes within parentheses following the acronym.
 
 #### Subscript
 The `{sub}` role indicates that the associated value should be treated as
@@ -331,6 +330,8 @@ When the `{ref}`, `{numref}`, and `{eq}` roles are used for cross referencing
 and the reference is unresolved, it will be rendered as an unresolved cross
 reference. Using the Markdown link syntax for cross references instead means
 that an unresolved cross reference just gets rendered as a broken link.
+
+Here is an unresolved reference: {ref}`This goes nowhere <not-a-thing>`.
 
 Cross references within a single MyST document are handled by `libatrus`. To
 cross reference to targets within other documents, you must supply the valid

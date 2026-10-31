@@ -1,0 +1,260 @@
+<h1>MyST Features</h1>
+<p>Markedly Structured Text, or MyST, is a superset of CommonMark. It adds several
+features on top of standard Markdown meant to support technical and scientific
+publishing. It also introduces &quot;directives&quot; and &quot;roles&quot;, two ways of making
+Markdown more extensible that are inspired by ReStructured Text.</p>
+<p>This document describes the MyST features supported by <code>libatrus</code>.</p>
+<h2>Comments</h2>
+<p>In MyST, any line beginning with a <code>%</code> symbol is a comment. Comments aren't
+visible to readers. (Though that doesn't mean they are completely hidden. When
+rendering to HTML, for example, comments are turned into HTML comments, which
+can still be read if someone inspects the source for a web page.)</p>
+<p>This is an example of a comment:</p>
+<!--Hi, I am a comment!-->
+<p>I am regular paragraph text.</p>
+<h2>Blocks</h2>
+<p>A MyST document can be separated into one or more &quot;blocks&quot;. Each block can have
+metadata attached to it. Blocks are a way to break your document into different
+parts at the top-most structural level.</p>
+<p>You begin a new block with a line containing three or more <code>+</code> symbols. The
+symbols can be followed by an inline JSON document with arbtitrary keys and
+values.</p>
+<p>This is the first block in the document.</p>
+<div class="block" data-block="{&quot;name&quot;: &quot;foo&quot;}">
+  <p>Now we're on the second block in the document.</p>
+  <h2>Directives</h2>
+  <p>Directives are a way of adding new kinds of constructions to Markdown without
+adding any new syntax. Directives should be used why you want to include
+multiple lines of content in the new construction.</p>
+  <h3>Generic Syntax</h3>
+  <p>A directive looks like this:</p>
+  <div class="directive unhandled">
+    <p><code class="kind">{foobar}</code><code class="args">bim bam</code></p>
+    <pre><code>:zips: 4
+:zaps: enough
+
+This is my content.
+
+It goes on for many lines.</code></pre>
+  </div>
+  <p>Here we've used <code>`</code> as a code fence, but you can also use <code>:</code>, which makes
+more sense when the directive includes nested Markdown content. (This makes no
+difference to the MyST parser, but if your MyST document gets read by a normal
+Markdown parser, using <code>:</code> for your directives ensures that the nested Markdown
+still gets parsed.)</p>
+  <p>The name of the directive is enclosed in curly braces immediately following the
+code fence. Anything on the same line after the curly braces is considered to
+be the &quot;argument&quot; to the directive.</p>
+  <p>Within the fenced block, the first lines can start with an option name enclosed
+by <code>:</code> followed by an option value. These are like named arguments to the
+directive.</p>
+  <p>Finally, everything following the last option until the end of the fenced block
+constitutes the directive's value or body.</p>
+  <p>Unless a directive is specially handled by <code>libatrus</code> (see the next section),
+it will get rendered as an &quot;unhandled directive.&quot; Applications should either
+transform custom directives into other nodes before rendering or else override
+rendering for the custom directive.</p>
+  <h3>Built-in Directives</h3>
+  <p>MyST includes several built-in directives. These are required by the MyST
+specification and are implemented in <code>libatrus</code>.</p>
+  <h4>Admonitions</h4>
+  <p>An admonition is block of text that calls special attention to something.</p>
+  <p>A basic admonition looks like this:</p>
+    <aside class="admonition">
+    <p class="admonition-title">Pay Attention!</p>
+    <p>You need to understand this.</p>
+  </aside>
+  <p>There are also ten other kinds of admonition that you can use by varying the
+directive name. Some examples are <code>{note}</code>, <code>{hint}</code>, <code>{warning}</code>, and
+<code>{danger}</code>.</p>
+  <p>The directive argument is used as a title for the admonition element when
+rendered. If none is given, then the admonition kind is used as the title
+instead.</p>
+  <h4>Code Blocks</h4>
+  <p>The <code>{code}</code> directive introduces a code block that behaves similarly to a
+regular Markdown code block but with added options.</p>
+  <p>Here is an example of a <code>{code}</code> directive:</p>
+    <pre><code class="language-python">def foo():
+    pass
+  </code></pre>
+  <p>The directive argument is used to establish the programming language for the
+code block. Here, we've used two options to specify we want to render this code
+block with lines numbers and a filename of <code>run.py</code>.</p>
+  <p>Other valid options for code blocks are <code>:emphasize-lines:</code>, which specifies
+one or more lines (or a range of lines) to be highlighted, and
+<code>:lineno-start:</code>, which establishes the starting line number.</p>
+  <h4>Images</h4>
+  <p>The <code>{image}</code> directive, like the <code>{code}</code> directive, behaves similarly to the
+existing Markdown image syntax but allows for added options.</p>
+  <p>Here is an example of an <code>{image}</code> directive:</p>
+    <img src="cat.jpg" alt="Funny cat." class="align-center" width="200px" />
+  <p>The directive argument is used as the URL for the image. The <code>alt</code> option
+allows for specifying alt text for the image. The <code>:width:</code> and <code>:align:</code>
+options are available for controlling the size and placement of the image.</p>
+  <h4>Figures</h4>
+  <p>The <code>{figure}</code> directive is similar to the <code>{image}</code> directive except it allows
+for an associated caption. The caption appears in the body of the directive.</p>
+    <figure>
+    <img src="cat.jpg" alt="Funny cat." />
+    <figcaption>
+      <p>This is my funny cat!</p>
+    </figcaption>
+  </figure>
+  <p>The <code>{figure}</code> directive supports the same set of options as the <code>{image}</code>
+directive.</p>
+  <h4>Math</h4>
+  <p>A <code>{math}</code> directive contains LaTeX-style math. No unique options are
+supported.</p>
+  <p>Here is an example:</p>
+    <div class="math-display">y = mx + b</div>
+  <h4>Tables</h4>
+  <p>Tables can be written in MyST as they are written in Github-flavored Markdown.
+But there is also a <code>{list-table}</code> directive that can be used to create tables
+from bullet lists.</p>
+  <p>Here is an example:</p>
+    <figure>
+    <figcaption>
+      <p>Starter Pokemon</p>
+    </figcaption>
+    <table align="center">
+      <thead>
+        <tr>
+          <th>Pokemon</th>
+          <th>Type</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Pikachu</td>
+          <td>Electric</td>
+        </tr>
+        <tr>
+          <td>Squirtle</td>
+          <td>Water</td>
+        </tr>
+        <tr>
+          <td>Bulbasaur</td>
+          <td>Grass</td>
+        </tr>
+      </tbody>
+    </table>
+  </figure>
+  <p>For the <code>{list-table}</code> directive, the directive argument, if provided, is used
+as a caption for the table. The <code>:align:</code> option sets the alignment of the
+entire table. The <code>:header-rows:</code> option describes how many of the leading rows
+should be considered header rows.</p>
+  <h3>Common Options</h3>
+  <p>Though generally the supported options for each directive depend on the
+directive, there are some common options that apply to all built-in directives.</p>
+  <p>Every directive can have either a <code>:name:</code> or a <code>:label:</code> option. This sets the
+target ID for the directive so that it can be cross-referenced.</p>
+  <p>Every directive can have a boolean <code>:enumerated:</code> option determining whether
+the directive should be given an enumartion value when cross-referenced.</p>
+  <p>Finally, every directive can also have a <code>:class:</code> option. This has no inherent
+meaning but can be used to add custom styling once the directive has been
+rendered.</p>
+  <h3>Errors</h3>
+  <p>Sometimes a directive can be well-formed but invalid. This could happen if, for
+example, a directive argument is of the wrong type.</p>
+  <p>If a directive is invalid, it is replaced in the MyST document by a directive
+error, which includes an error message. Note that parsing of the MyST document
+still completes successfully.</p>
+  <p>The following is an invalid use of the <code>list-table</code> directive and will produce
+a directive error:</p>
+  <div>  </div>
+  <h2>Roles</h2>
+  <p>Roles are similar to directives. They are a way of adding new constructions to
+Markdown without adding any new syntax. But unlike directives they should apply
+only to content appearing within a single line.</p>
+  <h3>Generic Syntax</h3>
+  <p>A role looks like this: <span class="role unhandled"><code class="kind">{foobar}</code><code>bim bam</code></span>.</p>
+  <p>THe role name is given in curly braces and the role value is given between
+backticks following the curly braces.</p>
+  <p>Roles do not have arguments or options.</p>
+  <p>Unless a role is specially handled by <code>libatrus</code> (see the next section), it
+will get rendered as an &quot;unhandled role.&quot; Applications should either transform
+custom roles into other nodes before rendering or else override rendering for
+the custom role.</p>
+  <h3>Built-in Roles</h3>
+  <p>MyST includes several built-in roles. These are required by the MyST
+specification and are implemented in <code>libatrus</code>.</p>
+  <h4>Abbreviations</h4>
+  <p>The <code>{abbr}</code> role allows you to use an acronym and provide an expansion of the
+acronym as optional content for the reader (the exact mechansim depends on the
+render format).</p>
+  <p>Here is an example of the <code>{abbr}</code> role:</p>
+  <p><abbr title="Markedly Structured Text">MyST</abbr> is a great time!</p>
+  <p>As you can see, the expansion goes within parentheses following the acronym.</p>
+  <h4>Subscript</h4>
+  <p>The <code>{sub}</code> role indicates that the associated value should be treated as
+subscript: CO<sub>2</sub>.</p>
+  <h4>Superscript</h4>
+  <p>The <code>{sup}</code> role indicates that the associated value should be treated as
+superscript: 44<sup>th</sup> president.</p>
+  <h4>Math</h4>
+  <p>The <code>{math}</code> role indiciates that the associated value contains LaTeX math:
+<span class="math-inline">y = mx + b</span>.</p>
+  <h4>References</h4>
+  <p>There are two roles for cross-referencing that are covered in the section below
+on references.</p>
+  <h3>Errors</h3>
+  <p>Like with directives, if a role is well-formed but invalid then it is replaced
+in the document with a role error (usually including an error message). Parsing
+still completes successfully.</p>
+  <h2>Cross References</h2>
+  <p>MyST supports a system for creating &quot;rich&quot; references to other parts of a
+document or even to entirely different documents.</p>
+  <h3>Targets</h3>
+  <p>For something to be the target of a cross reference, it must have a label. You
+can give a label to something in a few different ways depending on whether that
+something is a directive or not.</p>
+  <p>A directive can be labeled using either the <code>:label:</code> or <code>:name:</code> options.
+Otherwise, you assign a label by putting the label on the immediately preceding
+line using special syntax.</p>
+  <p>Here is an example of a labeled heading:</p>
+  <h4 id="my-example-heading">My Example Labeled Heading</h4>
+  <p>Labels can be given to headings, paragraphs, lists, blockquotes, or pretty much
+any element that isn't an inline element.</p>
+  <h3>Referencing</h3>
+  <p>You create a cross reference using Markdown's regular link syntax (and URL
+fragments) or either the <code>{ref}</code>, <code>{numref}</code>, or <code>{eq}</code> role. Using the regular
+link syntax establishes a cross reference with default behavior that varies
+depending on the type of element targeted. Using the roles gives you greater
+control over the cross reference.</p>
+  <p>The <code>{ref}</code> role establishes a cross reference that does not use any
+enumeration value. Writing just <a href="#my-example-heading">My Example Labeled Heading</a> establishes a cross
+reference to the above heading that automatically fills in the link text based
+on the heading. This is equivalent to <a href="#my-example-heading">My Example Labeled Heading</a>. Writing
+<a href="#my-example-heading">the above heading</a>, with the label given in angle
+brackets, establishes a link using &quot;the above heading&quot; as the link text. This
+is equivalent to <a href="#my-example-heading">the above heading</a>.</p>
+  <p>The <code>{numref}</code> role is similar but allows you to make use of the target's
+enumeration value in the link text using <code>%s</code>. The reference will not resolve
+(see below) if the target element is not enumerated. Here is an example of
+using the <code>{numref}</code> role:</p>
+    <figure>
+    <img src="plot.png" alt="" />
+    <figcaption>
+      <p>Look at the curves on that distribution!</p>
+    </figcaption>
+  </figure>
+  <p>Here is a reference to the above figure: <span class="reference role unhandled"><code class="kind">{numref}</code><code>my-plot</code></span>.</p>
+  <p>Finally there is the <code>{eq}</code> role, which establishes a reference to a <code>{math}</code>
+directive. The only valid value for an <code>{eq}</code> role is the label for a <code>{math}</code>
+directive. Here is an example:</p>
+    <div id="super-formula" class="math-display">y = x^2</div>
+  <p>Take a look at <a href="#super-formula">(2)</a>!</p>
+  <h3>Resolution</h3>
+  <p>The cross references in a MyST document are initially unresolved, meaning that
+they are not yet connected to their targets. Resolution is one of the last
+transformations applied to a MyST document before it is rendered.</p>
+  <p>When the <code>{ref}</code>, <code>{numref}</code>, and <code>{eq}</code> roles are used for cross referencing
+and the reference is unresolved, it will be rendered as an unresolved cross
+reference. Using the Markdown link syntax for cross references instead means
+that an unresolved cross reference just gets rendered as a broken link.</p>
+  <p>Here is an unresolved reference: <span class="reference role unhandled"><code class="kind">{ref}</code><code>not-a-thing</code></span>.</p>
+  <p>Cross references within a single MyST document are handled by <code>libatrus</code>. To
+cross reference to targets within other documents, you must supply the valid
+universe of targets for a given document to <code>libatrus</code> when calling <code>resolve()</code>
+on the document.</p>
+</div>
