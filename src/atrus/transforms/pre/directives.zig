@@ -469,14 +469,15 @@ fn transformImage(
     image_node.* = .{
         .image = .{
             .url = owned_url,
-            .alt = "",
-            .title = "",
+            .alt = try alloc.dupeZ(u8, ""),
+            .title = try alloc.dupeZ(u8, ""),
         },
     };
 
     for (options) |opt| {
         if (std.mem.eql(u8, opt.name, "alt")) {
             if (opt.value) |v| {
+                alloc.free(image_node.image.alt);
                 image_node.image.alt = try alloc.dupeZ(u8, v);
             }
         } else if (std.mem.eql(u8, opt.name, "align")) {
