@@ -1510,7 +1510,15 @@
         },
         {
           "type": "text",
-          "value": " options.\nOtherwise, you assign a label by putting the label on the immediately preceding\nline using special syntax."
+          "value": " options. (The\n"
+        },
+        {
+          "type": "inlineCode",
+          "value": ":label:"
+        },
+        {
+          "type": "text",
+          "value": " option takes precedence if both are specified.) Otherwise, you assign\na label by putting the label on the immediately preceding line using special\nsyntax."
         }
       ]
     },
@@ -1714,6 +1722,8 @@
         {
           "type": "container",
           "kind": "figure",
+          "identifier": "my-plot",
+          "label": "my-plot",
           "children": [
             {
               "type": "image",

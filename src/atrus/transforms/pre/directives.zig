@@ -314,7 +314,9 @@ fn transformFigure(
     };
 
     for (options) |opt| {
-        if (std.mem.eql(u8, opt.name, "name")) {
+        if (std.mem.eql(u8, opt.name, "name") or
+            std.mem.eql(u8, opt.name, "label"))
+        {
             if (opt.value) |v| {
                 container_node.container.label = try alloc.dupeZ(u8, v);
                 const normalized = try myst.references.normalizeIdentifier(
@@ -393,7 +395,9 @@ fn transformCode(
             if (opt.value) |v| {
                 code_node.code.class = try alloc.dupeZ(u8, v);
             }
-        } else if (std.mem.eql(u8, opt.name, "name")) {
+        } else if (std.mem.eql(u8, opt.name, "name") or
+            std.mem.eql(u8, opt.name, "label"))
+        {
             if (opt.value) |v| {
                 code_node.code.label = try alloc.dupeZ(u8, v);
                 const normalized = try myst.references.normalizeIdentifier(
@@ -432,7 +436,9 @@ fn transformMath(
     };
 
     for (options) |opt| {
-        if (std.mem.eql(u8, opt.name, "label")) {
+        if (std.mem.eql(u8, opt.name, "name") or
+            std.mem.eql(u8, opt.name, "label"))
+        {
             if (opt.value) |v| {
                 math_node.math.label = try alloc.dupeZ(u8, v);
                 const normalized = try myst.references.normalizeIdentifier(
@@ -607,7 +613,9 @@ fn transformListTable(
     };
 
     for (options) |opt| {
-        if (std.mem.eql(u8, opt.name, "name")) {
+        if (std.mem.eql(u8, opt.name, "name") or
+            std.mem.eql(u8, opt.name, "label"))
+        {
             if (opt.value) |v| {
                 container_node.container.label = try alloc.dupeZ(u8, v);
                 const normalized = try myst.references.normalizeIdentifier(

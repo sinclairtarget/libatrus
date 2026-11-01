@@ -208,9 +208,10 @@ document or even to entirely different documents.</p>
   <p>For something to be the target of a cross reference, it must have a label. You
 can give a label to something in a few different ways depending on whether that
 something is a directive or not.</p>
-  <p>A directive can be labeled using either the <code>:label:</code> or <code>:name:</code> options.
-Otherwise, you assign a label by putting the label on the immediately preceding
-line using special syntax.</p>
+  <p>A directive can be labeled using either the <code>:label:</code> or <code>:name:</code> options. (The
+<code>:label:</code> option takes precedence if both are specified.) Otherwise, you assign
+a label by putting the label on the immediately preceding line using special
+syntax.</p>
   <p>Here is an example of a labeled heading:</p>
   <h4 id="my-example-heading">My Example Labeled Heading</h4>
   <p>Labels can be given to headings, paragraphs, lists, blockquotes, or pretty much
@@ -232,13 +233,13 @@ is equivalent to <a href="#my-example-heading">the above heading</a>.</p>
 enumeration value in the link text using <code>%s</code>. The reference will not resolve
 (see below) if the target element is not enumerated. Here is an example of
 using the <code>{numref}</code> role:</p>
-    <figure>
+    <figure id="my-plot" class="numbered">
     <img src="plot.png" alt="" />
     <figcaption>
-      <p>Look at the curves on that distribution!</p>
+      <p><span class="caption-number">Figure 1</span>Look at the curves on that distribution!</p>
     </figcaption>
   </figure>
-  <p>Here is a reference to the above figure: <span class="reference role unhandled"><code class="kind">{numref}</code><code>my-plot</code></span>.</p>
+  <p>Here is a reference to the above figure: <a href="#my-plot">Plot 1</a>.</p>
   <p>Finally there is the <code>{eq}</code> role, which establishes a reference to a <code>{math}</code>
 directive. The only valid value for an <code>{eq}</code> role is the label for a <code>{math}</code>
 directive. Here is an example:</p>

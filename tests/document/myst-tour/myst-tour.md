@@ -271,9 +271,10 @@ For something to be the target of a cross reference, it must have a label. You
 can give a label to something in a few different ways depending on whether that
 something is a directive or not.
 
-A directive can be labeled using either the `:label:` or `:name:` options.
-Otherwise, you assign a label by putting the label on the immediately preceding
-line using special syntax.
+A directive can be labeled using either the `:label:` or `:name:` options. (The
+`:label:` option takes precedence if both are specified.) Otherwise, you assign
+a label by putting the label on the immediately preceding line using special
+syntax.
 
 Here is an example of a labeled heading:
 
