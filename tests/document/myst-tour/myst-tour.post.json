@@ -1618,6 +1618,7 @@
                   "kind": "heading",
                   "identifier": "my-example-heading",
                   "label": "my-example-heading",
+                  "resolved": true,
                   "children": [
                     {
                       "type": "text",
@@ -1636,6 +1637,7 @@
               "kind": "heading",
               "identifier": "my-example-heading",
               "label": "my-example-heading",
+              "resolved": true,
               "children": [
                 {
                   "type": "text",
@@ -1657,6 +1659,7 @@
                   "kind": "heading",
                   "identifier": "my-example-heading",
                   "label": "my-example-heading",
+                  "resolved": true,
                   "children": [
                     {
                       "type": "text",
@@ -1675,6 +1678,7 @@
               "kind": "heading",
               "identifier": "my-example-heading",
               "label": "my-example-heading",
+              "resolved": true,
               "children": [
                 {
                   "type": "text",
@@ -1863,6 +1867,7 @@
                   "kind": "equation",
                   "identifier": "super-formula",
                   "label": "super-formula",
+                  "resolved": true,
                   "children": [
                     {
                       "type": "text",

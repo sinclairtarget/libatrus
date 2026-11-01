@@ -251,6 +251,11 @@ fn renderNode(stringify: *Stringify, node: *ast.Node) Io.Writer.Error!void {
                 try stringify.objectField("label");
                 try stringify.write(n.label);
 
+                if (n.resolved) {
+                    try stringify.objectField("resolved");
+                    try stringify.write(n.resolved);
+                }
+
                 if (n.children.len > 0) {
                     try renderChildren(stringify, n);
                 }
